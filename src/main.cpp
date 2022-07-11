@@ -5,10 +5,8 @@
 #include <axp20x.h>
 #include <TinyGPSPlus.h>
 
-//OLED Display
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+//Display
+#include "display.h"
 
 //Bluetooth
 #include <BluetoothSerial.h>
@@ -31,9 +29,6 @@
 #define LED_ON      LOW
 #define LED_OFF     HIGH
 
-// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
-
 BluetoothSerial SerialBT;
 
 LoraMesher& radio = LoraMesher::getInstance();
@@ -41,28 +36,7 @@ LoraMesher& radio = LoraMesher::getInstance();
 #pragma region Display
 
 void displayHeader() {
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("LoRaMesher v0.0.4");
-
-    display.setCursor(0, 9);
-    display.println("Address: " + (String) radio.getLocalAddress());
-
-    display.display();
-}
-
-void initializeDisplay() {
-    if (!display.begin(SSD1306_SWITCHCAPVCC, DISP_ADDRESS)) {
-        Serial.println(F("SSD1306 allocation failed"));
-    }
-    delay(100);
-    display.clearDisplay();
-
-    display.setTextColor(WHITE); // Draw white text
-
-    display.setTextWrap(false);
-
-    Serial.println(F("Display init"));
+    Screen.changeLineTwo("Address: " + (String) radio.getLocalAddress());
 }
 
 #pragma endregion
@@ -76,8 +50,7 @@ void initializeDisplay() {
  * @param delaymS delay between is on and off of the LED
  */
 void led_Flash(uint16_t flashes, uint16_t delaymS) {
-    uint16_t index;
-    for (index = 1; index <= flashes; index++) {
+    for (uint16_t index = 0; index < flashes; index++) {
         digitalWrite(BOARD_LED, LED_OFF);
         vTaskDelay(delaymS / portTICK_PERIOD_MS);
         digitalWrite(BOARD_LED, LED_ON);
@@ -136,6 +109,7 @@ void requestContactInfo(uint16_t addr) {
     rqContact->type = contactRequest;
 
     radio.sendReliable(addr, rqContact, 1);
+    delete rqContact;
 }
 
 void responseContactInfo(uint16_t addr) {
@@ -144,6 +118,7 @@ void responseContactInfo(uint16_t addr) {
     ((String) contactService.myName).toCharArray(rqContact->name, MAX_NAME_LENGTH);
 
     radio.sendReliable(addr, rqContact, 1);
+    delete rqContact;
 }
 
 void sendMessage(uint16_t dst, String message) {
@@ -174,18 +149,23 @@ void searchContacts() {
 }
 
 void printMessage(Message* m, size_t size, uint16_t src) {
+    led_Flash(4, 100);
+
     String contactName = contactService.getNameContact(src);
+    if (contactName.isEmpty()) {
+        contactName = String(src);
+    }
+
     String textMessage = String(m->payload);
 
-    Serial.print("Message arrived: " + contactName + ": " + textMessage);
-    SerialBT.print(contactName + ": " + textMessage);
+    //TODO: XDDDD sry
+    int index = textMessage.indexOf("xV");
+    textMessage.remove(index, index - textMessage.length());
 
-    display.clearDisplay();
-    displayHeader();
-    display.setCursor(0, 27);
-    display.setTextSize(2);
-    display.println(contactName + ": " + textMessage);
-    display.display();
+    Serial.println("Message arrived: " + contactName + ": " + textMessage);
+    SerialBT.println(contactName + ": " + textMessage);
+
+    Screen.changeLineFFour(contactName + ": " + textMessage);
 }
 
 
@@ -193,19 +173,46 @@ String getGPS(double lat, double lng, double alt) {
     return "Lat: " + String(lat, 7) + " LONG: " + String(lng, 7) + " ALT: " + alt;
 }
 
+/**
+ * @brief Print the routing table into the display
+ *
+ */
+void printRoutingTableToDisplay() {
+
+    //Set the routing table list that is being used and cannot be accessed (Remember to release use after usage)
+    LM_LinkedList<RouteNode>* routingTableList = radio.routingTableList();
+
+    routingTableList->setInUse();
+
+    Screen.changeSizeRouting(radio.routingTableSize());
+
+    char text[15];
+    for (int i = 0; i < radio.routingTableSize(); i++) {
+        RouteNode* rNode = (*routingTableList)[i];
+        NetworkNode node = rNode->networkNode;
+        snprintf(text, 15, ("|%X(%d)->%X"), node.address, node.metric, rNode->via);
+        Screen.changeRoutingText(text, i);
+    }
+
+    //Release routing table list usage.
+    routingTableList->releaseInUse();
+
+    Screen.changeLineFour();
+}
+
 void SOSMessageReceived(SOSMessage* sos, uint16_t src) {
-    display.clearDisplay();
-    displayHeader();
+    // display.clearDisplay();
+    // displayHeader();
 
-    display.setCursor(20, 27);
-    display.setTextSize(4);
-    display.println("SOS");
+    // display.setCursor(20, 27);
+    // display.setTextSize(4);
+    // display.println("SOS");
 
-    display.setCursor(20, 45);
-    display.println("GPS:" + getGPS(sos->latitude, sos->longitude, sos->altitude));
-    display.setCursor(20, 54);
-    display.println("FROM: " + String(sos->name) + " (" + String(src) + ")");
-    display.display();
+    // display.setCursor(20, 45);
+    // display.println("GPS:" + getGPS(sos->latitude, sos->longitude, sos->altitude));
+    // display.setCursor(20, 54);
+    // display.println("FROM: " + String(sos->name) + " (" + String(src) + ")");
+    // display.display();
 }
 
 void processReceivedMessage(AppPacket<DataMessage>* message) {
@@ -219,19 +226,19 @@ void processReceivedMessage(AppPacket<DataMessage>* message) {
                 ContactResponseMessage* cm = reinterpret_cast<ContactResponseMessage*>(dm);
                 contactService.addContact(cm->name, message->src);
                 SerialBT.println("New contact added (" + String(message->src) + ") " + String(cm->name));
-                break;
             }
+            break;
         case sendMessageType:
             {
                 Message* payload = reinterpret_cast<Message*>(dm);
                 printMessage(payload, message->getPayloadLength() - sizeof(Message), message->src);
-                break;
             }
+            break;
         case SOSMessageType:
             {
                 SOSMessageReceived(reinterpret_cast<SOSMessage*>(dm), message->src);
-                break;
             }
+            break;
         default:
             break;
     }
@@ -245,7 +252,7 @@ void processReceivedPackets(void*) {
     for (;;) {
         /* Wait for the notification of processReceivedPackets and enter blocking */
         ulTaskNotifyTake(pdPASS, portMAX_DELAY);
-        led_Flash(1, 100); //one quick LED flashes to indicate a packet has arrived
+        led_Flash(2, 100); //one quick LED flashes to indicate a packet has arrived
 
         //Iterate through all the packets inside the Received User Packets FiFo
         while (radio.getReceivedQueueSize() > 0) {
@@ -271,6 +278,10 @@ void initializeLoraMesher() {
     // Display Header
     displayHeader();
     contactService.changeName(String(radio.getLocalAddress()));
+}
+
+void clearDisplay() {
+    Screen.changeLineFFour("");
 }
 
 void printRoutingTable() {
@@ -423,19 +434,11 @@ void printHelp() {
 
 void callback(esp_spp_cb_event_t event, esp_spp_cb_param_t* param) {
     if (event == ESP_SPP_SRV_OPEN_EVT and SerialBT.hasClient()) {
-        display.clearDisplay();
-        displayHeader();
-        display.setCursor(0, 18);
-        display.println("BT client connected");
-
+        Screen.changeLineThree("BT client connected");
         printHelp();
     }
     else if (event == ESP_SPP_CLOSE_EVT && !SerialBT.hasClient()) {
-        display.clearDisplay();
-        displayHeader();
-        display.setCursor(0, 18);
-        display.println("BT client disconnected");
-        display.display();
+        Screen.changeLineThree("BT client disconnected");
     }
 }
 
@@ -454,62 +457,70 @@ uint16_t chatAddr = 0;
 void bluetoothLoop() {
     while (SerialBT.available()) {
         String message = SerialBT.readStringUntil('\n');
-        message.remove(message.length() - 1, 2);
-        if (message.indexOf("Back") != -1 || message.indexOf("back") != -1) {
-            SerialBT.println("Going back");
-            state = 0;
-            continue;
-        }
-        switch (state) {
-            case 0:
-                Serial.println("BT: " + message);
+        if (!message.isEmpty() || message != String('\n')) {
+            message.remove(message.length() - 1, 2);
+            if (message.indexOf("Back") != -1 || message.indexOf("back") != -1) {
+                SerialBT.println("Going back");
+                state = 0;
+                continue;
+            }
 
-                vTaskDelay(50);
-                if (message.indexOf("help") != -1) printHelp();
-                else if (message.indexOf("get location") != -1) printCurrentLocation();
-                else if (message.indexOf("search contacts") != -1) searchContacts();
-                else if (message.indexOf("print contacts") != -1) printContacts();
-                else if (message.indexOf("change name") != -1) {
-                    SerialBT.println("Please write your new name. Write back to cancel");
-                    state = 1;
-                }
-                else if (message.indexOf("chat") != -1) {
-                    printContacts();
-                    SerialBT.println("Write name to chat. Write back to go back");
-                    state = 2;
-                }
-                else if (message.indexOf("print RT") != -1) printRoutingTable();
-                break;
-            case 1:
-                if (message.length() <= MAX_NAME_LENGTH) {
+            switch (state) {
+                case 0:
+                    Serial.println("BT: " + message);
 
-                    changeName(message);
-                    SerialBT.println("Hello " + message + "!");
-                    state = 0;
-                }
-                else {
-                    SerialBT.println("MAX NAME LENGTH is " + (String) MAX_NAME_LENGTH);
-                }
-                break;
-            case 2:
-                if (message.length() <= MAX_NAME_LENGTH) {
-                    chatAddr = contactService.getAddrContact(message);
-                    if (chatAddr == 0) {
-                        SerialBT.println("Name not found in the contact list, here is your options:");
-                        printContacts();
-                        continue;
+                    vTaskDelay(50);
+                    if (message.indexOf("help") != -1) printHelp();
+                    else if (message.indexOf("get location") != -1) printCurrentLocation();
+                    else if (message.indexOf("search contacts") != -1) searchContacts();
+                    else if (message.indexOf("print contacts") != -1) printContacts();
+                    else if (message.indexOf("change name") != -1) {
+                        SerialBT.println("Please write your new name. Write back to cancel");
+                        state = 1;
                     }
+                    else if (message.indexOf("chat") != -1) {
+                        printContacts();
+                        SerialBT.println("Write name to chat. Write back to go back");
+                        state = 2;
+                    }
+                    else if (message.indexOf("print RT") != -1) printRoutingTable();
+                    else if (message.indexOf("clear") != -1) clearDisplay();
+                    else {
+                        SerialBT.println("Command not found");
+                    }
+                    break;
+                case 1:
+                    if (message.length() <= MAX_NAME_LENGTH) {
 
-                    chatName = message;
-                    SerialBT.println("Starting to chat to " + message + "!");
-                    state = 3;
-                }
-                else {
-                    SerialBT.println("MAX NAME LENGTH is " + (String) MAX_NAME_LENGTH);
-                }
+                        changeName(message);
+                        SerialBT.println("Hello " + message + "!");
+                        state = 0;
+                    }
+                    else {
+                        SerialBT.println("MAX NAME LENGTH is " + String(MAX_NAME_LENGTH));
+                    }
+                    break;
+                case 2:
+                    if (message.length() <= MAX_NAME_LENGTH) {
+                        chatAddr = contactService.getAddrContact(message);
+                        if (chatAddr == 0) {
+                            SerialBT.println("Name not found in the contact list, here is your options:");
+                            printContacts();
+                            continue;
+                        }
 
-            case 3:
-                sendMessage(chatAddr, message);
+                        chatName = message;
+                        SerialBT.println("Starting to chat to " + message + "!");
+                        state = 3;
+                    }
+                    else {
+                        SerialBT.println("MAX NAME LENGTH is " + String(MAX_NAME_LENGTH));
+                    }
+                    break;
+
+                case 3:
+                    sendMessage(chatAddr, message);
+            }
         }
     }
 }
@@ -519,7 +530,7 @@ void bluetoothLoop() {
 void setup() {
     //initialize Serial Monitor
     Serial.begin(115200);
-    initializeDisplay();
+    Screen.initDisplay();
 
     initializeLoraMesher();
 
@@ -527,11 +538,22 @@ void setup() {
 
     initGPS();
 
-    delay(2000);
+    pinMode(BOARD_LED, OUTPUT); //setup pin as output for indicator LED
+    led_Flash(2, 100);
+
+    vTaskDelay(100);
 }
+
+uint32_t millisRT = 0;
 
 void loop() {
     bluetoothLoop();
+    Screen.drawDisplay();
 
-    vTaskDelay(50);
+    if (millis() > millisRT + 1000) {
+        millisRT = millis();
+        printRoutingTableToDisplay();
+    }
+
+    vTaskDelay(10 / portTICK_PERIOD_MS);
 }

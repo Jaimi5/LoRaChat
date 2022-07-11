@@ -9,14 +9,14 @@ import random
 
 children = list()
 
-portsTtgoTBeam = {"COM13", "COM8", "COM11",
-                  "COM9", "COM7", "COM3", "COM6"}
+portsTtgoTBeam = {"COM17"}
+# "COM13", "COM8", "COM11", "COM9", "COM7", "COM3", "COM6"}
 
 
 def uploadToPort(portName, count):
-    # env = "ttgo-lora32-v1"
-    # if portName in portsTtgoTBeam:
     env = "ttgo-t-beam"
+    if portName in portsTtgoTBeam:
+        env = "ttgo-lora32-v1"
 
     # time.sleep(random.randint(0, 10))
 

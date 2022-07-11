@@ -40,7 +40,7 @@ String Contact::getNameContact(uint16_t addr) {
     }
 
     contactsList->releaseInUse();
-    return "";
+    return String();
 }
 
 uint16_t Contact::getAddrContact(String name) {
