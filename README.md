@@ -1,4 +1,4 @@
 # LoRaChat
-A LoRa chat using the library LoRaMesher
+The first example application that uses [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher)
 
-![ICDCS demonstration](images/ICDCS2022.pdf)
+![ICDCS demonstration](images/ICDCS2022.png)
