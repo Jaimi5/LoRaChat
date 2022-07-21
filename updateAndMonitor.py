@@ -15,8 +15,8 @@ portsTtgoTBeam = {"COM17"}
 
 def uploadToPort(portName, count):
     env = "ttgo-t-beam"
-    if portName in portsTtgoTBeam:
-        env = "ttgo-lora32-v1"
+    # if portName in portsTtgoTBeam:
+    # env = "ttgo-lora32-v1"
 
     # time.sleep(random.randint(0, 10))
 

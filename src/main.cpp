@@ -550,10 +550,5 @@ void loop() {
     bluetoothLoop();
     Screen.drawDisplay();
 
-    if (millis() > millisRT + 1000) {
-        millisRT = millis();
-        printRoutingTableToDisplay();
-    }
-
     vTaskDelay(10 / portTICK_PERIOD_MS);
 }
