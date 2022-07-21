@@ -271,8 +271,36 @@ void processReceivedPackets(void*) {
     }
 }
 
+TaskHandle_t receiveLoRaMessage_Handle = NULL;
+
+/**
+ * @brief Create a Receive Messages Task and add it to the LoRaMesher
+ *
+ */
+void createReceiveMessages() {
+    int res = xTaskCreate(
+        processReceivedPackets,
+        "Receive App Task",
+        4096,
+        (void*) 1,
+        2,
+        &receiveLoRaMessage_Handle);
+    if (res != pdPASS) {
+        Log.errorln(F("Receive App Task creation gave error: %d"), res);
+    }
+
+    radio.setReceiveAppDataTaskHandle(receiveLoRaMessage_Handle);
+}
+
 void initializeLoraMesher() {
-    radio.init(processReceivedPackets);
+    radio.begin();
+
+    //Create the receive task and add it to the LoRaMesher
+    createReceiveMessages();
+
+    //Start LoRaMesher
+    radio.start();
+
     Log.verboseln("LoraMesher initialized");
 
     // Display Header
