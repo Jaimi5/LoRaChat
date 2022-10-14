@@ -3,7 +3,7 @@
 A LoRa Chat long-distance communication using LoRa technology and ESP32 LoRa boards. You can connect to your devices via phone using a Bluetooth Serial Terminal.
 We are using the [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) which allows us a LoRa Mesh communication protocol to build the routing tables and the contact lists. Large messages are possible using LargePayloads feature.
 
-## Configuration 
+# Configuration 
 
 1. Initialize the code with VSCode and PlatformIO
 2. Update the code to an specific device. (Tested in ttgo-t-beam and ttgo-lora32-v1)
@@ -13,7 +13,7 @@ We are using the [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) which al
 6. Open the "Bluetooth Terminal" and search for the connected device ID.
 7. Write `/help` to show all the available commands.
 
-### Available Commands
+# Available Commands
 - `/help` - Show all the available commands.
 - `/change name` - Will change the name of your device. If you don't change it, your default name will be the ID shown in the display. 
 - `/search contacts` - It will start searching possible contacts and will add their name in the contacts list.
@@ -24,5 +24,7 @@ We are using the [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) which al
     - Write `/back` to finish the chat. 
 - `/get location` - Will print the current location of your device. 
 
+
+# ICDCS 2022 Demonstration
 
 ![ICDCS demonstration](images/ICDCS2022.png)
