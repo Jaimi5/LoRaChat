@@ -5,10 +5,21 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+//OLED pins
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define DISP_ADDRESS 0x3C // Address 0x3D for 128x64
 
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#ifndef OLED_SDA
+#define OLED_SDA SDA
+#endif
+#ifndef OLED_SCL
+#define OLED_SCL SCL
+#endif
+
+#ifndef OLED_RST
+#define OLED_RST -1
+#endif
 
 class Display {
 public:

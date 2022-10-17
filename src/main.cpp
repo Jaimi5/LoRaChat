@@ -18,12 +18,6 @@
 #include "contacts.h"
 #include "helpers.h"
 
-//OLED pins
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define DISP_ADDRESS 0x3C // Address 0x3D for 128x64
-#define OLED_RST  16
-
 //Using LILYGO TTGO T-BEAM v1.1 
 #define BOARD_LED   4
 #define LED_ON      LOW
@@ -76,24 +70,24 @@ public:
     messageType type;
 };
 
-class ContactResponseMessage : public DataMessage {
+class ContactResponseMessage: public DataMessage {
 public:
     char name[MAX_NAME_LENGTH];
 };
 
-class Message : public DataMessage {
+class Message: public DataMessage {
 public:
     char payload[];
 };
 
-class GPSMessage : public DataMessage {
+class GPSMessage: public DataMessage {
 public:
     double latitude;
     double longitude;
     double altitude;
 };
 
-class SOSMessage : public GPSMessage {
+class SOSMessage: public GPSMessage {
 public:
     char name[MAX_NAME_LENGTH];
 };
@@ -476,6 +470,8 @@ void initializeBluetooth() {
     if (!SerialBT.begin((String) radio.getLocalAddress())) {
         Log.errorln("BT init error");
     }
+
+    Serial.println("DeviceID: " + (String) radio.getLocalAddress());
 }
 
 uint32_t state = 0;
@@ -564,7 +560,7 @@ void setup() {
 
     initializeBluetooth();
 
-    initGPS();
+    // initGPS();
 
     pinMode(BOARD_LED, OUTPUT); //setup pin as output for indicator LED
     led_Flash(2, 100);

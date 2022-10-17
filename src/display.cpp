@@ -102,9 +102,20 @@ void Display::changeLine(String text, int pos, int& x, int& minX, int size, bool
 
 
 void Display::initDisplay() {
+    //reset OLED display via software for ESP32LORA
+// #ifdef ESP32LORA 
+    if (OLED_RST != -1) {
+        pinMode(OLED_RST, OUTPUT);
+        digitalWrite(OLED_RST, LOW);
+        delay(20);
+        digitalWrite(OLED_RST, HIGH);
+    }
+
+    Wire.begin((int) OLED_SDA, (int) OLED_SCL);
+
     Serial.println(F("SSD1306 allocation Done"));
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C, false, false)) {
         Serial.println(F("SSD1306 allocation failed"));
         for (;;); // Don't proceed, loop forever
     }
