@@ -33,15 +33,16 @@ public:
     void drawDisplay();
     void changeRoutingText(String text, int position);
     void changeSizeRouting(int size);
+    void clearDisplay();
+    void printLine(String str, int& x, int y, int size, int minX, bool move);
 
 private:
     Adafruit_SSD1306 display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
     TaskHandle_t Display_TaskHandle = NULL;
 
     void changeLine(String str, int pos, int& x, int& minX, int size, bool& move);
-    void printLine(String str, int& x, int y, int size, int minX, bool move);
 
-    String displayText[4] = {"LoRaMesher v0.0.4", "", "", ""};
+    String displayText[4] = {"LoRaMesher v0.0.5", "AAAAA", "BBBBBB", "CCCCCCCCCC"};
 
     String routingText[25];
     int routingSize = 0;

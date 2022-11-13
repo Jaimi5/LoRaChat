@@ -103,7 +103,6 @@ void Display::changeLine(String text, int pos, int& x, int& minX, int size, bool
 
 void Display::initDisplay() {
     //reset OLED display via software for ESP32LORA
-// #ifdef ESP32LORA 
     if (OLED_RST != -1) {
         pinMode(OLED_RST, OUTPUT);
         digitalWrite(OLED_RST, LOW);
@@ -127,6 +126,11 @@ void Display::initDisplay() {
     display.setTextWrap(false);
 
     delay(50);
+}
+
+void Display::clearDisplay() {
+    display.clearDisplay();
+    display.display();
 }
 
 Display Screen = Display();
