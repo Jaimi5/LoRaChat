@@ -102,6 +102,12 @@ public:
      */
     String getGPSString(TinyGPSPlus* gpsData);
 
+    /**
+     * @brief Notifies GPS task and updates GPS data
+     *
+     */
+    void notifyUpdate();
+
 private:
 
     GPSService();

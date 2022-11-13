@@ -333,6 +333,49 @@ void printRoutingTable() {
 
 GPSService& gpsService = GPSService::getInstance();
 
+TaskHandle_t gpsDisplay_TaskHandle = NULL;
+
+void gpsDisplay_Task(void* pvParameters) {
+    while (true) {
+        gpsService.notifyUpdate();
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        while (!gpsService.isGPSValid()) {
+            gpsService.notifyUpdate();
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+        }
+
+        String gpsString = gpsService.getGPSString();
+
+        Screen.changeLineTwo(gpsString);
+        vTaskDelay(50000 / portTICK_PERIOD_MS);
+    }
+}
+
+/**
+ * @brief Create a Receive Messages Task and add it to the LoRaMesher
+ *
+ */
+void createUpdateGPSDisplay() {
+    int res = xTaskCreate(
+        gpsDisplay_Task,
+        "Gps Display Task",
+        4096,
+        (void*) 1,
+        2,
+        &gpsDisplay_TaskHandle);
+    if (res != pdPASS) {
+        Log.errorln(F("Gps Display Task creation gave error: %d"), res);
+    }
+}
+
+void initializeGPS() {
+    //Initialize GPS
+    gpsService.initGPS();
+
+    //Initialize GPS Display
+    createUpdateGPSDisplay();
+}
+
 // GPSMessage* createGPSMessage() {
 //     updateGPS();
 //     GPSMessage* gpMessage = new GPSMessage();
@@ -343,9 +386,16 @@ GPSService& gpsService = GPSService::getInstance();
 //     return gpMessage;
 // }
 
-// void printCurrentLocationBT() {
-//     SerialBT.println(getGPSString());
-// }
+void printCurrentLocationBT() {
+    gpsService.notifyUpdate();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    while (!gpsService.isGPSValid()) {
+        gpsService.notifyUpdate();
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+    }
+
+    SerialBT.println(gpsService.getGPSString());
+}
 
 
 // void sendSOSMessage() {
@@ -443,7 +493,7 @@ void bluetoothLoop() {
 
                     vTaskDelay(50);
                     if (message.indexOf("help") != -1) printHelp();
-                    // else if (message.indexOf("get location") != -1) printCurrentLocationBT();
+                    else if (message.indexOf("get location") != -1) printCurrentLocationBT();
                     else if (message.indexOf("search contacts") != -1) searchContacts();
                     else if (message.indexOf("print contacts") != -1) printContacts();
                     else if (message.indexOf("change name") != -1) {
@@ -499,53 +549,19 @@ void bluetoothLoop() {
 
 #pragma endregion
 
-TaskHandle_t gpsDisplay_TaskHandle = NULL;
-
-void gpsDisplay_Task(void* pvParameters) {
-    while (true) {
-        String gpsString = gpsService.getGPSString();
-
-        if (gpsService.isGPSValid()) {
-            Screen.changeLineTwo(gpsString);
-            vTaskDelay(50000 / portTICK_PERIOD_MS);
-        }
-        else
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-}
-
-/**
- * @brief Create a Receive Messages Task and add it to the LoRaMesher
- *
- */
-void createUpdateGPSDisplay() {
-    int res = xTaskCreate(
-        gpsDisplay_Task,
-        "Gps Display Task",
-        4096,
-        (void*) 1,
-        2,
-        &gpsDisplay_TaskHandle);
-    if (res != pdPASS) {
-        Log.errorln(F("Gps Display Task creation gave error: %d"), res);
-    }
-}
-
 void setup() {
     //initialize Serial Monitor
     Serial.begin(115200);
     Screen.initDisplay();
 
-    // initializeLoraMesher();
+    initializeLoraMesher();
 
-    // initializeBluetooth();
+    initializeBluetooth();
 
-    gpsService.initGPS();
+    initializeGPS();
 
-    createUpdateGPSDisplay();
-
-    // pinMode(BOARD_LED, OUTPUT); //setup pin as output for indicator LED
-    // led_Flash(2, 100);
+    pinMode(BOARD_LED, OUTPUT); //setup pin as output for indicator LED
+    led_Flash(2, 100);
     // int aux = 0;
 
     // Screen.printLine("hello", aux, 0, 4, 0, false);
@@ -556,7 +572,7 @@ void setup() {
 uint32_t millisRT = 0;
 
 void loop() {
-    // bluetoothLoop();
+    bluetoothLoop();
     Screen.drawDisplay();
     vTaskDelay(100 / portTICK_PERIOD_MS);
 }

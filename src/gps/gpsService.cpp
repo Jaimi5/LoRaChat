@@ -72,11 +72,11 @@ void GPSService::createGPSTask() {
 void GPSService::GPSLoop(void*) {
     GPSService& gpsService = GPSService::getInstance();
     for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
         gpsService.updateGPS();
         String GPSstring = gpsService.getGPSString();
         Serial.println(GPSstring);
-
-        vTaskDelay(GPS_DELAY / portTICK_PERIOD_MS);
     }
 }
 
@@ -91,6 +91,10 @@ void GPSService::smartDelay(unsigned long ms) {
             gps.encode(GPS.read());
         }
     } while (millis() - start < ms);
+}
+
+void GPSService::notifyUpdate() {
+    xTaskNotifyGive(gps_TaskHandle);
 }
 
 void GPSService::updateGPS() {
