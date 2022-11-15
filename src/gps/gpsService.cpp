@@ -6,7 +6,7 @@ GPSService::GPSService() {}
 
 void GPSService::initGPS() {
 
-    Wire.begin(SDA, SCL);
+    Wire.begin((int) SDA, (int) SCL);
 
 #if defined(T_BEAM_V10)
     if (!axp.begin(Wire, AXP192_SLAVE_ADDRESS)) {
@@ -142,4 +142,15 @@ void GPSService::getGPSData(TinyGPSPlus* ll) {
 
 double GPSService::distanceBetween(double lat1, double lng1, double lat2, double lng2) {
     return gps.distanceBetween(lat1, lng1, lat2, lng2);
+}
+
+String GPSService::getGPSUpdatedWait() {
+    notifyUpdate();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    while (!isGPSValid()) {
+        notifyUpdate();
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+    }
+
+    return getGPSString();
 }

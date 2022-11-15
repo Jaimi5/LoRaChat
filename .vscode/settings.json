@@ -5,6 +5,16 @@
         "algorithm": "cpp",
         "iterator": "cpp",
         "random": "cpp",
-        "functional": "cpp"
+        "functional": "cpp",
+        "new": "cpp",
+        "array": "cpp",
+        "deque": "cpp",
+        "string": "cpp",
+        "vector": "cpp",
+        "optional": "cpp",
+        "string_view": "cpp",
+        "fstream": "cpp",
+        "istream": "cpp",
+        "streambuf": "cpp"
     }
 }

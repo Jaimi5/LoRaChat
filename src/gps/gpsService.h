@@ -11,7 +11,6 @@
 #include <axp20x.h>
 #include <TinyGPSPlus.h>
 #include <HardwareSerial.h>
-#include <SoftwareSerial.h>
 
 #define T_BEAM_V10
 
@@ -107,6 +106,8 @@ public:
      *
      */
     void notifyUpdate();
+
+    String getGPSUpdatedWait();
 
 private:
 
