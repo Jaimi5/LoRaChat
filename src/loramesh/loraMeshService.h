@@ -1,45 +1,47 @@
-// #pragma once
+#pragma once
 
-// #include <Arduino.h>
+#include <Arduino.h>
 
-// #include "LoRaMesher.h"
+#include "LoRaMesher.h"
 
-// #include "ArduinoLog.h"
+#include "ArduinoLog.h"
 
-// #include "./message/messageService.h"
+#include "./message/messageService.h"
 
-// // #include "lorameshCommandService.h"
+// #include "lorameshCommandService.h"
 
-// class LoRaMeshService {
+class LoRaMeshService {
 
-// public:
+public:
 
-//     /**
-//      * @brief Construct a new LoRaMeshService object
-//      *
-//      */
-//     static LoRaMeshService& getInstance() {
-//         static LoRaMeshService instance;
-//         return instance;
-//     }
+    /**
+     * @brief Construct a new LoRaMeshService object
+     *
+     */
+    static LoRaMeshService& getInstance() {
+        static LoRaMeshService instance;
+        return instance;
+    }
 
-//     void initLoraMesherService();
+    void initLoraMesherService();
 
-//     uint16_t getDeviceID();
+    uint16_t getDeviceID();
 
-//     void loopReceivedPackets();
+    void loopReceivedPackets();
 
-//     String getRoutingTable();
+    String getRoutingTable();
 
-// private:
+    String sendReliable(uint16_t destination, String message);
 
-//     LoraMesher& radio = LoraMesher::getInstance();
+private:
 
-//     TaskHandle_t receiveLoRaMessage_Handle = NULL;
+    LoraMesher& radio = LoraMesher::getInstance();
 
-//     LoRaMeshService() {};
+    TaskHandle_t receiveLoRaMessage_Handle = NULL;
 
-//     void createReceiveMessages();
+    LoRaMeshService() {};
 
-// };
+    void createReceiveMessages();
+
+};
 
