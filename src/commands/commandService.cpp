@@ -21,7 +21,7 @@ String CommandService::executeCommand(String args) {
         }
     }
 
-    return "Command not found\n" + helpCommand();
+    return String("Command not found\n") + helpCommand();
 }
 
 String CommandService::executeCommand(uint8_t id, String args) {
@@ -57,7 +57,7 @@ String CommandService::back() {
 
 bool CommandService::hasCommand(String command) {
     for (uint8_t i = 0; i < commandsCount; i++) {
-        if (commands[i].getCommand().indexOf(command) != -1) {
+        if (command.indexOf(commands[i].getCommand()) != -1) {
             return true;
         }
     }

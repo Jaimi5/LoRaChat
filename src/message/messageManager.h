@@ -43,6 +43,8 @@ public:
 
 private:
 
+    MessageManager() {};
+
     //List of all apps available
     MessageService* services[10];
 

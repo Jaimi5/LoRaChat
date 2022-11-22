@@ -21,10 +21,15 @@
 #endif
 
 #define GPS_DELAY 2000 // 2 seconds
-#define R 6371
-#define TO_RAD (3.1415926536 / 180)
 
-class GPSService {
+#include "./message/messageManager.h"
+
+#include "./message/messageService.h"
+
+#include "gpsCommandService.h"
+
+
+class GPSService: public MessageService {
 
 public:
 
@@ -109,9 +114,13 @@ public:
 
     String getGPSUpdatedWait(uint8_t maxTries = 10);
 
+    GPSCommandService* gpsCommandService = new GPSCommandService();
+
 private:
 
-    GPSService();
+    GPSService(): MessageService(appPort::GPSApp, String("GPS")) {
+        commandService = gpsCommandService;
+    };
 
     AXP20X_Class axp;
 

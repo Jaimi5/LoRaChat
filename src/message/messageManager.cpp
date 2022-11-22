@@ -63,10 +63,16 @@ String MessageManager::executeCommand(uint8_t serviceId, String command) {
 
 String MessageManager::executeCommand(String command) {
     String result = "";
+    bool found = false;
     for (int i = 0; i < 10; i++) {
         if (services[i] != nullptr && services[i]->commandService->hasCommand(command)) {
+            found = true;
             result += services[i]->commandService->executeCommand(command);
         }
+    }
+
+    if (!found) {
+        result = "Command not found";
     }
 
     return result;

@@ -341,6 +341,9 @@ void initManager() {
     manager.addMessageService(&bluetoothService);
     Log.verboseln("Bluetooth service added to manager");
 
+    manager.addMessageService(&gpsService);
+    Log.verboseln("GPS service added to manager");
+
     Serial.println(manager.getAvailableCommands());
 }
 

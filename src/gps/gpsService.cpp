@@ -2,8 +2,6 @@
 
 HardwareSerial GPS(1);
 
-GPSService::GPSService() {}
-
 void GPSService::initGPS() {
 
     Wire.begin((int) SDA, (int) SCL);
@@ -121,7 +119,7 @@ String GPSService::getGPSString() {
             + " N. SAT: " + sat;
     }
     else {
-        return "GPS not valid, try again later";
+        return String("GPS not valid, try again later");
     }
 }
 

@@ -42,7 +42,7 @@ void callback(esp_spp_cb_event_t event, esp_spp_cb_param_t* param) {
     BluetoothService& instance = BluetoothService::getInstance();
     if (event == ESP_SPP_SRV_OPEN_EVT && instance.SerialBT->hasClient()) {
         Log.verboseln("Bluetooth Connected");
-        String help = instance.bluetoothCommandService->helpCommand();
+        String help = MessageManager::getInstance().getAvailableCommands();
         Serial.println(help);
         instance.writeToBluetooth(help);
     }
@@ -78,7 +78,7 @@ void BluetoothService::loop() {
         String message = SerialBT->readStringUntil('\n');
         message.replace("\n", "");
         Serial.println(message);
-        String executedProgram = bluetoothCommandService->executeCommand(message);
+        String executedProgram = MessageManager::getInstance().executeCommand(message);
         Serial.println(executedProgram);
         writeToBluetooth(executedProgram);
     }
