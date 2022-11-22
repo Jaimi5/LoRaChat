@@ -4,19 +4,12 @@
 
 #include "./commands/commandService.h"
 
-#include "bluetoothMessage.h"
+#include "contactService.h"
 
-//Bluetooth
-#include <BluetoothSerial.h>
-
-//TODO: GPS Service here?
-#include "./gps/gpsService.h"
-
-
-class BluetoothCommandService: public CommandService {
+class ContactCommandService: public CommandService {
 public:
 
-    BluetoothCommandService();
+    ContactCommandService();
 
 private:
     String getLocationCommand();

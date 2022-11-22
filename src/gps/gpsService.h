@@ -107,7 +107,7 @@ public:
      */
     void notifyUpdate();
 
-    String getGPSUpdatedWait();
+    String getGPSUpdatedWait(uint8_t maxTries = 10);
 
 private:
 

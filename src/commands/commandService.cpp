@@ -1,8 +1,8 @@
 #include "commandService.h"
 
 CommandService::CommandService() {
-    addCommand(Command("/help", "Print help", [this](String args) { return this->helpCommand(); }));
-    addCommand(Command("/back", "Go back", [this](String args) { return this->back(); }));
+    addCommand(Command("/help", "Print help", 0, 0, [this](String args) { return this->helpCommand(); }));
+    addCommand(Command("/back", "Go back", 0, 0, [this](String args) { return this->back(); }));
 }
 
 String CommandService::executeCommand(String args) {
@@ -18,6 +18,16 @@ String CommandService::executeCommand(String args) {
         if (command.indexOf(commands[i].getCommand()) != -1) {
             Serial.println("Executing command: " + commands[i].getCommand());
             return commands[i].execute(commandArgs);
+        }
+    }
+
+    return "Command not found\n" + helpCommand();
+}
+
+String CommandService::executeCommand(uint8_t id, String args) {
+    for (uint8_t i = 0; i < commandsCount; i++) {
+        if (commands[i].getCommandID() == id) {
+            return commands[i].execute(args);
         }
     }
 
@@ -45,10 +55,29 @@ String CommandService::back() {
     return "Going back";
 }
 
+bool CommandService::hasCommand(String command) {
+    for (uint8_t i = 0; i < commandsCount; i++) {
+        if (commands[i].getCommand().indexOf(command) != -1) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 String CommandService::helpCommand() {
     String help = "Available commands:\n";
     for (uint8_t i = 0; i < commandsCount; i++) {
-        help += commands[i].getCommand() + " - " + commands[i].getDescription() + "\n";
+        help += commands[i].getCommand() + " (" + commands[i].getCommandID() + ") - " + commands[i].getDescription() + "\n";
+    }
+    return help;
+}
+
+String CommandService::publicCommands() {
+    String help = "";
+    for (uint8_t i = 0; i < commandsCount; i++) {
+        if (commands[i].getPublic())
+            help += commands[i].getCommand() + " (" + commands[i].getCommandID() + ") - " + commands[i].getDescription() + "\n";
     }
     return help;
 }

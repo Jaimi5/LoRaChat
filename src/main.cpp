@@ -1,14 +1,16 @@
 #include <Arduino.h>
 
+//Manager
+#include "./message/messageManager.h"
+
 //Display
 #include "display.h"
 
-//LoRaMesher 
-// #include <LoraMesher.h>
+//LoRaMesh
+#include "loramesh/loraMeshService.h"
 
 //Helpers
 // #include "contacts.h"
-// #include "helpers.h"
 
 //GPS libraries
 #include "gps\gpsService.h"
@@ -21,7 +23,7 @@
 #define LED_ON      LOW
 #define LED_OFF     HIGH
 
-// LoraMesher& radio = LoraMesher::getInstance();
+
 
 // #pragma region Display
 
@@ -159,10 +161,6 @@ void led_Flash(uint16_t flashes, uint16_t delaymS) {
 // }
 
 
-// String getGPS(double lat, double lng, double alt) {
-//     return "Lat: " + String(lat, 7) + " Lon: " + String(lng, 7) + " Alt: " + alt;
-// }
-
 // /**
 //  * @brief Print the routing table into the display
 //  *
@@ -203,99 +201,6 @@ void led_Flash(uint16_t flashes, uint16_t delaymS) {
 //     // display.setCursor(20, 54);
 //     // display.println("FROM: " + String(sos->name) + " (" + String(src) + ")");
 //     // display.display();
-// }
-
-// void processReceivedMessage(AppPacket<DataMessage>* message) {
-//     DataMessage* dm = message->payload;
-//     switch (dm->type) {
-//         case contactRequest:
-//             responseContactInfo(message->src);
-//             break;
-//         case contactResponse:
-//             {
-//                 ContactResponseMessage* cm = reinterpret_cast<ContactResponseMessage*>(dm);
-//                 contactService.addContact(cm->name, message->src);
-//                 SerialBT.println("New contact added (" + String(message->src) + ") " + String(cm->name));
-//             }
-//             break;
-//         case sendMessageType:
-//             {
-//                 Message* payload = reinterpret_cast<Message*>(dm);
-//                 printMessage(payload, message->getPayloadLength() - sizeof(Message), message->src);
-//             }
-//             break;
-//         case SOSMessageType:
-//             {
-//                 SOSMessageReceived(reinterpret_cast<SOSMessage*>(dm), message->src);
-//             }
-//             break;
-//         default:
-//             break;
-//     }
-// }
-
-// /**
-//  * @brief Function that process the received packets
-//  *
-//  */
-// void processReceivedPackets(void*) {
-//     for (;;) {
-//         /* Wait for the notification of processReceivedPackets and enter blocking */
-//         ulTaskNotifyTake(pdPASS, portMAX_DELAY);
-//         led_Flash(2, 100); //one quick LED flashes to indicate a packet has arrived
-
-//         //Iterate through all the packets inside the Received User Packets FiFo
-//         while (radio.getReceivedQueueSize() > 0) {
-//             Log.traceln(F("ReceivedUserData_TaskHandle notify received"));
-//             Log.traceln(F("Queue receiveUserData size: %d"), radio.getReceivedQueueSize());
-
-//             //Get the first element inside the Received User Packets FiFo
-//             AppPacket<DataMessage>* packet = radio.getNextAppPacket<DataMessage>();
-
-//             processReceivedMessage(packet);
-
-//             //Delete the packet when used. It is very important to call this function to release the memory of the packet.
-//             radio.deletePacket(packet);
-
-//         }
-//     }
-// }
-
-// TaskHandle_t receiveLoRaMessage_Handle = NULL;
-
-// /**
-//  * @brief Create a Receive Messages Task and add it to the LoRaMesher
-//  *
-//  */
-// void createReceiveMessages() {
-//     int res = xTaskCreate(
-//         processReceivedPackets,
-//         "Receive App Task",
-//         4096,
-//         (void*) 1,
-//         2,
-//         &receiveLoRaMessage_Handle);
-//     if (res != pdPASS) {
-//         Log.errorln(F("Receive App Task creation gave error: %d"), res);
-//     }
-
-//     radio.setReceiveAppDataTaskHandle(receiveLoRaMessage_Handle);
-// }
-
-// void initializeLoraMesher() {
-//     radio.begin();
-
-//     //Create the receive task and add it to the LoRaMesher
-//     createReceiveMessages();
-
-//     //Start LoRaMesher
-//     radio.start();
-
-//     Log.verboseln("LoraMesher initialized");
-
-//     // Display Header
-//     displayHeader();
-//     contactService.changeName(String(radio.getLocalAddress()));
 // }
 
 // void clearDisplay() {
@@ -425,6 +330,22 @@ void initBluetooth() {
 
 #pragma endregion
 
+#pragma region Manager
+
+MessageManager& manager = MessageManager::getInstance();
+
+void initManager() {
+    manager.init();
+    Log.verboseln("Manager initialized");
+
+    manager.addMessageService(&bluetoothService);
+    Log.verboseln("Bluetooth service added to manager");
+
+    Serial.println(manager.getAvailableCommands());
+}
+
+#pragma endregion
+
 void setup() {
     //initialize Serial Monitor
     Serial.begin(115200);
@@ -437,6 +358,8 @@ void setup() {
     initializeGPS();
 
     initBluetooth();
+
+    initManager();
 
     pinMode(BOARD_LED, OUTPUT); //setup pin as output for indicator LED
     led_Flash(2, 100);

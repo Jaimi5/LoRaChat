@@ -10,11 +10,17 @@ public:
 
     String executeCommand(String args);
 
+    String executeCommand(uint8_t id, String args = "");
+
     void addCommand(Command command);
 
     String helpCommand();
 
+    String publicCommands();
+
     String back();
+
+    bool hasCommand(String command);
 
 private:
     uint8_t commandsCount = 0;

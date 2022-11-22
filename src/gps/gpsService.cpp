@@ -144,12 +144,13 @@ double GPSService::distanceBetween(double lat1, double lng1, double lat2, double
     return gps.distanceBetween(lat1, lng1, lat2, lng2);
 }
 
-String GPSService::getGPSUpdatedWait() {
+String GPSService::getGPSUpdatedWait(uint8_t maxTries) {
     notifyUpdate();
     vTaskDelay(500 / portTICK_PERIOD_MS);
-    while (!isGPSValid()) {
+    while (!isGPSValid() && maxTries > 0) {
         notifyUpdate();
         vTaskDelay(500 / portTICK_PERIOD_MS);
+        maxTries--;
     }
 
     return getGPSString();

@@ -29,15 +29,20 @@ bool BluetoothService::isDeviceConnected() {
     return SerialBT->hasClient();
 }
 
-void BluetoothService::writeToBluetooth(String message) {
+bool BluetoothService::writeToBluetooth(String message) {
+    if (!isDeviceConnected()) {
+        return false;
+    }
+
     SerialBT->println(message);
+    return true;
 }
 
 void callback(esp_spp_cb_event_t event, esp_spp_cb_param_t* param) {
     BluetoothService& instance = BluetoothService::getInstance();
     if (event == ESP_SPP_SRV_OPEN_EVT && instance.SerialBT->hasClient()) {
         Log.verboseln("Bluetooth Connected");
-        String help = instance.commandService->helpCommand();
+        String help = instance.bluetoothCommandService->helpCommand();
         Serial.println(help);
         instance.writeToBluetooth(help);
     }
@@ -73,11 +78,26 @@ void BluetoothService::loop() {
         String message = SerialBT->readStringUntil('\n');
         message.replace("\n", "");
         Serial.println(message);
-        String executedProgram = commandService->execute(message);
+        String executedProgram = bluetoothCommandService->executeCommand(message);
         Serial.println(executedProgram);
         writeToBluetooth(executedProgram);
     }
 }
+
+void BluetoothService::processReceivedMessage(DataMessage* message) {
+    BluetoothMessage* bluetoothMessage = (BluetoothMessage*) message;
+    switch (bluetoothMessage->type) {
+        case BluetoothMessageType::bluetoothMessage:
+            writeToBluetooth(Helper::uint8ArrayToString(bluetoothMessage->payload, bluetoothMessage->getPayloadSize()));
+            break;
+            // case BluetoothMessageType::BluetoothCommand:
+            //     bluetoothCommandService->executeCommand(bluetoothMessage->message);
+            //     break;
+        default:
+            break;
+    }
+}
+
 //         String message = SerialBT->readStringUntil('\n');
 //         if (!message.isEmpty() || message != String('\n')) {
 //             message.remove(message.length() - 1, 2);

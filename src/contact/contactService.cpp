@@ -1,6 +1,6 @@
-#include "contacts.h"
+#include "contactService.h"
 
-void Contact::addContact(String name, uint16_t src) {
+void ContactService::addContact(String name, uint16_t src) {
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
         do {
@@ -24,7 +24,7 @@ void Contact::addContact(String name, uint16_t src) {
     contactsList->releaseInUse();
 }
 
-String Contact::getNameContact(uint16_t addr) {
+String ContactService::getNameContact(uint16_t addr) {
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
         do {
@@ -43,7 +43,7 @@ String Contact::getNameContact(uint16_t addr) {
     return String();
 }
 
-uint16_t Contact::getAddrContact(String name) {
+uint16_t ContactService::getAddrContact(String name) {
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
         do {
@@ -62,7 +62,7 @@ uint16_t Contact::getAddrContact(String name) {
     return 0;
 }
 
-String Contact::getContactsString() {
+String ContactService::getContactsString() {
     String contacts = "--- List of contacts ---";
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
@@ -83,8 +83,6 @@ String Contact::getContactsString() {
     return contacts;
 }
 
-void Contact::changeName(String newName) {
+void ContactService::changeName(String newName) {
     newName.toCharArray(myName, MAX_NAME_LENGTH);
 }
-
-Contact contactService = *(new Contact());

@@ -9,7 +9,15 @@
 
 #include "bluetoothCommandService.h"
 
-class BluetoothService {
+#include "./message/messageService.h"
+
+#include "./message/messageManager.h"
+
+#include "./helpers/helper.h"
+
+//TODO: Check for wake from sleep mode.
+
+class BluetoothService: public MessageService {
 public:
     /**
      * @brief Construct a new BluetoothService object
@@ -26,21 +34,26 @@ public:
 
     bool isDeviceConnected();
 
-    void writeToBluetooth(String message);
+    bool writeToBluetooth(String message);
 
     BluetoothSerial* SerialBT = new BluetoothSerial();
 
-    BluetoothCommandService* commandService = new BluetoothCommandService();
+    BluetoothCommandService* bluetoothCommandService = new BluetoothCommandService();
+
+    virtual void processReceivedMessage(DataMessage* message);
 
 private:
 
-    BluetoothService() {};
-
-    TaskHandle_t bluetooth_TaskHandle = NULL;
+    BluetoothService(): MessageService(appPort::BluetoothApp, String("Bluetooth")) {
+        commandService = bluetoothCommandService;
+    };
 
     void createBluetoothTask();
 
     static void BluetoothLoop(void*);
 
+    TaskHandle_t bluetooth_TaskHandle = NULL;
+
     String localName = "";
+
 };
