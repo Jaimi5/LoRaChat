@@ -9,30 +9,40 @@ enum messagePort: uint8_t {
     WiFiPort = 3
 };
 
-//TODO: This should be defined by the user, all the apps that are available and their numbers should be the same in all the nodes of the network.
+//TODO: This should be defined by the user, all the apps that are available and their numbers should be the same
+//TODO: in all the nodes of the network.
 enum appPort: uint8_t {
     ContactApp = 1,
     BluetoothApp = 2,
     WiFiApp = 3,
     GPSApp = 4,
     SOSApp = 5,
-    CommandApp = 6
+    CommandApp = 6,
+    LoRaMesherApp = 7
 };
 
 #pragma pack(1)
 
-class DataMessage {
+
+class DataMessageGeneric {
 public:
-    uint16_t dst;
-    uint8_t src;
-    appPort port;
-    uint8_t payloadSize;
+    appPort appPortDst;
+    appPort appPortSrc;
+    uint8_t messageId;
+
+    uint16_t addrSrc;
+    uint16_t addrDst;
+
+    uint32_t messageSize;
+
+    uint32_t getDataMessageSize() {
+        return sizeof(DataMessageGeneric) + messageSize;
+    }
 };
 
-class ManagerMessage {
+class DataMessage: public DataMessageGeneric {
 public:
-    messagePort port;
-    DataMessage* message;
+    uint8_t message[];
 };
 
 #pragma pack()

@@ -16,6 +16,7 @@
 #include "./helpers/helper.h"
 
 //TODO: Check for wake from sleep mode.
+//TODO: Check for max characters in a message to avoid buffer overflow.
 
 class BluetoothService: public MessageService {
 public:
@@ -40,7 +41,7 @@ public:
 
     BluetoothCommandService* bluetoothCommandService = new BluetoothCommandService();
 
-    virtual void processReceivedMessage(DataMessage* message);
+    virtual void processReceivedMessage(messagePort port, uint8_t id, DataMessage* message);
 
 private:
 

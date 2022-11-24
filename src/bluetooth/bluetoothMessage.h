@@ -15,13 +15,13 @@ enum BluetoothMessageType: uint8_t {
 
 #pragma pack(1)
 
-class BluetoothMessage: public DataMessage {
+class BluetoothMessage: public DataMessageGeneric {
 public:
     BluetoothMessageType type;
-    uint8_t payload[];
+    uint8_t message[];
 
     uint8_t getPayloadSize() {
-        return payloadSize - sizeof(BluetoothMessageType);
+        return messageSize - sizeof(BluetoothMessage);
     }
 };
 

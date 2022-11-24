@@ -116,6 +116,10 @@ public:
 
     GPSCommandService* gpsCommandService = new GPSCommandService();
 
+    virtual void processReceivedMessage(messagePort port, DataMessage* message);
+
+    GPSMessageResponse* getGPSMessageResponse(DataMessage* message);
+
 private:
 
     GPSService(): MessageService(appPort::GPSApp, String("GPS")) {

@@ -6,8 +6,11 @@
 
 #include "ArduinoLog.h"
 
-#include "./message/messageService.h"
+#include "loraMeshMessage.h"
 
+#include "./message/messageManager.h"
+
+//TODO:?
 // #include "lorameshCommandService.h"
 
 class LoRaMeshService {
@@ -31,7 +34,7 @@ public:
 
     String getRoutingTable();
 
-    String sendReliable(uint16_t destination, String message);
+    void sendReliable(DataMessage* message);
 
 private:
 
@@ -43,5 +46,8 @@ private:
 
     void createReceiveMessages();
 
+    LoRaMeshMessage* createLoRaMeshMessage(DataMessage* message);
+
+    DataMessage* createDataMessage(AppPacket<LoRaMeshMessage>* message);
 };
 

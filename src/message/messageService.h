@@ -15,7 +15,7 @@ public:
 
     MessageService(uint8_t id, String name);
 
-    virtual void processReceivedMessage(DataMessage* message) {};
+    virtual void processReceivedMessage(messagePort port, DataMessage* message) {};
 
     TaskHandle_t receiveMessage_TaskHandle = NULL;
 

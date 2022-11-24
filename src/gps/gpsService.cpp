@@ -153,3 +153,45 @@ String GPSService::getGPSUpdatedWait(uint8_t maxTries) {
 
     return getGPSString();
 }
+
+void GPSService::processReceivedMessage(messagePort port, DataMessage* message) {
+    GPSMessageRequest* request = (GPSMessageRequest*) message;
+    switch (request->type) {
+        case getGPS:
+            getGPSUpdatedWait();
+            DataMessage* msg = (DataMessage*) getGPSMessageResponse(message);
+            MessageManager::getInstance().sendMessage(port, msg);
+
+            delete msg;
+            break;
+        default:
+            break;
+    }
+}
+
+GPSMessageResponse* GPSService::getGPSMessageResponse(DataMessage* message) {
+    GPSMessageResponse* response = new GPSMessageResponse();
+
+    response->messageSize = sizeof(GPSMessageResponse) - sizeof(DataMessageGeneric);
+
+    response->appPortDst = message->appPortSrc;
+    response->appPortSrc = message->appPortDst;
+    response->addrDst = message->addrSrc;
+    response->addrSrc = message->addrDst;
+    response->type = getGPS;
+
+    response->messageId = message->messageId;
+
+    response->latitude = gps.location.lat();
+    response->longitude = gps.location.lng();
+    response->altitude = gps.altitude.meters();
+    response->satellites = gps.satellites.value();
+    response->second = gps.time.second();
+    response->minute = gps.time.minute();
+    response->hour = gps.time.hour();
+    response->day = gps.date.day();
+    response->month = gps.date.month();
+    response->year = gps.date.year();
+
+    return response;
+}

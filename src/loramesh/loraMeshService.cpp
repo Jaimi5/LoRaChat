@@ -20,14 +20,21 @@ void LoRaMeshService::loopReceivedPackets() {
         Log.traceln(F("Queue receiveUserData size: %d"), radio.getReceivedQueueSize());
 
         //Get the first element inside the Received User Packets FiFo
-        AppPacket<DataMessage>* packet = radio.getNextAppPacket<DataMessage>();
+        AppPacket<LoRaMeshMessage>* packet = radio.getNextAppPacket<LoRaMeshMessage>();
+
+        //Create a DataMessage from the received packet
+        DataMessage* message = createDataMessage(packet);
 
         //Process the packet
-        // MessageService::getInstance().processReceivedMessage(packet->src, packet->dst, packet->getPayloadLength(), packet->payload);
+        MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, message);
+
+        //Delete the message
+        free(message);
+
+        Log.verboseln("Trying to delete the packet, Loramesher");
 
         //Delete the packet when used. It is very important to call this function to release the memory of the packet.
         radio.deletePacket(packet);
-
     }
 }
 
@@ -63,6 +70,43 @@ void LoRaMeshService::createReceiveMessages() {
     radio.setReceiveAppDataTaskHandle(receiveLoRaMessage_Handle);
 }
 
+LoRaMeshMessage* LoRaMeshService::createLoRaMeshMessage(DataMessage* message) {
+    LoRaMeshMessage* loraMeshMessage = (LoRaMeshMessage*) malloc(sizeof(LoRaMeshMessage) + message->messageSize);
+
+    if (loraMeshMessage) {
+        loraMeshMessage->appPortDst = message->appPortDst;
+        loraMeshMessage->appPortSrc = message->appPortSrc;
+        loraMeshMessage->messageId = message->messageId;
+        memcpy(loraMeshMessage->dataMessage, message->message, message->messageSize);
+    }
+
+    return loraMeshMessage;
+}
+
+DataMessage* LoRaMeshService::createDataMessage(AppPacket<LoRaMeshMessage>* appPacket) {
+    uint32_t dataMessageSize = appPacket->payloadSize + sizeof(DataMessage);
+    uint32_t messageSize = dataMessageSize - sizeof(DataMessage);
+
+    DataMessage* dataMessage = (DataMessage*) malloc(dataMessageSize);
+
+    if (dataMessage) {
+        LoRaMeshMessage* message = appPacket->payload;
+
+        dataMessage->appPortDst = message->appPortDst;
+        dataMessage->appPortSrc = message->appPortSrc;
+        dataMessage->messageId = message->messageId;
+
+        dataMessage->addrSrc = appPacket->src;
+        dataMessage->addrDst = appPacket->dst;
+
+        dataMessage->messageSize = messageSize;
+
+        memcpy(dataMessage->message, message->dataMessage, messageSize);
+    }
+
+    return dataMessage;
+}
+
 uint16_t LoRaMeshService::getDeviceID() {
     return radio.getLocalAddress();
 }
@@ -87,32 +131,10 @@ String LoRaMeshService::getRoutingTable() {
     return routingTable;
 }
 
-String LoRaMeshService::sendReliable(uint16_t destination, String message) {
+void LoRaMeshService::sendReliable(DataMessage* message) {
+    LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
 
-    radio.sendReliablePacket(destination, (uint8_t*) message.c_str(), message.length());
-    Log.traceln(F("Packet sent"));
-    return "Packet sent";
+    radio.sendReliable(message->addrDst, loraMeshMessage, sizeof(LoRaMeshMessage) + message->messageSize);
 
-    ////TODO: WaitPacketSent and getAppPacketSentStatus would be a good idea
-    // //Create a packet with the message
-    // AppPacket<DataMessage> packet(destination, message.length(), message.c_str());
-
-    // //Send the packet
-    // radio.sendAppPacket(packet);
-
-    // //Wait for the packet to be sent
-    // radio.waitPacketSent();
-
-    // //Get the packet status
-    // AppPacketStatus status = radio.getAppPacketStatus();
-
-    //Check if the packet was sent
-    // if (status == AppPacketStatus::Sent) {
-    //     Log.traceln(F("Packet sent"));
-    //     return "Packet sent";
-    // }
-    // else {
-    //     Log.traceln(F("Packet not sent"));
-    //     return "Packet not sent";
-    // }
+    free(loraMeshMessage);
 }

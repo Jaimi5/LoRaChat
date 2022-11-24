@@ -84,15 +84,12 @@ void BluetoothService::loop() {
     }
 }
 
-void BluetoothService::processReceivedMessage(DataMessage* message) {
+void BluetoothService::processReceivedMessage(messagePort port, uint8_t id, DataMessage* message) {
     BluetoothMessage* bluetoothMessage = (BluetoothMessage*) message;
     switch (bluetoothMessage->type) {
         case BluetoothMessageType::bluetoothMessage:
-            writeToBluetooth(Helper::uint8ArrayToString(bluetoothMessage->payload, bluetoothMessage->getPayloadSize()));
+            writeToBluetooth(Helper::uint8ArrayToString(bluetoothMessage->message, bluetoothMessage->getPayloadSize()));
             break;
-            // case BluetoothMessageType::BluetoothCommand:
-            //     bluetoothCommandService->executeCommand(bluetoothMessage->message);
-            //     break;
         default:
             break;
     }

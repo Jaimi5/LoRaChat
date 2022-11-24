@@ -19,6 +19,16 @@
         "system_error": "cpp",
         "unordered_map": "cpp",
         "ostream": "cpp",
-        "sstream": "cpp"
+        "sstream": "cpp",
+        "chrono": "cpp",
+        "memory": "cpp",
+        "memory_resource": "cpp",
+        "ratio": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "cmath": "cpp",
+        "numeric": "cpp",
+        "thread": "cpp",
+        "utility": "cpp"
     }
 }

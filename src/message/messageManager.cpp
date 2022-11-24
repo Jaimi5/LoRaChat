@@ -1,10 +1,10 @@
 #include "messageManager.h"
 
 void MessageManager::init() {
-    xProcessQueue = xQueueCreate(10, sizeof(ManagerMessage*));
-    xSendQueue = xQueueCreate(10, sizeof(ManagerMessage*));
+    // xProcessQueue = xQueueCreate(10, sizeof(ManagerMessage*));
+    // xSendQueue = xQueueCreate(10, sizeof(ManagerMessage*));
 
-    createTasks();
+    // createTasks();
 }
 
 void MessageManager::addMessageService(MessageService* service) {
@@ -16,27 +16,27 @@ void MessageManager::addMessageService(MessageService* service) {
     }
 }
 
-void MessageManager::loopSendMessages(void*) {
-    MessageManager& manager = MessageManager::getInstance();
-    ManagerMessage* message;
+// void MessageManager::loopSendMessages(void*) {
+//     MessageManager& manager = MessageManager::getInstance();
+//     ManagerMessage* message;
 
-    for (;;) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+//     for (;;) {
+//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        if (manager.xProcessQueue != 0) {
-            // Receive a message on the created queue.  Block for 10 ticks if a
-            // message is not immediately available.
-            if (xQueueReceive(manager.xProcessQueue, &(message), (portTickType) 10)) {
-                // pcRxedMessage now points to the struct AMessage variable posted
-                // by vATask.
-                manager.sendMessage(message);
-                delete message->message;
-                delete message;
-            }
-        }
+//         if (manager.xProcessQueue != 0) {
+//             // Receive a message on the created queue.  Block for 10 ticks if a
+//             // message is not immediately available.
+//             if (xQueueReceive(manager.xProcessQueue, &(message), (portTickType) 10)) {
+//                 // pcRxedMessage now points to the struct AMessage variable posted
+//                 // by vATask.
+//                 manager.sendMessage(message);
+//                 delete message->message;
+//                 delete message;
+//             }
+//         }
 
-    }
-}
+//     }
+// }
 
 String MessageManager::getAvailableCommands() {
     String commands = "";
@@ -48,6 +48,16 @@ String MessageManager::getAvailableCommands() {
     }
 
     return commands;
+}
+
+String MessageManager::executeCommand(uint8_t serviceId, uint8_t commandId, String args) {
+    for (int i = 0; i < 10; i++) {
+        if (services[i] != nullptr && services[i]->serviceId == serviceId) {
+            return services[i]->commandService->executeCommand(commandId, args);
+        }
+    }
+
+    return "Service not found";
 }
 
 String MessageManager::executeCommand(uint8_t serviceId, String command) {
@@ -78,84 +88,81 @@ String MessageManager::executeCommand(String command) {
     return result;
 }
 
-void MessageManager::loopReceivedMessages(void*) {
-    MessageManager& manager = MessageManager::getInstance();
-    ManagerMessage* message;
+// void MessageManager::loopReceivedMessages(void*) {
+//     MessageManager& manager = MessageManager::getInstance();
+//     ManagerMessage* message;
 
-    for (;;) {
+//     for (;;) {
 
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        if (manager.xProcessQueue != 0) {
-            // Receive a message on the created queue.  Block for 10 ticks if a
-            // message is not immediately available.
-            if (xQueueReceive(manager.xProcessQueue, &(message), (portTickType) 10)) {
-                // pcRxedMessage now points to the struct AMessage variable posted
-                // by vATask.
-                manager.processReceivedMessage(message);
-                delete message->message;
-                delete message;
-            }
-        }
-    }
-}
+//         if (manager.xProcessQueue != 0) {
+//             // Receive a message on the created queue.  Block for 10 ticks if a
+//             // message is not immediately available.
+//             if (xQueueReceive(manager.xProcessQueue, &(message), (portTickType) 10)) {
+//                 // pcRxedMessage now points to the struct AMessage variable posted
+//                 // by vATask.
+//                 manager.processReceivedMessage(message);
+//                 delete message->message;
+//                 delete message;
+//             }
+//         }
+//     }
+// }
 
-/**
- * @brief Create a Bluetooth Task
- *
- */
-void MessageManager::createTasks() {
-    int res = xTaskCreate(
-        loopReceivedMessages,
-        "Manager Receive Task",
-        4096,
-        (void*) 1,
-        2,
-        &sendMessageManager_TaskHandle);
-    if (res != pdPASS) {
-        Log.errorln(F("Manager Receive task handle error: %d"), res);
-    }
+// /**
+//  * @brief Create a Bluetooth Task
+//  *
+//  */
+// void MessageManager::createTasks() {
+//     int res = xTaskCreate(
+//         loopReceivedMessages,
+//         "Manager Receive Task",
+//         4096,
+//         (void*) 1,
+//         2,
+//         &sendMessageManager_TaskHandle);
+//     if (res != pdPASS) {
+//         Log.errorln(F("Manager Receive task handle error: %d"), res);
+//     }
 
-    res = xTaskCreate(
-        loopSendMessages,
-        "Manager Send Task",
-        4096,
-        (void*) 1,
-        2,
-        &receiveMessageManager_TaskHandle);
-    if (res != pdPASS) {
-        Log.errorln(F("Manager Send task handle error: %d"), res);
-    }
-}
+//     res = xTaskCreate(
+//         loopSendMessages,
+//         "Manager Send Task",
+//         4096,
+//         (void*) 1,
+//         2,
+//         &receiveMessageManager_TaskHandle);
+//     if (res != pdPASS) {
+//         Log.errorln(F("Manager Send task handle error: %d"), res);
+//     }
+// }
 
-
-void MessageManager::processReceivedMessage(ManagerMessage* message) {
+void MessageManager::processReceivedMessage(messagePort port, DataMessage* message) {
     for (int i = 0; i < 10; i++) {
-        if (services[i] != nullptr && services[i]->serviceId == message->port) {
-            Log.verboseln(F("Service found"));
-            services[i]->processReceivedMessage(message->message);
+        if (services[i] != nullptr && services[i]->serviceId == message->appPortDst) {
+            services[i]->processReceivedMessage(port, message);
         }
     }
-
-    delete message->message;
-    delete message;
 }
 
-void MessageManager::sendMessage(ManagerMessage* message) {
-    switch (message->port) {
+void MessageManager::sendMessage(messagePort port, DataMessage* message) {
+    switch (port) {
         case LoRaMeshPort:
-            sendMessageLoRaMesher(message->message);
+            sendMessageLoRaMesher(message);
             break;
         case BluetoothPort:
-            sendMessageBluetooth(message->message);
+            sendMessageBluetooth(message);
             break;
         case WiFiPort:
-            sendMessageWiFi(message->message);
+            sendMessageWiFi(message);
             break;
         default:
             break;
     }
-
-    delete message->message;
-    delete message;
 }
+
+void sendMessageLoRaMesher(DataMessage* message) {
+
+
+};

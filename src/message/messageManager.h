@@ -8,6 +8,8 @@
 
 #include "messageService.h"
 
+#include "./loramesh/loraMeshService.h"
+
 class MessageManager {
 public:
     /**
@@ -27,15 +29,17 @@ public:
 
     void addMessageService(MessageService* service);
 
-    void processReceivedMessage(ManagerMessage* message);
+    void processReceivedMessage(messagePort port, DataMessage* message);
 
-    void sendMessage(ManagerMessage* message);
+    void sendMessage(messagePort port, DataMessage* message);
 
     static void loopReceivedMessages(void*);
 
     static void loopSendMessages(void*);
 
     String getAvailableCommands();
+
+    String executeCommand(uint8_t serviceId, uint8_t commandId, String args);
 
     String executeCommand(uint8_t serviceId, String command);
 

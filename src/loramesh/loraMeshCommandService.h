@@ -8,6 +8,5 @@
 
 class LoRaMeshCommandService: public CommandService {
 public:
-
     LoRaMeshCommandService();
 };
