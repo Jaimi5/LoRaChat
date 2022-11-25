@@ -1,6 +1,6 @@
-#include "contactService.h"
+#include "loraChatService.h"
 
-void ContactService::processReceivedMessage(messagePort port, DataMessage* message) {
+void LoRaChatService::processReceivedMessage(messagePort port, DataMessage* message) {
     ContactMessage* request = (ContactMessage*) message;
     switch (request->type) {
         case ContactMessageType::requestContactInfo:
@@ -20,16 +20,16 @@ void ContactService::processReceivedMessage(messagePort port, DataMessage* messa
     }
 }
 
-void ContactService::initContactService() {
+void LoRaChatService::initLoRaChatService() {
 
 }
 
-void ContactService::addContact(DataMessage* message) {
+void LoRaChatService::addContact(DataMessage* message) {
     ContactMessageInfo* contactMessage = (ContactMessageInfo*) message;
     addContact(String(contactMessage->name, MAX_NAME_LENGTH), message->addrSrc);
 }
 
-void ContactService::addContact(String name, uint16_t src) {
+void LoRaChatService::addContact(String name, uint16_t src) {
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
         do {
@@ -53,7 +53,7 @@ void ContactService::addContact(String name, uint16_t src) {
     contactsList->releaseInUse();
 }
 
-String ContactService::getNameContact(uint16_t addr) {
+String LoRaChatService::getNameContact(uint16_t addr) {
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
         do {
@@ -72,7 +72,7 @@ String ContactService::getNameContact(uint16_t addr) {
     return String();
 }
 
-uint16_t ContactService::getAddrContact(String name) {
+uint16_t LoRaChatService::getAddrContact(String name) {
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
         do {
@@ -91,7 +91,7 @@ uint16_t ContactService::getAddrContact(String name) {
     return 0;
 }
 
-String ContactService::getContactsString() {
+String LoRaChatService::getContactsString() {
     String contacts = "--- List of contacts ---";
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
@@ -112,11 +112,11 @@ String ContactService::getContactsString() {
     return contacts;
 }
 
-void ContactService::changeName(String newName) {
+void LoRaChatService::changeName(String newName) {
     newName.toCharArray(myName, MAX_NAME_LENGTH);
 }
 
-String ContactService::requestGPS(messagePort port, String name) {
+String LoRaChatService::requestGPS(messagePort port, String name) {
     uint16_t addr = getAddrContact(name);
     if (addr == 0) {
         return String("No contact found");
@@ -134,7 +134,7 @@ String ContactService::requestGPS(messagePort port, String name) {
     return "Request GPS sent, waiting for response";
 }
 
-String ContactService::responseGPS(messagePort port, DataMessage* message) {
+String LoRaChatService::responseGPS(messagePort port, DataMessage* message) {
     message->appPortDst = appPort::GPSApp;
     message->type = GPSMessageType::reqGPS;
     GPSService::getInstance().processReceivedMessage(port, message);
@@ -142,7 +142,7 @@ String ContactService::responseGPS(messagePort port, DataMessage* message) {
     return "GPS requested";
 }
 
-String ContactService::findContacts() {
+String LoRaChatService::findContacts() {
     LM_LinkedList<RouteNode>* nodes = LoraMesher::getInstance().routingTableList();
 
     bool sent = false;
@@ -164,7 +164,7 @@ String ContactService::findContacts() {
     return sent ? "Request sent, waiting for response" : "No contacts found";
 }
 
-void ContactService::requestContactInfo(messagePort port, uint16_t dst) {
+void LoRaChatService::requestContactInfo(messagePort port, uint16_t dst) {
     ContactMessage* msg = createContactMessage();
     msg->addrDst = dst;
     msg->type = ContactMessageType::requestContactInfo;
@@ -175,7 +175,7 @@ void ContactService::requestContactInfo(messagePort port, uint16_t dst) {
     delete msg;
 }
 
-ContactMessage* ContactService::createContactMessage() {
+ContactMessage* LoRaChatService::createContactMessage() {
     ContactMessage* msg = new ContactMessage();
 
     msg->appPortSrc = appPort::LoRaChat;
@@ -188,7 +188,7 @@ ContactMessage* ContactService::createContactMessage() {
     return msg;
 }
 
-void ContactService::responseContactInfo(messagePort port, ContactMessage* message) {
+void LoRaChatService::responseContactInfo(messagePort port, ContactMessage* message) {
     ContactMessageInfo* response = (ContactMessageInfo*) malloc(sizeof(ContactMessageInfo) + MAX_NAME_LENGTH);
     memcpy(response, message, sizeof(ContactMessageInfo));
 

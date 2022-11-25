@@ -6,11 +6,11 @@
 
 #include "./config.h"
 
-#include "contact.h"
+#include "loraChat.h"
 
-#include "contactMessage.h"
+#include "loraChatMessage.h"
 
-#include "contactCommandService.h"
+#include "loraChatCommandService.h"
 
 #include "./message/messageService.h"
 
@@ -18,22 +18,22 @@
 
 #include "./message/messageManager.h"
 
-#include "contactCommandService.h"
+#include "loraChatCommandService.h"
 
 //TODO: Add contact service (or bluetooth), only ask for contact info to thus that have bluetooth port open
 
-class ContactService: public MessageService {
+class LoRaChatService: public MessageService {
 public:
     /**
-     * @brief Construct a new ContactService object
+     * @brief Construct a new loraChatService object
      *
      */
-    static ContactService& getInstance() {
-        static ContactService instance;
+    static LoRaChatService& getInstance() {
+        static LoRaChatService instance;
         return instance;
     }
 
-    void initContactService();
+    void initLoRaChatService();
 
     void addContact(DataMessage* message);
 
@@ -61,14 +61,14 @@ public:
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
-    ContactCommandService* contactCommandService = new ContactCommandService();
+    LoRaChatCommandService* loraChatCommandService = new LoRaChatCommandService();
 
 private:
 
     uint8_t requestId;
 
-    ContactService(): MessageService(appPort::LoRaChat, String("LoRaChat")) {
-        commandService = contactCommandService;
+    LoRaChatService(): MessageService(appPort::LoRaChat, String("LoRaChat")) {
+        commandService = loraChatCommandService;
     };
 
     char myName[MAX_NAME_LENGTH] = "test";

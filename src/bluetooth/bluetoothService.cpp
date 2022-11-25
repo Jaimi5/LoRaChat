@@ -141,7 +141,7 @@ void BluetoothService::processReceivedMessage(messagePort port, uint8_t id, Data
 //                     break;
 //                 case 2:
 //                     if (message.length() <= MAX_NAME_LENGTH) {
-//                         chatAddr = contactService.getAddrContact(message);
+//                         chatAddr = loraChatService.getAddrContact(message);
 //                         if (chatAddr == 0) {
 //                             SerialBT->println("Name not found in the contact list, here is your options:");
 //                             printContacts();

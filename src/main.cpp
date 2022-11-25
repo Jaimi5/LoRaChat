@@ -7,7 +7,7 @@
 #include "helpers/helper.h"
 
 //LoRaChat
-#include "contact/contactService.h"
+#include "loraChat/loraChatService.h"
 
 //Manager
 #include "message/messageManager.h"
@@ -17,9 +17,6 @@
 
 //LoRaMesh
 #include "loramesh/loraMeshService.h"
-
-//Helpers
-// #include "contacts.h"
 
 //GPS libraries
 #include "gps\gpsService.h"
@@ -40,11 +37,11 @@ void initLoRaMesher() {
 
 #pragma region LoRaChat
 
-ContactService& loraChatService = ContactService::getInstance();
+LoRaChatService& loraChatService = LoRaChatService::getInstance();
 
 void initLoRaChat() {
     //Init LoRaChat
-    loraChatService.initContactService();
+    loraChatService.initLoRaChatService();
 }
 
 #pragma endregion
