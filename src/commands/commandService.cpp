@@ -58,7 +58,10 @@ void CommandService::addCommand(Command command) {
 }
 
 String CommandService::exit() {
-    String exitString = "Exit command: " + previousCommand->getCommand();
+    String exitString = "";
+    if (previousCommand != nullptr)
+        exitString = "Exit command: " + previousCommand->getCommand();
+        
     previousCommand = nullptr;
     return exitString;
 }
