@@ -2,7 +2,7 @@
 
 CommandService::CommandService() {
     addCommand(Command("/help", "Print help", 0, 0, [this](String args) { return this->helpCommand(); }));
-    addCommand(Command("/back", "Go back", 0, 0, [this](String args) { return this->back(); }));
+    addCommand(Command("/exit", "Exit", 0, 0, [this](String args) { return this->exit(); }));
 }
 
 String CommandService::executeCommand(String args) {
@@ -16,15 +16,16 @@ String CommandService::executeCommand(String args) {
     if (args.indexOf(" ") > 0)
         commandArgs = args.substring(args.indexOf(" ") + 1);
 
-    if (previousCommand != nullptr)
-        return previousCommand->execute(args);
-
     for (uint8_t i = 0; i < commandsCount; i++) {
         if (command.equalsIgnoreCase(commands[i].getCommand())) {
             Serial.println("Executing command: " + commands[i].getCommand());
+            currentCommand = &commands[i];
             return commands[i].execute(commandArgs);
         }
     }
+
+    if (previousCommand != nullptr)
+        return previousCommand->execute(args);
 
     return String("Command not found\n") + helpCommand();
 }
@@ -32,6 +33,7 @@ String CommandService::executeCommand(String args) {
 String CommandService::executeCommand(uint8_t id, String args) {
     for (uint8_t i = 0; i < commandsCount; i++) {
         if (commands[i].getCommandID() == id) {
+            currentCommand = &commands[i];
             return commands[i].execute(args);
         }
     }
@@ -55,9 +57,10 @@ void CommandService::addCommand(Command command) {
     commandsCount++;
 }
 
-String CommandService::back() {
+String CommandService::exit() {
+    String exitString = "Exit command: " + previousCommand->getCommand();
     previousCommand = nullptr;
-    return "Going back";
+    return exitString;
 }
 
 bool CommandService::hasCommand(String command) {

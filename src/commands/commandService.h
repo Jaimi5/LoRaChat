@@ -18,10 +18,11 @@ public:
 
     String publicCommands();
 
-    String back();
+    String exit();
 
     bool hasCommand(String command);
 
+    Command* currentCommand = nullptr;
     Command* previousCommand = nullptr;
 
 private:
