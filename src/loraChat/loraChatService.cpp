@@ -112,8 +112,17 @@ String LoRaChatService::getContactsString() {
     return contacts;
 }
 
-void LoRaChatService::changeName(String newName) {
-    newName.toCharArray(myName, MAX_NAME_LENGTH);
+String LoRaChatService::changeName(String newName) {
+    if (newName.length() > MAX_NAME_LENGTH) {
+        return String("Name too long");
+    }
+    else if (newName.length() == 0) {
+        return String("No name added");
+    }
+    else {
+        newName.toCharArray(myName, MAX_NAME_LENGTH);
+        return String("Name changed to: " + newName);
+    }
 }
 
 String LoRaChatService::requestGPS(messagePort port, String name) {

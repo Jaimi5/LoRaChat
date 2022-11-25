@@ -5,8 +5,7 @@ LoRaChatCommandService::LoRaChatCommandService() {
     //Add command to change name
     addCommand(Command("/changeName", "Change the name of the device", ContactMessageType::changeName, 1,
         [this](String args) {
-        LoRaChatService::getInstance().changeName(args);
-    return String("Name changed to ") + args;
+        return LoRaChatService::getInstance().changeName(args);
     }));
 
     //Add command to get contacts

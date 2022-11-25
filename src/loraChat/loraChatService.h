@@ -45,7 +45,7 @@ public:
 
     String getContactsString();
 
-    void changeName(String newName);
+    String changeName(String newName);
 
     String requestGPS(messagePort port, String dst);
 
