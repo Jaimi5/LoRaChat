@@ -1,18 +1,26 @@
 #include "loraChatService.h"
 
 void LoRaChatService::processReceivedMessage(messagePort port, DataMessage* message) {
-    ContactMessage* request = (ContactMessage*) message;
+    LoRaChatMessage* request = (LoRaChatMessage*) message;
     switch (request->type) {
-        case ContactMessageType::requestContactInfo:
+        case LoRaChatMessageType::requestContactInfo:
             responseContactInfo(port, request);
             break;
 
-        case ContactMessageType::responseContactInfo:
+        case LoRaChatMessageType::responseContactInfo:
             addContact(message);
             break;
 
-        case ContactMessageType::requestGPS:
+        case LoRaChatMessageType::requestGPS:
             responseGPS(port, message);
+            break;
+
+        case LoRaChatMessageType::chatTo:
+            receiveChatMessage(port, message);
+            break;
+
+        case LoRaChatMessageType::ackChat:
+            receivedChatMessage(message);
             break;
 
         default:
@@ -25,7 +33,7 @@ void LoRaChatService::initLoRaChatService() {
 }
 
 void LoRaChatService::addContact(DataMessage* message) {
-    ContactMessageInfo* contactMessage = (ContactMessageInfo*) message;
+    LoRaChatMessageInfo* contactMessage = (LoRaChatMessageInfo*) message;
     addContact(String(contactMessage->name, MAX_NAME_LENGTH), message->addrSrc);
 }
 
@@ -51,6 +59,8 @@ void LoRaChatService::addContact(String name, uint16_t src) {
 
     contactsList->Append(ci);
     contactsList->releaseInUse();
+
+    BluetoothService::getInstance().writeToBluetooth(String("New contact: ") + name + String(" - ") + String(src));
 }
 
 String LoRaChatService::getNameContact(uint16_t addr) {
@@ -131,9 +141,9 @@ String LoRaChatService::requestGPS(messagePort port, String name) {
         return String("No contact found");
     }
 
-    ContactMessage* msg = createContactMessage();
+    LoRaChatMessage* msg = createLoRaChatMessage();
     msg->addrDst = addr;
-    msg->type = ContactMessageType::requestGPS;
+    msg->type = LoRaChatMessageType::requestGPS;
     msg->appPortDst = appPort::LoRaChat;
 
     MessageManager::getInstance().sendMessage(port, (DataMessage*) msg);
@@ -149,6 +159,80 @@ String LoRaChatService::responseGPS(messagePort port, DataMessage* message) {
     GPSService::getInstance().processReceivedMessage(port, message);
 
     return "GPS requested";
+}
+
+String LoRaChatService::startChatTo(String name) {
+    uint16_t addr = getAddrContact(name);
+    if (addr == 0)
+        return String("No contact found") + "\n" + getContactsString();
+
+    String startingChat = "Starting chat with: " + name + "\n";
+    startingChat += "Type '/exit' to exit chat\n";
+
+    chatAddr = addr;
+
+    loraChatCommandService->previousCommand = loraChatCommandService->currentCommand;
+
+    return startingChat;
+}
+
+String LoRaChatService::chatTo(String args) {
+    if (loraChatCommandService->previousCommand == nullptr)
+        return startChatTo(args);
+
+    LoRaChatMessage* msg = createLoRaChatMessage(args);
+    msg->addrDst = chatAddr;
+    msg->type = LoRaChatMessageType::chatTo;
+    msg->appPortDst = appPort::LoRaChat;
+
+    MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, (DataMessage*) msg);
+
+    free(msg);
+
+    return String("Message sent");
+}
+
+String LoRaChatService::receiveChatMessage(messagePort port, DataMessage* message) {
+    ackChatMessage(port, message);
+
+    LoRaChatMessage* msg = (LoRaChatMessage*) message;
+    String name = getNameContact(msg->addrSrc);
+    if (name.length() == 0)
+        name = String(msg->addrSrc);
+
+    uint32_t msgSize = msg->messageSize - sizeof(LoRaChatMessage);
+
+    String chatMessage = name + ": " + String(msg->message, msgSize) + "\n";
+
+    BluetoothService::getInstance().writeToBluetooth(chatMessage);
+
+    return "Message received";
+}
+
+String LoRaChatService::ackChatMessage(messagePort port, DataMessage* message) {
+    LoRaChatMessage* msg = createLoRaChatMessage();
+    msg->type = LoRaChatMessageType::ackChat;
+    msg->appPortDst = appPort::LoRaChat;
+    msg->addrDst = message->addrSrc;
+
+    MessageManager::getInstance().sendMessage(port, (DataMessage*) msg);
+
+    delete msg;
+
+    return String("Message sent");
+}
+
+String LoRaChatService::receivedChatMessage(DataMessage* message) {
+    LoRaChatMessage* msg = (LoRaChatMessage*) message;
+    String name = getNameContact(msg->addrSrc);
+    if (name.length() == 0)
+        name = String(msg->addrSrc);
+
+    String chatMessage = "Message received to " + name + "\n";
+
+    BluetoothService::getInstance().writeToBluetooth(chatMessage);
+
+    return "Message received";
 }
 
 String LoRaChatService::findContacts() {
@@ -174,9 +258,9 @@ String LoRaChatService::findContacts() {
 }
 
 void LoRaChatService::requestContactInfo(messagePort port, uint16_t dst) {
-    ContactMessage* msg = createContactMessage();
+    LoRaChatMessage* msg = createLoRaChatMessage();
     msg->addrDst = dst;
-    msg->type = ContactMessageType::requestContactInfo;
+    msg->type = LoRaChatMessageType::requestContactInfo;
     msg->appPortDst = appPort::LoRaChat;
 
     MessageManager::getInstance().sendMessage(port, (DataMessage*) msg);
@@ -184,31 +268,49 @@ void LoRaChatService::requestContactInfo(messagePort port, uint16_t dst) {
     delete msg;
 }
 
-ContactMessage* LoRaChatService::createContactMessage() {
-    ContactMessage* msg = new ContactMessage();
+LoRaChatMessage* LoRaChatService::createLoRaChatMessage() {
+    LoRaChatMessage* msg = new LoRaChatMessage();
 
     msg->appPortSrc = appPort::LoRaChat;
     msg->messageId = requestId;
     msg->addrSrc = LoraMesher::getInstance().getLocalAddress();
-    msg->messageSize = sizeof(ContactMessage);
+    msg->messageSize = sizeof(LoRaChatMessage);
 
     requestId++;
 
     return msg;
 }
 
-void LoRaChatService::responseContactInfo(messagePort port, ContactMessage* message) {
-    ContactMessageInfo* response = (ContactMessageInfo*) malloc(sizeof(ContactMessageInfo) + MAX_NAME_LENGTH);
-    memcpy(response, message, sizeof(ContactMessageInfo));
+LoRaChatMessage* LoRaChatService::createLoRaChatMessage(String message) {
+    if (message.length() > MAX_MESSAGE_LENGTH)
+        return nullptr;
+
+    uint32_t size = sizeof(LoRaChatMessage) + message.length() + 1; //TODO: +1 is for the null terminator, is this needed?
+
+    LoRaChatMessage* msg = (LoRaChatMessage*) malloc(size);
+
+    msg->appPortSrc = appPort::LoRaChat;
+    msg->messageId = requestId;
+    msg->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    msg->messageSize = size;
+
+    requestId++;
+
+    return msg;
+}
+
+void LoRaChatService::responseContactInfo(messagePort port, LoRaChatMessage* message) {
+    LoRaChatMessageInfo* response = (LoRaChatMessageInfo*) malloc(sizeof(LoRaChatMessageInfo) + MAX_NAME_LENGTH);
+    memcpy(response, message, sizeof(LoRaChatMessageInfo));
 
     response->appPortDst = message->appPortSrc;
     response->appPortSrc = appPort::LoRaChat;
     response->addrSrc = LoraMesher::getInstance().getLocalAddress();
     response->addrDst = message->addrSrc;
 
-    response->messageSize = sizeof(ContactMessageInfo);
+    response->messageSize = sizeof(LoRaChatMessageInfo);
 
-    response->type = ContactMessageType::responseContactInfo;
+    response->type = LoRaChatMessageType::responseContactInfo;
 
     memcpy(response->name, myName, MAX_NAME_LENGTH);
 

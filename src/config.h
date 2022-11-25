@@ -7,3 +7,4 @@
 
 //Contact Configuration
 #define MAX_NAME_LENGTH 10
+#define MAX_MESSAGE_LENGTH 100

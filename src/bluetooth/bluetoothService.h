@@ -41,7 +41,7 @@ public:
 
     BluetoothCommandService* bluetoothCommandService = new BluetoothCommandService();
 
-    virtual void processReceivedMessage(messagePort port, uint8_t id, DataMessage* message);
+    virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
 private:
 

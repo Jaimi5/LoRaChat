@@ -6,7 +6,7 @@
 
 #include "./message/dataMessage.h"
 
-enum ContactMessageType: uint8_t {
+enum LoRaChatMessageType: uint8_t {
     changeName = 1,
     getName = 2,
     getContacts = 3,
@@ -15,23 +15,24 @@ enum ContactMessageType: uint8_t {
     responseContactInfo = 6,
     myContact = 7,
     chatTo = 8,
-    requestGPS = 9,
-    responseGPS = 10
+    ackChat = 9,
+    requestGPS = 10,
+    responseGPS = 11
 };
 
 #pragma pack(1)
 
-class ContactMessageGeneric: public DataMessageGeneric {
+class LoRaChatMessageGeneric: public DataMessageGeneric {
 public:
-    ContactMessageType type;
+    LoRaChatMessageType type;
 };
 
-class ContactMessage: public ContactMessageGeneric {
+class LoRaChatMessage: public LoRaChatMessageGeneric {
 public:
-    uint8_t payload[];
+    uint8_t message[];
 };
 
-class ContactMessageInfo: public ContactMessageGeneric {
+class LoRaChatMessageInfo: public LoRaChatMessageGeneric {
 public:
     uint8_t name[MAX_NAME_LENGTH];
 };

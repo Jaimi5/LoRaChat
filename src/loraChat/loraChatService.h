@@ -14,11 +14,11 @@
 
 #include "./message/messageService.h"
 
-#include "./gps/gpsService.h"
-
 #include "./message/messageManager.h"
 
-#include "loraChatCommandService.h"
+#include "./gps/gpsService.h"
+
+#include "./bluetooth/bluetoothService.h"
 
 //TODO: Add contact service (or bluetooth), only ask for contact info to thus that have bluetooth port open
 
@@ -51,13 +51,25 @@ public:
 
     String responseGPS(messagePort port, DataMessage* message);
 
+    String startChatTo(String name);
+
+    String chatTo(String args);
+
+    String receiveChatMessage(messagePort port, DataMessage* message);
+
+    String ackChatMessage(messagePort port, DataMessage* message);
+
+    String receivedChatMessage(DataMessage* message);
+
     String findContacts();
 
-    ContactMessage* createContactMessage();
+    LoRaChatMessage* createLoRaChatMessage();
+
+    LoRaChatMessage* createLoRaChatMessage(String message);
 
     void requestContactInfo(messagePort port, uint16_t dst);
 
-    void responseContactInfo(messagePort port, ContactMessage* message);
+    void responseContactInfo(messagePort port, LoRaChatMessage* message);
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
@@ -65,11 +77,13 @@ public:
 
 private:
 
-    uint8_t requestId;
-
     LoRaChatService(): MessageService(appPort::LoRaChat, String("LoRaChat")) {
         commandService = loraChatCommandService;
     };
+
+    uint8_t requestId;
+
+    uint16_t chatAddr;
 
     char myName[MAX_NAME_LENGTH] = "test";
 

@@ -34,7 +34,9 @@ bool BluetoothService::writeToBluetooth(String message) {
         return false;
     }
 
+    Serial.println("Sending message to bluetooth: " + message);
     SerialBT->println(message);
+
     return true;
 }
 
@@ -84,7 +86,7 @@ void BluetoothService::loop() {
     }
 }
 
-void BluetoothService::processReceivedMessage(messagePort port, uint8_t id, DataMessage* message) {
+void BluetoothService::processReceivedMessage(messagePort port, DataMessage* message) {
     BluetoothMessage* bluetoothMessage = (BluetoothMessage*) message;
     switch (bluetoothMessage->type) {
         case BluetoothMessageType::bluetoothMessage:
