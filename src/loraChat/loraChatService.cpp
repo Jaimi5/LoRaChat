@@ -46,6 +46,7 @@ void LoRaChatService::addContact(String name, uint16_t src) {
                 if (ci->address == src) {
                     name.toCharArray(ci->name, MAX_NAME_LENGTH);
                     contactsList->releaseInUse();
+                    BluetoothService::getInstance().writeToBluetooth(String("Changed name: ") + name + String(" - ") + String(src));
                     return;
                 }
             }
