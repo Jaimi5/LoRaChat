@@ -112,17 +112,22 @@ uint16_t LoRaMeshService::getDeviceID() {
 }
 
 String LoRaMeshService::getRoutingTable() {
-    String routingTable = "";
+    String routingTable = "--- Routing Table ---\n";
 
     //Set the routing table list that is being used and cannot be accessed (Remember to release use after usage)
     LM_LinkedList<RouteNode>* routingTableList = radio.routingTableList();
 
     routingTableList->setInUse();
 
-    for (int i = 0; i < radio.routingTableSize(); i++) {
-        RouteNode* rNode = (*routingTableList)[i];
-        NetworkNode node = rNode->networkNode;
-        routingTable = String(node.address) + "( " + String(node.metric) + ") - Via: " + String(rNode->via) + "\n";
+    if (routingTableList->moveToStart()) {
+        do {
+            RouteNode* routeNode = routingTableList->getCurrent();
+            NetworkNode node = routeNode->networkNode;
+            routingTable += String(node.address) + " (" + String(node.metric) + ") - Via: " + String(routeNode->via) + "\n";
+        } while (routingTableList->next());
+    }
+    else {
+        routingTable += "No routes";
     }
 
     //Release routing table list usage.
