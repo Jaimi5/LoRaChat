@@ -79,7 +79,9 @@ void GPSService::GPSLoop(void*) {
 }
 
 void GPSService::processReceivedMessage(messagePort port, DataMessage* message) {
-    switch (message->type) {
+    GPSMessageGeneric* gpsMessage = (GPSMessageGeneric*) message;
+
+    switch (gpsMessage->type) {
         case GPSMessageType::reqGPS:
             gpsResponse(port, message);
             break;

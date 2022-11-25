@@ -31,8 +31,6 @@ void LoRaMeshService::loopReceivedPackets() {
         //Delete the message
         free(message);
 
-        Log.verboseln("Trying to delete the packet, Loramesher");
-
         //Delete the packet when used. It is very important to call this function to release the memory of the packet.
         radio.deletePacket(packet);
     }

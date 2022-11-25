@@ -6,6 +6,8 @@
 
 #include "./message/dataMessage.h"
 
+#pragma pack(1)
+
 enum LoRaChatMessageType: uint8_t {
     changeName = 1,
     getName = 2,
@@ -19,8 +21,6 @@ enum LoRaChatMessageType: uint8_t {
     requestGPS = 10,
     responseGPS = 11
 };
-
-#pragma pack(1)
 
 class LoRaChatMessageGeneric: public DataMessageGeneric {
 public:

@@ -4,19 +4,19 @@
 
 #include "./message/dataMessage.h"
 
+#pragma pack(1)
+
 enum GPSMessageType: uint8_t {
     reqGPS = 1,
     getGPS = 2
 };
 
-#pragma pack(1)
-
-class GPSMessageRequest: public DataMessageGeneric {
+class GPSMessageGeneric: public DataMessageGeneric {
 public:
     GPSMessageType type;
 };
 
-class GPSMessageResponse: public GPSMessageRequest {
+class GPSMessageResponse: public GPSMessageGeneric {
 public:
     double latitude;
     double longitude;

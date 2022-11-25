@@ -6,13 +6,14 @@
 
 #include "LoraMesher.h"
 
+#pragma pack(1)
+
 enum LoRaMeshMessageType: uint8_t {
     sendMessage = 1,
     getRoutingTable = 2,
 };
 //TODO: This could be optimized, now we are sending two times id, srcAddr, dstAddr and messageSize
 
-#pragma pack(1)
 class LoRaMeshMessage {
 public:
     appPort appPortDst;

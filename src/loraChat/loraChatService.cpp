@@ -155,8 +155,10 @@ String LoRaChatService::requestGPS(messagePort port, String name) {
 }
 
 String LoRaChatService::responseGPS(messagePort port, DataMessage* message) {
+    //TODO: I don't know if this is the best way to do it
     message->appPortDst = appPort::GPSApp;
-    message->type = GPSMessageType::reqGPS;
+    GPSMessageGeneric* gpsMessage = (GPSMessageGeneric*) message;
+    gpsMessage->type = GPSMessageType::reqGPS;
     GPSService::getInstance().processReceivedMessage(port, message);
 
     return "GPS requested";
@@ -201,11 +203,13 @@ String LoRaChatService::receiveChatMessage(messagePort port, DataMessage* messag
     if (name.length() == 0)
         name = String(msg->addrSrc);
 
-    uint32_t msgSize = msg->messageSize - sizeof(LoRaChatMessage);
+    uint32_t msgSize = msg->messageSize - (sizeof(LoRaChatMessageGeneric) + sizeof(DataMessageGeneric));
 
     String chatMessage = name + ": " + String(msg->message, msgSize) + "\n";
 
     BluetoothService::getInstance().writeToBluetooth(chatMessage);
+
+    Serial.println(chatMessage);
 
     return "Message received";
 }
@@ -275,7 +279,7 @@ LoRaChatMessage* LoRaChatService::createLoRaChatMessage() {
     msg->appPortSrc = appPort::LoRaChat;
     msg->messageId = requestId;
     msg->addrSrc = LoraMesher::getInstance().getLocalAddress();
-    msg->messageSize = sizeof(LoRaChatMessage);
+    msg->messageSize = sizeof(LoRaChatMessage) - sizeof(DataMessageGeneric);
 
     requestId++;
 
@@ -289,11 +293,12 @@ LoRaChatMessage* LoRaChatService::createLoRaChatMessage(String message) {
     uint32_t size = sizeof(LoRaChatMessage) + message.length() + 1; //TODO: +1 is for the null terminator, is this needed?
 
     LoRaChatMessage* msg = (LoRaChatMessage*) malloc(size);
+    memcpy(msg->message, message.c_str(), message.length() + 1);
 
     msg->appPortSrc = appPort::LoRaChat;
     msg->messageId = requestId;
     msg->addrSrc = LoraMesher::getInstance().getLocalAddress();
-    msg->messageSize = size;
+    msg->messageSize = size - sizeof(DataMessageGeneric);
 
     requestId++;
 
@@ -309,7 +314,7 @@ void LoRaChatService::responseContactInfo(messagePort port, LoRaChatMessage* mes
     response->addrSrc = LoraMesher::getInstance().getLocalAddress();
     response->addrDst = message->addrSrc;
 
-    response->messageSize = sizeof(LoRaChatMessageInfo);
+    response->messageSize = sizeof(LoRaChatMessageInfo) - sizeof(DataMessageGeneric);
 
     response->type = LoRaChatMessageType::responseContactInfo;
 

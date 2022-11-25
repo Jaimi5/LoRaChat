@@ -4,6 +4,8 @@
 
 #include "./message/dataMessage.h"
 
+#pragma pack(1)
+
 enum BluetoothMessageType: uint8_t {
     // contactRequest = 1,
     // contactResponse = 2,
@@ -12,8 +14,6 @@ enum BluetoothMessageType: uint8_t {
     // SOSMessage = 5,
     bluetoothMessage = 1
 };
-
-#pragma pack(1)
 
 class BluetoothMessage: public DataMessageGeneric {
 public:

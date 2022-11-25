@@ -30,11 +30,13 @@ bool BluetoothService::isDeviceConnected() {
 }
 
 bool BluetoothService::writeToBluetooth(String message) {
+    Serial.println("Sending message to bluetooth: " + message);
+
     if (!isDeviceConnected()) {
+        Serial.println("No bluetooth device connected");
         return false;
     }
 
-    Serial.println("Sending message to bluetooth: " + message);
     SerialBT->println(message);
 
     return true;

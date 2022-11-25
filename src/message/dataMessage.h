@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 
+
+#pragma pack(1)
+
 //Message Ports
 enum messagePort: uint8_t {
     LoRaMeshPort = 1,
@@ -21,9 +24,6 @@ enum appPort: uint8_t {
     LoRaMesherApp = 7
 };
 
-#pragma pack(1)
-
-
 class DataMessageGeneric {
 public:
     appPort appPortDst;
@@ -33,9 +33,7 @@ public:
     uint16_t addrSrc;
     uint16_t addrDst;
 
-    uint32_t messageSize;
-
-    uint8_t type;
+    uint32_t messageSize; //Message Size of the payload no include header
 
     uint32_t getDataMessageSize() {
         return sizeof(DataMessageGeneric) + messageSize;
