@@ -120,6 +120,8 @@ public:
 
     GPSMessageResponse* getGPSMessageResponse(DataMessage* message);
 
+    String gpsResponse(messagePort port, DataMessage* message);
+
 private:
 
     GPSService(): MessageService(appPort::GPSApp, String("GPS")) {

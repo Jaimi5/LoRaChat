@@ -6,6 +6,9 @@
 //Helpers
 #include "helpers/helper.h"
 
+//LoRaChat
+#include "contact/contactService.h"
+
 //Manager
 #include "message/messageManager.h"
 
@@ -23,6 +26,28 @@
 
 //Bluetooth
 #include "bluetooth\bluetoothService.h"
+
+#pragma region LoRaMesher
+
+LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
+
+void initLoRaMesher() {
+    //Init LoRaMesher
+    loraMeshService.initLoraMesherService();
+}
+
+#pragma endregion
+
+#pragma region LoRaChat
+
+ContactService& loraChatService = ContactService::getInstance();
+
+void initLoRaChat() {
+    //Init LoRaChat
+    loraChatService.initContactService();
+}
+
+#pragma endregion
 
 #pragma region GPS
 
@@ -56,7 +81,7 @@ void createUpdateGPSDisplay() {
     }
 }
 
-void initializeGPS() {
+void initGPS() {
     //Initialize GPS
     gpsService.initGPS();
 
@@ -90,6 +115,12 @@ void initManager() {
     manager.addMessageService(&gpsService);
     Log.verboseln("GPS service added to manager");
 
+    manager.addMessageService(&loraMeshService);
+    Log.verboseln("LoRaMesher service added to manager");
+
+    manager.addMessageService(&loraChatService);
+    Log.verboseln("LoRaChat service added to manager");
+
     Serial.println(manager.getAvailableCommands());
 }
 
@@ -108,10 +139,16 @@ void setup() {
     // initializeLoraMesher();
 
     // Initialize GPS
-    initializeGPS();
+    initGPS();
 
     // Initialize Bluetooth
     initBluetooth();
+
+    // Initialize LoRaMesh
+    initLoRaMesher();
+
+    // Initialize LoRaChat
+    initLoRaChat();
 
     // Initialize Manager
     initManager();

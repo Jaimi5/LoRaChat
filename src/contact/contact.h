@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#define MAX_NAME_LENGTH 10
+#include "./config.h"
 
 #pragma pack(1)
 class Info {

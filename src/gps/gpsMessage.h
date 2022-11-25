@@ -5,8 +5,8 @@
 #include "./message/dataMessage.h"
 
 enum GPSMessageType: uint8_t {
-    getGPS = 1,
-    responseGPS = 2
+    reqGPS = 1,
+    getGPS = 2
 };
 
 #pragma pack(1)

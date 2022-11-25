@@ -3,7 +3,7 @@
 MessageService::MessageService(uint8_t id, String name) {
     serviceId = id;
     serviceName = name;
-    xQueueReceived = xQueueCreate(10, sizeof(DataMessage*));
+    // xQueueReceived = xQueueCreate(10, sizeof(DataMessage*));
 }
 
 // void MessageService::init() {

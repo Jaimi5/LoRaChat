@@ -10,10 +10,11 @@
 
 #include "./message/messageManager.h"
 
-//TODO:?
-// #include "lorameshCommandService.h"
+#include "./message/messageService.h"
 
-class LoRaMeshService {
+#include "loraMeshCommandService.h"
+
+class LoRaMeshService: public MessageService {
 
 public:
 
@@ -36,13 +37,17 @@ public:
 
     void sendReliable(DataMessage* message);
 
+    LoRaMeshCommandService* loraMesherCommandService = new LoRaMeshCommandService();
+
 private:
 
     LoraMesher& radio = LoraMesher::getInstance();
 
     TaskHandle_t receiveLoRaMessage_Handle = NULL;
 
-    LoRaMeshService() {};
+    LoRaMeshService(): MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
+        commandService = loraMesherCommandService;
+    };
 
     void createReceiveMessages();
 

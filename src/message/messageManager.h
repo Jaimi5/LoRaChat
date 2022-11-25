@@ -57,7 +57,7 @@ private:
     TaskHandle_t receiveMessageManager_TaskHandle = NULL;
 
     //TODO: Fix that to a specific sender
-    static void sendMessageLoRaMesher(DataMessage* message) {};
+    static void sendMessageLoRaMesher(DataMessage* message);
 
     static void sendMessageBluetooth(DataMessage* message) {};
 

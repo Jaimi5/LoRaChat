@@ -6,8 +6,6 @@
 
 #include "dataMessage.h"
 
-#include "messageService.h"
-
 #include "./commands/commandService.h"
 
 class MessageService {

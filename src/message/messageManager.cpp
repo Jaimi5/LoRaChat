@@ -162,7 +162,20 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
     }
 }
 
-void sendMessageLoRaMesher(DataMessage* message) {
+// void MessageManager::sendCommand(messagePort port, uint8_t id, uint16_t dst, uint8_t appPortSrc, uint8_t appPortDst, uint8_t command, uint32_t size, uint8_t* args[]) {
+//     DataMessage* message = new DataMessage();
+//     message->appPortSrc = appPortSrc;
+//     message->appPortDst = appPortDst;
+//     message->command = command;
+//     message->size = size;
+//     message->args = args;
+//     message->dst = dst;
+//     message->src = serviceSrc;
 
+//     sendMessage(port, message);
+// }
 
-};
+void MessageManager::sendMessageLoRaMesher(DataMessage* message) {
+    LoRaMeshService& mesher = LoRaMeshService::getInstance();
+    mesher.sendReliable(message);
+}

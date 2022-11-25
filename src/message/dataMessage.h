@@ -12,7 +12,7 @@ enum messagePort: uint8_t {
 //TODO: This should be defined by the user, all the apps that are available and their numbers should be the same
 //TODO: in all the nodes of the network.
 enum appPort: uint8_t {
-    ContactApp = 1,
+    LoRaChat = 1,
     BluetoothApp = 2,
     WiFiApp = 3,
     GPSApp = 4,
@@ -34,6 +34,8 @@ public:
     uint16_t addrDst;
 
     uint32_t messageSize;
+
+    uint8_t type;
 
     uint32_t getDataMessageSize() {
         return sizeof(DataMessageGeneric) + messageSize;

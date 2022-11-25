@@ -5,7 +5,7 @@
 #include "./message/dataMessage.h"
 
 #pragma pack(1)
-class WiFiMessage: public DataMessage {
+class WiFiMessage: public DataMessageGeneric {
 public:
     uint8_t url;
     uint8_t payload[];
