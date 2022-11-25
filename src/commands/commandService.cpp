@@ -12,10 +12,15 @@ String CommandService::executeCommand(String args) {
     }
 
     String command = args.substring(0, args.indexOf(" "));
-    String commandArgs = args.substring(args.indexOf(" ") + 1);
+    String commandArgs = "";
+    if (args.indexOf(" ") > 0)
+        commandArgs = args.substring(args.indexOf(" ") + 1);
+
+    if (previousCommand != nullptr)
+        return previousCommand->execute(args);
 
     for (uint8_t i = 0; i < commandsCount; i++) {
-        if (command.indexOf(commands[i].getCommand()) != -1) {
+        if (command.equalsIgnoreCase(commands[i].getCommand())) {
             Serial.println("Executing command: " + commands[i].getCommand());
             return commands[i].execute(commandArgs);
         }
@@ -56,8 +61,10 @@ String CommandService::back() {
 }
 
 bool CommandService::hasCommand(String command) {
+    String firstCommand = command.substring(0, command.indexOf(" "));
+
     for (uint8_t i = 0; i < commandsCount; i++) {
-        if (command.indexOf(commands[i].getCommand()) != -1) {
+        if (firstCommand.equalsIgnoreCase(commands[i].getCommand())) {
             return true;
         }
     }

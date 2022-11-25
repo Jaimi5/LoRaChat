@@ -22,8 +22,9 @@ public:
 
     bool hasCommand(String command);
 
+    Command* previousCommand = nullptr;
+
 private:
     uint8_t commandsCount = 0;
-    Command* previousCommand = nullptr;
     Command* commands;
 };

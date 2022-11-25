@@ -75,7 +75,8 @@ String MessageManager::executeCommand(String command) {
     String result = "";
     bool found = false;
     for (int i = 0; i < 10; i++) {
-        if (services[i] != nullptr && services[i]->commandService->hasCommand(command)) {
+        if (services[i] != nullptr &&
+            (services[i]->commandService->previousCommand != nullptr || services[i]->commandService->hasCommand(command))) {
             found = true;
             result += services[i]->commandService->executeCommand(command);
         }

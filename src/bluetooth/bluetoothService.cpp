@@ -76,7 +76,7 @@ uint16_t chatAddr = 0;
 void BluetoothService::loop() {
     while (SerialBT->available()) {
         String message = SerialBT->readStringUntil('\n');
-        message.replace("\n", "");
+        message.remove(message.length() - 1, 1);
         Serial.println(message);
         String executedProgram = MessageManager::getInstance().executeCommand(message);
         Serial.println(executedProgram);
