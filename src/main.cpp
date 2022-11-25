@@ -93,7 +93,7 @@ void initGPS() {
 BluetoothService& bluetoothService = BluetoothService::getInstance();
 
 void initBluetooth() {
-    bluetoothService.initBluetooth("a1");
+    bluetoothService.initBluetooth(String(loraMeshService.getDeviceID()));
 }
 
 #pragma endregion
@@ -138,11 +138,11 @@ void setup() {
     // Initialize GPS
     initGPS();
 
-    // Initialize Bluetooth
-    initBluetooth();
-
     // Initialize LoRaMesh
     initLoRaMesher();
+
+    // Initialize Bluetooth
+    initBluetooth();
 
     // Initialize LoRaChat
     initLoRaChat();
