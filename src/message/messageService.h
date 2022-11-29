@@ -25,4 +25,8 @@ public:
 
     CommandService* commandService;
 
+    String toString() {
+        return String(F("Id: ")) + String(serviceId) + String(F(" - ")) + serviceName + CR;
+    }
+
 };

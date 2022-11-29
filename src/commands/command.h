@@ -7,7 +7,7 @@ public:
     Command() {};
 
     //Command with accepting lambda as argument
-    Command(String command, String description, uint8_t commandId, bool isPublic, std::function<String(String)> callback):
+    Command(const __FlashStringHelper*, const __FlashStringHelper*, uint8_t commandId, bool isPublic, std::function<String(String)> callback):
         command(command), description(description), commandId(commandId), isPublic(isPublic), callback(callback) {
     }
 
@@ -29,9 +29,13 @@ public:
         return isPublic;
     }
 
+    String toString() {
+        return String(command) + " (" + String(commandId) + ") - " + String(description);
+    }
+
 private:
-    String command;
-    String description;
+    const __FlashStringHelper* command;
+    const __FlashStringHelper* description;
     bool isPublic;
     uint8_t commandId;
     std::function<String(String)> callback;

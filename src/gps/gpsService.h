@@ -2,8 +2,6 @@
 
 #include "Arduino.h"
 
-#include "gpsHelper.h"
-
 #include "ArduinoLog.h"
 
 //GPS libraries
@@ -121,6 +119,10 @@ public:
     GPSMessageResponse* getGPSMessageResponse(DataMessage* message);
 
     String gpsResponse(messagePort port, DataMessage* message);
+
+    static String getReadableTime(uint8_t seconds, uint8_t minutes, uint8_t hours);
+
+    static String getReadableDate(uint8_t day, uint8_t month, uint16_t year);
 
 private:
 

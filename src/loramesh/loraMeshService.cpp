@@ -10,7 +10,7 @@ void LoRaMeshService::initLoraMesherService() {
     //Start LoRaMesher
     radio.start();
 
-    Log.verboseln("LoraMesher initialized");
+    Log.verboseln(F("LoraMesher initialized"));
 }
 
 void LoRaMeshService::loopReceivedPackets() {
@@ -110,7 +110,7 @@ uint16_t LoRaMeshService::getDeviceID() {
 }
 
 String LoRaMeshService::getRoutingTable() {
-    String routingTable = "--- Routing Table ---\n";
+    String routingTable = F("--- Routing Table ---" CR);
 
     //Set the routing table list that is being used and cannot be accessed (Remember to release use after usage)
     LM_LinkedList<RouteNode>* routingTableList = radio.routingTableList();
@@ -125,7 +125,7 @@ String LoRaMeshService::getRoutingTable() {
         } while (routingTableList->next());
     }
     else {
-        routingTable += "No routes";
+        routingTable += F("No routes");
     }
 
     //Release routing table list usage.
