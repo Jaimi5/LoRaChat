@@ -31,4 +31,9 @@ WiFiCommandService::WiFiCommandService() {
         [this](String args) {
         return WiFiServerService::getInstance().stopServer();
     }));
+
+    addCommand(Command("/getIP", "Get IP of the device", WiFiMessageType::getIP, 1,
+        [this](String args) {
+        return WiFiServerService::getInstance().getIP();
+    }));
 }

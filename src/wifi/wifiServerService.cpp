@@ -1,6 +1,8 @@
 #include "wifiServerService.h"
 
 void WiFiServerService::initWiFi() {
+    createServerTask();
+
     bool hasValues = restartWiFiData();
 
     if (hasValues)
@@ -10,8 +12,6 @@ void WiFiServerService::initWiFi() {
         Log.verboseln("WiFi connected: %s", WiFi.localIP().toString().c_str());
         initWiFiServer();
     }
-
-    // createServerTask();
 
     Log.verboseln(F("WiFi initialized"));
 }
@@ -77,6 +77,10 @@ String WiFiServerService::stopServer() {
     serverAvailable = false;
 
     return F("Server Stopped");
+}
+
+String WiFiServerService::getIP() {
+    return WiFi.localIP().toString();
 }
 
 void WiFiServerService::ServerLoop(void*) {

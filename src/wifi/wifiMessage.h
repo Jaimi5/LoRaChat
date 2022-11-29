@@ -12,7 +12,8 @@ enum WiFiMessageType: uint8_t {
     saveConfig = 3,
     connectWiFi = 4,
     startServer = 5,
-    stopServer = 6
+    stopServer = 6,
+    getIP = 7
 };
 
 class WiFiMessage: public DataMessageGeneric {

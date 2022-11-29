@@ -17,5 +17,7 @@ public:
     String getConfig(String key, String defaultValue);
 
 private:
+    ConfigService();
+
     Preferences preferences;
 };

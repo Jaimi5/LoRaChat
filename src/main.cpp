@@ -69,7 +69,7 @@ void gpsDisplay_Task(void* pvParameters) {
     while (true) {
         String gpsString = gpsService.getGPSUpdatedWait();
 
-        // Screen.changeLineTwo(gpsString);
+        Screen.changeLineTwo(gpsString);
         vTaskDelay(50000 / portTICK_PERIOD_MS);
     }
 }

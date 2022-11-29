@@ -53,6 +53,8 @@ public:
 
     String stopServer();
 
+    String getIP();
+
     bool serverAvailable = false;
 
 private:
