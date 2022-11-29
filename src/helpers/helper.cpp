@@ -12,9 +12,9 @@ void Helper::ledBlink(uint8_t times, uint16_t delayTime, uint8_t pin) {
     pinMode(BOARD_LED, OUTPUT);
 
     for (uint16_t index = 0; index < times; index++) {
-        digitalWrite(BOARD_LED, LED_OFF);
-        vTaskDelay(delayTime / portTICK_PERIOD_MS);
         digitalWrite(BOARD_LED, LED_ON);
+        vTaskDelay(delayTime / portTICK_PERIOD_MS);
+        digitalWrite(BOARD_LED, LED_OFF);
         vTaskDelay(delayTime / portTICK_PERIOD_MS);
     }
 }

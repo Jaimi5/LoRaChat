@@ -64,14 +64,6 @@ void Display::changeLineFFour(String text) {
     changeLine(text, 3, x6, minX6, 2, move6);
 }
 
-void Display::changeRoutingText(String text, int position) {
-    routingText[position] = text;
-}
-
-void Display::changeSizeRouting(int size) {
-    routingSize = size;
-}
-
 void Display::changeLineFour() {
     if (routingSize / 2 * routingText[0].length() > 20) {
         x4 = x5 = display.width();
