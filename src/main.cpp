@@ -13,7 +13,7 @@
 #include "message/messageManager.h"
 
 //Display
-// #include "display.h"
+#include "display.h"
 
 //LoRaMesh
 #include "loramesh/loraMeshService.h"
@@ -147,7 +147,7 @@ void setup() {
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
     // Initialize Screen
-    // Screen.initDisplay();
+    Screen.initDisplay();
 
     // Initialize GPS
     initGPS();
@@ -172,6 +172,6 @@ void setup() {
 }
 
 void loop() {
-    // Screen.drawDisplay();
-    // vTaskDelay(50 / portTICK_PERIOD_MS);
+    Screen.drawDisplay();
+    vTaskDelay(50 / portTICK_PERIOD_MS);
 }

@@ -13,4 +13,4 @@
 #define MAX_CONNECTION_TRY 20
 
 //Logging Configuration
-#define DISABLE_LOGGING
+// #define DISABLE_LOGGING
