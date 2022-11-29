@@ -40,10 +40,12 @@ String WiFiServerService::saveWiFiData() {
 }
 
 String WiFiServerService::connectWiFi() {
+    WiFi.scanNetworks();
+
     WiFi.begin(ssid.c_str(), password.c_str());
     int i = 0;
     while (WiFi.status() != WL_CONNECTED && i < MAX_CONNECTION_TRY) {
-        delay(500);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
         Log.verbose(F("."));
         i++;
     }
@@ -175,7 +177,7 @@ void WiFiServerService::ServerLoop(void*) {
                 Serial.println("");
             }
 
-            vTaskDelay(500 / portTICK_PERIOD_MS);
+            vTaskDelay(50 / portTICK_PERIOD_MS);
         }
     }
 }
