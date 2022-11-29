@@ -3,8 +3,6 @@
 #include "Arduino.h"
 #include "command.h"
 
-#define CR "\n"
-
 class CommandService {
 public:
 

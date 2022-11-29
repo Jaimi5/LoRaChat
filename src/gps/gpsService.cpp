@@ -8,10 +8,10 @@ void GPSService::initGPS() {
 
 #if defined(T_BEAM_V10)
     if (!axp.begin(Wire, AXP192_SLAVE_ADDRESS)) {
-        Serial.println(F("AXP192 Begin PASS"));
+        Serial.println("AXP192 Begin PASS");
     }
     else {
-        Serial.println(F("AXP192 Begin FAIL"));
+        Serial.println("AXP192 Begin FAIL");
     }
     axp.setPowerOutPut(AXP192_LDO3, AXP202_ON); // GPS main power
     axp.setPowerOutPut(AXP192_LDO2, AXP202_ON); // provides power to GPS backup battery
@@ -23,15 +23,15 @@ void GPSService::initGPS() {
     // where ESP32 is on DCDC3 but remember to change I2C pins and GPS pins!
 #endif 
     GPS.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-    Serial.println(F("All comms started"));
+    Serial.println("All comms started");
     delay(100);
 
     do {
         if (myGPS.begin(GPS)) {
-            Serial.println(F("Connected to GPS"));
+            Serial.println("Connected to GPS");
             myGPS.setUART1Output(COM_TYPE_NMEA); //Set the UART port to output NMEA only
             myGPS.saveConfiguration(); //Save the current settings to flash and BBR
-            Serial.println(F("GPS serial connected, output set to NMEA"));
+            Serial.println("GPS serial connected, output set to NMEA");
             myGPS.disableNMEAMessage(UBX_NMEA_GLL, COM_PORT_UART1);
             myGPS.disableNMEAMessage(UBX_NMEA_GSA, COM_PORT_UART1);
             myGPS.disableNMEAMessage(UBX_NMEA_GSV, COM_PORT_UART1);
@@ -39,7 +39,7 @@ void GPSService::initGPS() {
             myGPS.enableNMEAMessage(UBX_NMEA_RMC, COM_PORT_UART1);
             myGPS.enableNMEAMessage(UBX_NMEA_GGA, COM_PORT_UART1);
             myGPS.saveConfiguration(); //Save the current settings to flash and BBR
-            Serial.println(F("Enabled/disabled NMEA sentences"));
+            Serial.println("Enabled/disabled NMEA sentences");
             break;
         }
         delay(1000);
@@ -47,7 +47,7 @@ void GPSService::initGPS() {
 
     createGPSTask();
 
-    Serial.println(F("GPS Initialized"));
+    Serial.println("GPS Initialized");
 }
 
 /**
@@ -97,7 +97,7 @@ String GPSService::gpsResponse(messagePort port, DataMessage* message) {
 
     delete msg;
 
-    return F("GPS response sent");
+    return "GPS response sent";
 }
 
 
@@ -159,9 +159,9 @@ String GPSService::getGPSString() {
         String alt = String(gps.altitude.meters()); // Altitude in meters
         String sat = String(gps.satellites.value()); // Number of satellites
 
-        String readableTime = GPSService::getReadableTime(gps.time.second(), gps.time.minute(), gps.time.hour());
+        String readableTime = GPSHelper::getReadableTime(gps.time.second(), gps.time.minute(), gps.time.hour());
 
-        String readableDate = GPSService::getReadableDate(gps.date.day(), gps.date.month(), gps.date.year());
+        String readableDate = GPSHelper::getReadableDate(gps.date.day(), gps.date.month(), gps.date.year());
 
         return "( " + readableDate + " - " + readableTime + " ) GPS: "
             + "Lat: " + lat
@@ -170,7 +170,7 @@ String GPSService::getGPSString() {
             + " N. SAT: " + sat;
     }
     else {
-        return String(F("GPS not valid, try again later"));
+        return String("GPS not valid, try again later");
     }
 }
 
@@ -205,27 +205,3 @@ String GPSService::getGPSUpdatedWait(uint8_t maxTries) {
     return getGPSString();
 }
 
-String GPSService::getReadableTime(uint8_t seconds, uint8_t minutes, uint8_t hours) {
-    String readableTime;
-
-    readableTime += (hours < 10) ? "0" : "";
-    readableTime += String(hours) + ":";
-    readableTime += (minutes < 10) ? "0" : "";
-    readableTime += String(minutes) + ":";
-    readableTime += (seconds < 10) ? "0" : "";
-    readableTime += String(seconds);
-
-    return readableTime;
-}
-
-String GPSService::getReadableDate(uint8_t day, uint8_t month, uint16_t year) {
-    String readableDate;
-
-    readableDate += (day < 10) ? "0" : "";
-    readableDate += String(day) + "/";
-    readableDate += (month < 10) ? "0" : "";
-    readableDate += String(month) + "/";
-    readableDate += String(year);
-
-    return readableDate;
-}

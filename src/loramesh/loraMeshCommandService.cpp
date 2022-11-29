@@ -7,8 +7,9 @@ LoRaMeshCommandService::LoRaMeshCommandService() {
     //     return LoRaMeshService::getInstance().sendMessage(args);
     // }));
 
-    addCommand(Command(F("/getRT"), F("Get the routing table of the device"), LoRaMeshMessageType::getRoutingTable, 1,
+    addCommand(Command("/getRT", "Get the routing table of the device", LoRaMeshMessageType::getRoutingTable, 1,
         [this](String args) {
         return LoRaMeshService::getInstance().getRoutingTable();
     }));
 }
+ 

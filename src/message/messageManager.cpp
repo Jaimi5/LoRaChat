@@ -42,7 +42,7 @@ String MessageManager::getAvailableCommands() {
     String commands = "";
     for (int i = 0; i < 10; i++) {
         if (services[i] != nullptr) {
-            commands += services[i]->toString();
+            commands += "Id: " + String(services[i]->serviceId) + " - " + services[i]->serviceName + "\n";
             commands += services[i]->commandService->publicCommands();
         }
     }
@@ -57,7 +57,7 @@ String MessageManager::executeCommand(uint8_t serviceId, uint8_t commandId, Stri
         }
     }
 
-    return F("Service not found");
+    return "Service not found";
 }
 
 String MessageManager::executeCommand(uint8_t serviceId, String command) {
@@ -83,7 +83,7 @@ String MessageManager::executeCommand(String command) {
     }
 
     if (!found) {
-        result = F("Command not found");
+        result = "Command not found";
     }
 
     return result;

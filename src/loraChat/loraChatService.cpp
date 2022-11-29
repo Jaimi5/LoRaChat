@@ -46,7 +46,7 @@ void LoRaChatService::addContact(String name, uint16_t src) {
                 if (ci->address == src) {
                     name.toCharArray(ci->name, MAX_NAME_LENGTH);
                     contactsList->releaseInUse();
-                    BluetoothService::getInstance().writeToBluetooth(String(F("Changed name: ")) + name + String(F(" - ")) + String(src));
+                    BluetoothService::getInstance().writeToBluetooth(String("Changed name: ") + name + String(" - ") + String(src));
                     return;
                 }
             }
@@ -61,7 +61,7 @@ void LoRaChatService::addContact(String name, uint16_t src) {
     contactsList->Append(ci);
     contactsList->releaseInUse();
 
-    BluetoothService::getInstance().writeToBluetooth(String(F("New contact: ")) + name + String(F(" - ")) + String(src));
+    BluetoothService::getInstance().writeToBluetooth(String("New contact: ") + name + String(" - ") + String(src));
 }
 
 String LoRaChatService::getNameContact(uint16_t addr) {
@@ -103,7 +103,7 @@ uint16_t LoRaChatService::getAddrContact(String name) {
 }
 
 String LoRaChatService::getContactsString() {
-    String contacts = F("--- List of contacts ---");
+    String contacts = "--- List of contacts ---";
     contactsList->setInUse();
     if (contactsList->moveToStart()) {
         do {
@@ -125,21 +125,21 @@ String LoRaChatService::getContactsString() {
 
 String LoRaChatService::changeName(String newName) {
     if (newName.length() > MAX_NAME_LENGTH) {
-        return String(F("Name too long"));
+        return String("Name too long");
     }
     else if (newName.length() == 0) {
-        return String(F("No name added"));
+        return String("No name added");
     }
     else {
         newName.toCharArray(myName, MAX_NAME_LENGTH);
-        return String(F("Name changed to: ")) + String(newName);
+        return String("Name changed to: " + newName);
     }
 }
 
 String LoRaChatService::requestGPS(messagePort port, String name) {
     uint16_t addr = getAddrContact(name);
     if (addr == 0) {
-        return String(F("No contact found"));
+        return String("No contact found");
     }
 
     LoRaChatMessage* msg = createLoRaChatMessage();
@@ -151,7 +151,7 @@ String LoRaChatService::requestGPS(messagePort port, String name) {
 
     delete msg;
 
-    return F("Request GPS sent, waiting for response");
+    return "Request GPS sent, waiting for response";
 }
 
 String LoRaChatService::responseGPS(messagePort port, DataMessage* message) {
@@ -161,16 +161,16 @@ String LoRaChatService::responseGPS(messagePort port, DataMessage* message) {
     gpsMessage->type = GPSMessageType::reqGPS;
     GPSService::getInstance().processReceivedMessage(port, message);
 
-    return F("GPS requested");
+    return "GPS requested";
 }
 
 String LoRaChatService::startChatTo(String name) {
     uint16_t addr = getAddrContact(name);
     if (addr == 0)
-        return String(F("No contact found" CR)) + getContactsString();
+        return String("No contact found") + "\n" + getContactsString();
 
-    String startingChat = String(F("Starting chat with: ")) + name + CR;
-    startingChat += F("Type '/exit' to exit chat" CR);
+    String startingChat = "Starting chat with: " + name + "\n";
+    startingChat += "Type '/exit' to exit chat\n";
 
     chatAddr = addr;
 
@@ -192,7 +192,7 @@ String LoRaChatService::chatTo(String args) {
 
     free(msg);
 
-    return String(F("Message sent"));
+    return String("Message sent");
 }
 
 String LoRaChatService::receiveChatMessage(messagePort port, DataMessage* message) {
@@ -205,11 +205,13 @@ String LoRaChatService::receiveChatMessage(messagePort port, DataMessage* messag
 
     uint32_t msgSize = msg->messageSize - (sizeof(LoRaChatMessageGeneric) + sizeof(DataMessageGeneric));
 
-    String chatMessage = name + ": " + String(msg->message, msgSize) + CR;
+    String chatMessage = name + ": " + String(msg->message, msgSize) + "\n";
 
     BluetoothService::getInstance().writeToBluetooth(chatMessage);
 
-    return F("Message received");
+    Serial.println(chatMessage);
+
+    return "Message received";
 }
 
 String LoRaChatService::ackChatMessage(messagePort port, DataMessage* message) {
@@ -222,7 +224,7 @@ String LoRaChatService::ackChatMessage(messagePort port, DataMessage* message) {
 
     delete msg;
 
-    return F("Message sent");
+    return String("Message sent");
 }
 
 String LoRaChatService::receivedChatMessage(DataMessage* message) {
@@ -231,11 +233,11 @@ String LoRaChatService::receivedChatMessage(DataMessage* message) {
     if (name.length() == 0)
         name = String(msg->addrSrc);
 
-    String chatMessage = String(F("Message received to ")) + name + CR;
+    String chatMessage = "Message received to " + name + "\n";
 
     BluetoothService::getInstance().writeToBluetooth(chatMessage);
 
-    return F("Message received");
+    return "Message received";
 }
 
 String LoRaChatService::findContacts() {
@@ -257,7 +259,7 @@ String LoRaChatService::findContacts() {
 
     nodes->releaseInUse();
 
-    return sent ? F("Request sent, waiting for response") : F("No contacts found");
+    return sent ? "Request sent, waiting for response" : "No contacts found";
 }
 
 void LoRaChatService::requestContactInfo(messagePort port, uint16_t dst) {
