@@ -8,3 +8,9 @@
 //Contact Configuration
 #define MAX_NAME_LENGTH 10
 #define MAX_MESSAGE_LENGTH 100
+
+//WiFi Configuration
+#define MAX_CONNECTION_TRY 20
+
+//Logging Configuration
+#define DISABLE_LOGGING

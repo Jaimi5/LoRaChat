@@ -13,7 +13,7 @@
 #include "message/messageManager.h"
 
 //Display
-#include "display.h"
+// #include "display.h"
 
 //LoRaMesh
 #include "loramesh/loraMeshService.h"
@@ -23,6 +23,19 @@
 
 //Bluetooth
 #include "bluetooth\bluetoothService.h"
+
+//WiFi
+#include "wifi\wifiServerService.h"
+
+#pragma region WiFi
+
+WiFiServerService& wiFiService = WiFiServerService::getInstance();
+
+void initWiFi() {
+    wiFiService.initWiFi();
+}
+
+#pragma endregion
 
 #pragma region LoRaMesher
 
@@ -56,7 +69,7 @@ void gpsDisplay_Task(void* pvParameters) {
     while (true) {
         String gpsString = gpsService.getGPSUpdatedWait();
 
-        Screen.changeLineTwo(gpsString);
+        // Screen.changeLineTwo(gpsString);
         vTaskDelay(50000 / portTICK_PERIOD_MS);
     }
 }
@@ -118,6 +131,9 @@ void initManager() {
     manager.addMessageService(&loraChatService);
     Log.verboseln("LoRaChat service added to manager");
 
+    manager.addMessageService(&wiFiService);
+    Log.verboseln("WiFi service added to manager");
+
     Serial.println(manager.getAvailableCommands());
 }
 
@@ -131,9 +147,7 @@ void setup() {
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
     // Initialize Screen
-    Screen.initDisplay();
-
-    // initializeLoraMesher();
+    // Screen.initDisplay();
 
     // Initialize GPS
     initGPS();
@@ -147,6 +161,9 @@ void setup() {
     // Initialize LoRaChat
     initLoRaChat();
 
+    // Initialize WiFi
+    initWiFi();
+
     // Initialize Manager
     initManager();
 
@@ -155,6 +172,6 @@ void setup() {
 }
 
 void loop() {
-    Screen.drawDisplay();
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+    // Screen.drawDisplay();
+    // vTaskDelay(50 / portTICK_PERIOD_MS);
 }
