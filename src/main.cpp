@@ -61,42 +61,13 @@ void initLoRaChat() {
 
 #pragma region GPS
 
+#define UPDATE_GPS_DELAY 10000 //ms
+
 GPSService& gpsService = GPSService::getInstance();
-
-TaskHandle_t gpsDisplay_TaskHandle = NULL;
-
-void gpsDisplay_Task(void* pvParameters) {
-    while (true) {
-        String gpsString = gpsService.getGPSUpdatedWait();
-
-        Screen.changeLineTwo(gpsString);
-        vTaskDelay(50000 / portTICK_PERIOD_MS);
-    }
-}
-
-/**
- * @brief Create a Receive Messages Task and add it to the LoRaMesher
- *
- */
-void createUpdateGPSDisplay() {
-    int res = xTaskCreate(
-        gpsDisplay_Task,
-        "Gps Display Task",
-        4096,
-        (void*) 1,
-        2,
-        &gpsDisplay_TaskHandle);
-    if (res != pdPASS) {
-        Log.errorln(F("Gps Display Task creation gave error: %d"), res);
-    }
-}
 
 void initGPS() {
     //Initialize GPS
     gpsService.initGPS();
-
-    //Initialize GPS Display
-    createUpdateGPSDisplay();
 }
 
 #pragma endregion
@@ -139,15 +110,74 @@ void initManager() {
 
 #pragma endregion
 
+#pragma region Display
+
+TaskHandle_t display_TaskHandle = NULL;
+
+#define DISPLAY_TASK_DELAY 50 //ms
+#define DISPLAY_LINE_TWO_DELAY 10000 //ms
+#define DISPLAY_LINE_THREE_DELAY 50000 //ms
+
+
+void display_Task(void* pvParameters) {
+
+    uint32_t lastLineTwoUpdate = 0;
+    uint32_t lastLineThreeUpdate = 0;
+
+    uint32_t lastGPSUpdate = 0;
+
+    while (true) {
+        //Update line two every DISPLAY_LINE_TWO_DELAY ms
+        if (millis() - lastLineTwoUpdate > DISPLAY_LINE_TWO_DELAY) {
+            lastLineTwoUpdate = millis();
+            String lineTwo = String(loraMeshService.getDeviceID()) + " | " + wiFiService.getIP();
+            Screen.changeLineTwo(lineTwo);
+        }
+
+        //Update line three every DISPLAY_LINE_THREE_DELAY ms
+        if (millis() - lastLineThreeUpdate > DISPLAY_LINE_THREE_DELAY) {
+            lastLineThreeUpdate = millis();
+            String lineThree = gpsService.getGPSString();
+            Screen.changeLineThree(lineThree);
+        }
+
+        //Update GPS every UPDATE_GPS_DELAY ms
+        if (millis() - lastGPSUpdate > UPDATE_GPS_DELAY) {
+            lastGPSUpdate = millis();
+            gpsService.notifyUpdate();
+        }
+
+        Screen.drawDisplay();
+        vTaskDelay(DISPLAY_TASK_DELAY / portTICK_PERIOD_MS);
+    }
+}
+
+void createUpdateDisplay() {
+    int res = xTaskCreate(
+        display_Task,
+        "Display Task",
+        4096,
+        (void*) 1,
+        2,
+        &display_TaskHandle);
+    if (res != pdPASS) {
+        Log.errorln(F("Display Task creation gave error: %d"), res);
+    }
+}
+
+void initDisplay() {
+    Screen.initDisplay();
+    createUpdateDisplay();
+}
+
+#pragma endregion
+
 void setup() {
     // Initialize Serial Monitor
     Serial.begin(115200);
 
     // Initialize Log
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
-
-    // Initialize Screen
-    Screen.initDisplay();
 
     // Initialize GPS
     initGPS();
@@ -167,11 +197,14 @@ void setup() {
     // Initialize Manager
     initManager();
 
+    // Initialize Display
+    initDisplay();
+
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);
 }
 
 void loop() {
-    Screen.drawDisplay();
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+    //Suspend this task
+    vTaskSuspend(NULL);
 }
