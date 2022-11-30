@@ -2,11 +2,9 @@
 
 HardwareSerial GPS(1);
 
-GPSService::GPSService() {}
-
 void GPSService::initGPS() {
 
-    Wire.begin(SDA, SCL);
+    Wire.begin((int) SDA, (int) SCL);
 
 #if defined(T_BEAM_V10)
     if (!axp.begin(Wire, AXP192_SLAVE_ADDRESS)) {
@@ -72,12 +70,63 @@ void GPSService::createGPSTask() {
 void GPSService::GPSLoop(void*) {
     GPSService& gpsService = GPSService::getInstance();
     for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
         gpsService.updateGPS();
         String GPSstring = gpsService.getGPSString();
         Serial.println(GPSstring);
-
-        vTaskDelay(GPS_DELAY / portTICK_PERIOD_MS);
     }
+}
+
+void GPSService::processReceivedMessage(messagePort port, DataMessage* message) {
+    GPSMessageGeneric* gpsMessage = (GPSMessageGeneric*) message;
+
+    switch (gpsMessage->type) {
+        case GPSMessageType::reqGPS:
+            gpsResponse(port, message);
+            break;
+        default:
+            break;
+    }
+}
+
+
+String GPSService::gpsResponse(messagePort port, DataMessage* message) {
+    DataMessage* msg = (DataMessage*) getGPSMessageResponse(message);
+    MessageManager::getInstance().sendMessage(port, msg);
+
+    delete msg;
+
+    return "GPS response sent";
+}
+
+
+GPSMessageResponse* GPSService::getGPSMessageResponse(DataMessage* message) {
+    getGPSUpdatedWait();
+
+    GPSMessageResponse* response = new GPSMessageResponse();
+
+    response->messageSize = sizeof(GPSMessageResponse) - sizeof(DataMessageGeneric);
+
+    response->appPortDst = message->appPortSrc;
+    response->appPortSrc = appPort::GPSApp;
+    response->addrDst = message->addrSrc;
+    response->addrSrc = message->addrDst;
+    response->messageId = message->messageId;
+    response->type = GPSMessageType::getGPS;
+
+    response->latitude = gps.location.lat();
+    response->longitude = gps.location.lng();
+    response->altitude = gps.altitude.meters();
+    response->satellites = gps.satellites.value();
+    response->second = gps.time.second();
+    response->minute = gps.time.minute();
+    response->hour = gps.time.hour();
+    response->day = gps.date.day();
+    response->month = gps.date.month();
+    response->year = gps.date.year();
+
+    return response;
 }
 
 bool GPSService::isGPSValid() {
@@ -91,6 +140,10 @@ void GPSService::smartDelay(unsigned long ms) {
             gps.encode(GPS.read());
         }
     } while (millis() - start < ms);
+}
+
+void GPSService::notifyUpdate() {
+    xTaskNotifyGive(gps_TaskHandle);
 }
 
 void GPSService::updateGPS() {
@@ -117,7 +170,7 @@ String GPSService::getGPSString() {
             + " N. SAT: " + sat;
     }
     else {
-        return "GPS not valid, try again later";
+        return String("GPS not valid, try again later");
     }
 }
 
@@ -139,3 +192,16 @@ void GPSService::getGPSData(TinyGPSPlus* ll) {
 double GPSService::distanceBetween(double lat1, double lng1, double lat2, double lng2) {
     return gps.distanceBetween(lat1, lng1, lat2, lng2);
 }
+
+String GPSService::getGPSUpdatedWait(uint8_t maxTries) {
+    notifyUpdate();
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    while (!isGPSValid() && maxTries > 0) {
+        notifyUpdate();
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        maxTries--;
+    }
+
+    return getGPSString();
+}
+

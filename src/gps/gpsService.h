@@ -11,7 +11,6 @@
 #include <axp20x.h>
 #include <TinyGPSPlus.h>
 #include <HardwareSerial.h>
-#include <SoftwareSerial.h>
 
 #define T_BEAM_V10
 
@@ -22,10 +21,15 @@
 #endif
 
 #define GPS_DELAY 2000 // 2 seconds
-#define R 6371
-#define TO_RAD (3.1415926536 / 180)
 
-class GPSService {
+#include "./message/messageManager.h"
+
+#include "./message/messageService.h"
+
+#include "gpsCommandService.h"
+
+
+class GPSService: public MessageService {
 
 public:
 
@@ -102,9 +106,27 @@ public:
      */
     String getGPSString(TinyGPSPlus* gpsData);
 
+    /**
+     * @brief Notifies GPS task and updates GPS data
+     *
+     */
+    void notifyUpdate();
+
+    String getGPSUpdatedWait(uint8_t maxTries = 10);
+
+    GPSCommandService* gpsCommandService = new GPSCommandService();
+
+    virtual void processReceivedMessage(messagePort port, DataMessage* message);
+
+    GPSMessageResponse* getGPSMessageResponse(DataMessage* message);
+
+    String gpsResponse(messagePort port, DataMessage* message);
+
 private:
 
-    GPSService();
+    GPSService(): MessageService(appPort::GPSApp, String("GPS")) {
+        commandService = gpsCommandService;
+    };
 
     AXP20X_Class axp;
 
