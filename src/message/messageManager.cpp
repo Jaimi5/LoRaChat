@@ -8,11 +8,17 @@ void MessageManager::init() {
 }
 
 void MessageManager::addMessageService(MessageService* service) {
-    for (int i = 0; i < 10; i++) {
-        if (services[i] == nullptr) {
-            services[i] = service;
+    //Add ordered by serviceId
+    bool added = false;
+    for (int i = 0; i < services.size(); i++) {
+        if (services[i]->serviceId > service->serviceId) {
+            services.insert(services.begin() + i, service);
+            added = true;
             break;
         }
+    }
+    if (!added) {
+        services.push_back(service);
     }
 }
 
@@ -40,20 +46,19 @@ void MessageManager::addMessageService(MessageService* service) {
 
 String MessageManager::getAvailableCommands() {
     String commands = "";
-    for (int i = 0; i < 10; i++) {
-        if (services[i] != nullptr) {
-            commands += "Id: " + String(services[i]->serviceId) + " - " + services[i]->serviceName + "\n";
-            commands += services[i]->commandService->publicCommands();
-        }
+
+    for (auto service : services) {
+        commands += service->toString() + CR;
+        commands += service->commandService->publicCommands();
     }
 
     return commands;
 }
 
 String MessageManager::executeCommand(uint8_t serviceId, uint8_t commandId, String args) {
-    for (int i = 0; i < 10; i++) {
-        if (services[i] != nullptr && services[i]->serviceId == serviceId) {
-            return services[i]->commandService->executeCommand(commandId, args);
+    for (auto service : services) {
+        if (service->serviceId == serviceId) {
+            return service->commandService->executeCommand(commandId, args);
         }
     }
 
@@ -62,9 +67,10 @@ String MessageManager::executeCommand(uint8_t serviceId, uint8_t commandId, Stri
 
 String MessageManager::executeCommand(uint8_t serviceId, String command) {
     String result = "";
-    for (int i = 0; i < 10; i++) {
-        if (services[i] != nullptr && services[i]->serviceId == serviceId) {
-            result += services[i]->commandService->executeCommand(command);
+
+    for (auto service : services) {
+        if (service->serviceId == serviceId) {
+            result += service->commandService->executeCommand(command);
         }
     }
 
@@ -74,11 +80,11 @@ String MessageManager::executeCommand(uint8_t serviceId, String command) {
 String MessageManager::executeCommand(String command) {
     String result = "";
     bool found = false;
-    for (int i = 0; i < 10; i++) {
-        if (services[i] != nullptr &&
-            (services[i]->commandService->previousCommand != nullptr || services[i]->commandService->hasCommand(command))) {
+
+    for (auto service : services) {
+        if (service->commandService->hasCommand(command)) {
             found = true;
-            result += services[i]->commandService->executeCommand(command);
+            result += service->commandService->executeCommand(command);
         }
     }
 
@@ -140,9 +146,9 @@ String MessageManager::executeCommand(String command) {
 // }
 
 void MessageManager::processReceivedMessage(messagePort port, DataMessage* message) {
-    for (int i = 0; i < 10; i++) {
-        if (services[i] != nullptr && services[i]->serviceId == message->appPortDst) {
-            services[i]->processReceivedMessage(port, message);
+    for (auto service : services) {
+        if (service->serviceId == message->appPortDst) {
+            service->processReceivedMessage(port, message);
         }
     }
 }

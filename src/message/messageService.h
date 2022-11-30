@@ -25,4 +25,6 @@ public:
 
     CommandService* commandService;
 
+    String toString();
+
 };

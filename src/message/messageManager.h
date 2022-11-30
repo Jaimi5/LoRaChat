@@ -4,6 +4,8 @@
 
 #include <ArduinoLog.h>
 
+#include <vector>
+
 #include "dataMessage.h"
 
 #include "messageService.h"
@@ -49,8 +51,7 @@ private:
 
     MessageManager() {};
 
-    //List of all apps available
-    MessageService* services[10];
+    std::vector<MessageService*> services;
 
     TaskHandle_t sendMessageManager_TaskHandle = NULL;
 

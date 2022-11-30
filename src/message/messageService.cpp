@@ -6,6 +6,10 @@ MessageService::MessageService(uint8_t id, String name) {
     // xQueueReceived = xQueueCreate(10, sizeof(DataMessage*));
 }
 
+String MessageService::toString() {
+    return "Id: " + String(serviceId) + " - " + serviceName;
+}
+
 // void MessageService::init() {
 //     int res = xTaskCreate(
 //         loopReceivedMessages,
