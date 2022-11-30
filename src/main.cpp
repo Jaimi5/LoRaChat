@@ -61,6 +61,7 @@ void initLoRaChat() {
 
 #pragma region GPS
 
+#ifdef GPS_ENABLED
 #define UPDATE_GPS_DELAY 10000 //ms
 
 GPSService& gpsService = GPSService::getInstance();
@@ -69,6 +70,7 @@ void initGPS() {
     //Initialize GPS
     gpsService.initGPS();
 }
+#endif
 
 #pragma endregion
 
@@ -93,8 +95,10 @@ void initManager() {
     manager.addMessageService(&bluetoothService);
     Log.verboseln("Bluetooth service added to manager");
 
+#ifdef GPS_ENABLED
     manager.addMessageService(&gpsService);
     Log.verboseln("GPS service added to manager");
+#endif
 
     manager.addMessageService(&loraMeshService);
     Log.verboseln("LoRaMesher service added to manager");
@@ -123,9 +127,9 @@ void display_Task(void* pvParameters) {
 
     uint32_t lastLineTwoUpdate = 0;
     uint32_t lastLineThreeUpdate = 0;
-
+#ifdef GPS_ENABLED
     uint32_t lastGPSUpdate = 0;
-
+#endif
     while (true) {
         //Update line two every DISPLAY_LINE_TWO_DELAY ms
         if (millis() - lastLineTwoUpdate > DISPLAY_LINE_TWO_DELAY) {
@@ -134,6 +138,7 @@ void display_Task(void* pvParameters) {
             Screen.changeLineTwo(lineTwo);
         }
 
+#ifdef GPS_ENABLED
         //Update line three every DISPLAY_LINE_THREE_DELAY ms
         if (millis() - lastLineThreeUpdate > DISPLAY_LINE_THREE_DELAY) {
             lastLineThreeUpdate = millis();
@@ -146,7 +151,7 @@ void display_Task(void* pvParameters) {
             lastGPSUpdate = millis();
             gpsService.notifyUpdate();
         }
-
+#endif
         Screen.drawDisplay();
         vTaskDelay(DISPLAY_TASK_DELAY / portTICK_PERIOD_MS);
     }
@@ -179,8 +184,10 @@ void setup() {
     // Initialize Log
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
+#ifdef GPS_ENABLED
     // Initialize GPS
     initGPS();
+#endif
 
     // Initialize LoRaMesh
     initLoRaMesher();
