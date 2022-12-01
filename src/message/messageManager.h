@@ -41,6 +41,8 @@ public:
 
     String getAvailableCommands();
 
+    String getAvailableCommandsHTML();
+
     String executeCommand(uint8_t serviceId, uint8_t commandId, String args);
 
     String executeCommand(uint8_t serviceId, String command);

@@ -55,6 +55,19 @@ String MessageManager::getAvailableCommands() {
     return commands;
 }
 
+String MessageManager::getAvailableCommandsHTML() {
+    String html = "<dl>";
+
+    for (auto service : services) {
+        html += "<dt>" + service->toString() + "</dt>";
+        html += service->commandService->publicCommandsHTML();
+    }
+
+    html += "</dl>";
+
+    return html;
+}
+
 String MessageManager::executeCommand(uint8_t serviceId, uint8_t commandId, String args) {
     for (auto service : services) {
         if (service->serviceId == serviceId) {

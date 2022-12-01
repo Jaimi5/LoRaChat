@@ -18,6 +18,8 @@ public:
 
     String publicCommands();
 
+    String publicCommandsHTML();
+
     String exit();
 
     bool hasCommand(String command);

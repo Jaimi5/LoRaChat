@@ -1,7 +1,7 @@
 #pragma once
 
 //If the device has a GPS module
-// #define GPS_ENABLED
+#define GPS_ENABLED
 
 //Using LILYGO TTGO T-BEAM v1.1 
 #define BOARD_LED   4
