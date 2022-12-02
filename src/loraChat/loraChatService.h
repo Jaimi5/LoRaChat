@@ -20,6 +20,8 @@
 
 #include "./bluetooth/bluetoothService.h"
 
+#include "./time/timeHelper.h"
+
 //TODO: Add contact service (or bluetooth), only ask for contact info to thus that have bluetooth port open
 
 class LoRaChatService: public MessageService {
@@ -63,6 +65,8 @@ public:
 
     String findContacts();
 
+    String getPreviousMessages();
+
     LoRaChatMessage* createLoRaChatMessage();
 
     LoRaChatMessage* createLoRaChatMessage(String message);
@@ -85,7 +89,15 @@ private:
 
     uint16_t chatAddr;
 
-    char myName[MAX_NAME_LENGTH] = "test";
+    char myName[MAX_NAME_LENGTH] = "";
 
     LM_LinkedList<Info>* contactsList = new LM_LinkedList<Info>();
+
+    PreviousMessage* previousMessage[MAX_PREVIOUS_MESSAGES];
+
+    void addPreviousMessage(uint16_t address, String message);
+
+    void orderPreviousMessagesByTime();
+
+    String previousMessageToString(PreviousMessage* previousMessage);
 };

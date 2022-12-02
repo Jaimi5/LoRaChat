@@ -28,4 +28,9 @@ LoRaChatCommandService::LoRaChatCommandService() {
         [this](String args) {
         return LoRaChatService::getInstance().requestGPS(messagePort::LoRaMeshPort, args);
     }));
+
+    addCommand(Command("/getPreviousMessages", "Get the previous messages", LoRaChatMessageType::getPreviousMessages, 1,
+        [this](String args) {
+        return LoRaChatService::getInstance().getPreviousMessages();
+    }));
 }

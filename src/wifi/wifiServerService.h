@@ -13,6 +13,8 @@
 
 #include "wifiCommandService.h"
 
+#include "pages/index.h"
+
 #include "./configuration/configService.h"
 
 #include "./message/messageManager.h"
@@ -56,6 +58,10 @@ public:
     String getIP();
 
     bool serverAvailable = false;
+
+    void sendAdditionalBodyHTML(WiFiClient client);
+
+    void responseCommand(WiFiClient client, String header);
 
 private:
 

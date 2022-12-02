@@ -19,7 +19,8 @@ enum LoRaChatMessageType: uint8_t {
     chatTo = 8,
     ackChat = 9,
     requestGPS = 10,
-    responseGPS = 11
+    responseGPS = 11,
+    getPreviousMessages = 12
 };
 
 class LoRaChatMessageGeneric: public DataMessageGeneric {

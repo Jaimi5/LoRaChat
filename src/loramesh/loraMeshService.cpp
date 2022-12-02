@@ -82,7 +82,7 @@ LoRaMeshMessage* LoRaMeshService::createLoRaMeshMessage(DataMessage* message) {
 }
 
 DataMessage* LoRaMeshService::createDataMessage(AppPacket<LoRaMeshMessage>* appPacket) {
-    uint32_t dataMessageSize = appPacket->payloadSize + sizeof(DataMessage);
+    uint32_t dataMessageSize = appPacket->payloadSize + sizeof(DataMessage) - sizeof(LoRaMeshMessage);
     uint32_t messageSize = dataMessageSize - sizeof(DataMessage);
 
     DataMessage* dataMessage = (DataMessage*) malloc(dataMessageSize);
@@ -137,7 +137,7 @@ String LoRaMeshService::getRoutingTable() {
 void LoRaMeshService::sendReliable(DataMessage* message) {
     LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
 
-    radio.sendReliable(message->addrDst, loraMeshMessage, sizeof(LoRaMeshMessage) + message->messageSize);
+    radio.sendReliablePacket(message->addrDst, (uint8_t*) loraMeshMessage, sizeof(LoRaMeshMessage) + message->messageSize);
 
     free(loraMeshMessage);
 }

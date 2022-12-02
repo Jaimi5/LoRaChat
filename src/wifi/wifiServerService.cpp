@@ -85,6 +85,44 @@ String WiFiServerService::getIP() {
     return WiFi.localIP().toString();
 }
 
+void WiFiServerService::sendAdditionalBodyHTML(WiFiClient client) {
+    //Set input field html with button to send the command
+    //add header
+    client.println(F("<h2>Send command</h2>"));
+    client.println(F("<form action=\"/command\" method=\"get\">"));
+    client.println(F("<input type=\"text\" name=\"command\" value=\"\">"));
+    client.println(F("<input type=\"submit\" value=\"Send\">"));
+    client.println(F("</form>"));
+
+    //Get the commands from MessageManager and send them to the client
+    MessageManager& messageManager = MessageManager::getInstance();
+    client.println("<h2>Available Commands</h2>");
+    client.println("<div class=\"commands\">");
+    client.println(messageManager.getAvailableCommandsHTML());
+    client.println("</div>");
+}
+
+void WiFiServerService::responseCommand(WiFiClient client, String header) {
+    String commandResponse = "";
+
+    Log.verboseln(F("Command"));
+    int commandStart = header.indexOf("command=");
+    int commandEnd = header.indexOf(" HTTP/1.1");
+    String command = header.substring(commandStart + 8, commandEnd);
+    command.replace("+", " ");
+    Log.verboseln(command.c_str());
+    MessageManager& messageManager = MessageManager::getInstance();
+    // messageManager.sendMessage(messagePort::WIFI, command);
+    //TODO: The execution of the command should be done in other thread
+    commandResponse = messageManager.executeCommand("/" + command);
+
+    //Send command response html with a title
+    if (!commandResponse.isEmpty()) {
+        client.println(F("<h2>Command response</h2>"));
+        client.println(commandResponse);
+    }
+}
+
 void WiFiServerService::ServerLoop(void*) {
     WiFiServerService& WiFiServerService = WiFiServerService::getInstance();
     String header = "";
@@ -99,7 +137,15 @@ void WiFiServerService::ServerLoop(void*) {
             if (client) {                             // If a new client connects,
                 Log.verboseln("New Client.");          // print a message out in the serial port
                 String currentLine = "";                // make a String to hold incoming data from the client
-                while (client.connected()) {  // loop while the client's connected
+
+                //Get actual priority
+                UBaseType_t prevPriority = uxTaskPriorityGet(NULL);
+
+                //Set max priority
+                vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
+                uint32_t startTime = millis();
+
+                while (client.connected() && ((millis() - startTime) < SERVER_CONNECTION_TIMEOUT)) {  // loop while the client's connected
                     if (client.available()) {             // if there's bytes to read from the client,
                         char c = client.read();             // read a byte, then
                         Serial.write(c);                    // print it out the serial monitor
@@ -115,45 +161,20 @@ void WiFiServerService::ServerLoop(void*) {
                                 client.println(F("Connection: close"));
                                 client.println();
 
+                                client.printf(indexHeaderHTML);
+                                client.printf(indexBodyHTML);
+
                                 // turns the GPIOs on and off
                                 if (header.indexOf("GET /blinkLed") >= 0) {
                                     Log.verboseln(F("Blink LED"));
                                     Helper::ledBlink(2, 100);
                                 }
+                                else if (header.indexOf("GET /command") >= 0) {
+                                    WiFiServerService.responseCommand(client, header);
+                                }
 
-                                // Display the HTML web page
-                                client.println(F("<!DOCTYPE html><html>"));
-                                client.println(F("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"));
-                                client.println(F("<link rel=\"icon\" href=\"data:,\">"));
-                                // CSS to style the on/off buttons 
-                                // Feel free to change the background-color and font-size attributes to fit your preferences
-                                client.println(F("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}"));
-                                client.println(F(".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;"));
-                                client.println(F("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}"));
-                                client.println(F(".button2 {background-color: #555555;}</style></head>"));
-
-                                // Web Page Heading
-                                client.println(F("<body><h1>ESP32 Web Server</h1>"));
-
-                                client.println(F("<p>Blink Led </p>"));
-                                // If the output26State is off, it displays the ON button       
-                                // if (output26State == "off")) {
-                                client.println(F("<p><a href=\"/blinkLed\"><button class=\"button\">Blink Led</button></a></p>"));
-                                // }
-                                // else {
-                                //     client.println("<p><a href=\"/26/off\"><button class=\"button button2\">OFF</button></a></p>"));
-                                // }
-
-                                // Display current state, and ON/OFF buttons for GPIO 27  
-                                // client.println("<p>GPIO 27 - State " + output27State + "</p>"));
-                                // // If the output27State is off, it displays the ON button       
-                                // if (output27State == "off")) {
-                                //     client.println("<p><a href=\"/27/on\"><button class=\"button\">ON</button></a></p>"));
-                                // }
-                                // else {
-                                //     client.println("<p><a href=\"/27/off\"><button class=\"button button2\">OFF</button></a></p>"));
-                                // }
-                                client.println(F("</body></html>"));
+                                WiFiServerService.sendAdditionalBodyHTML(client);
+                                client.printf(indexFooterHTML);
 
                                 // The HTTP response ends with another blank line
                                 client.println();
@@ -169,12 +190,15 @@ void WiFiServerService::ServerLoop(void*) {
                         }
                     }
                 }
-                // Clear the header variable
-                header = "";
                 // Close the connection
                 client.stop();
+
+                //Set previous priority
+                vTaskPrioritySet(NULL, prevPriority);
+
+                // Clear the header variable
+                header = "";
                 Serial.println(F("Client disconnected."));
-                Serial.println("");
             }
 
             vTaskDelay(50 / portTICK_PERIOD_MS);

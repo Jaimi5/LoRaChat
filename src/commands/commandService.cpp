@@ -61,7 +61,7 @@ String CommandService::exit() {
     String exitString = "";
     if (previousCommand != nullptr)
         exitString = "Exit command: " + previousCommand->getCommand();
-        
+
     previousCommand = nullptr;
     return exitString;
 }
@@ -70,7 +70,7 @@ bool CommandService::hasCommand(String command) {
     String firstCommand = command.substring(0, command.indexOf(" "));
 
     for (uint8_t i = 0; i < commandsCount; i++) {
-        if (firstCommand.equalsIgnoreCase(commands[i].getCommand())) {
+        if (firstCommand.equalsIgnoreCase(commands[i].getCommand()) || previousCommand != nullptr) {
             return true;
         }
     }
@@ -93,4 +93,14 @@ String CommandService::publicCommands() {
             help += commands[i].getCommand() + " (" + commands[i].getCommandID() + ") - " + commands[i].getDescription() + "\n";
     }
     return help;
+}
+
+String CommandService::publicCommandsHTML() {
+    String help = "";
+    for (uint8_t i = 0; i < commandsCount; i++) {
+        if (commands[i].getPublic())
+            help += "<dd>" + commands[i].getCommand() + " - " + commands[i].getDescription() + "</dd>";
+    }
+    return help;
+
 }
