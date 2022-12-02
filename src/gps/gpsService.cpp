@@ -159,9 +159,9 @@ String GPSService::getGPSString() {
         String alt = String(gps.altitude.meters()); // Altitude in meters
         String sat = String(gps.satellites.value()); // Number of satellites
 
-        String readableTime = GPSHelper::getReadableTime(gps.time.second(), gps.time.minute(), gps.time.hour());
+        String readableTime = TimeHelper::getReadableTime(gps.time.second(), gps.time.minute(), gps.time.hour());
 
-        String readableDate = GPSHelper::getReadableDate(gps.date.day(), gps.date.month(), gps.date.year());
+        String readableDate = TimeHelper::getReadableDate(gps.date.day(), gps.date.month(), gps.date.year());
 
         return "( " + readableDate + " - " + readableTime + " ) GPS: "
             + "Lat: " + lat

@@ -2,8 +2,6 @@
 
 #include "Arduino.h"
 
-#include "gpsHelper.h"
-
 #include "ArduinoLog.h"
 
 //GPS libraries
@@ -25,6 +23,8 @@
 #include "./message/messageManager.h"
 
 #include "./message/messageService.h"
+
+#include "./time/timeHelper.h"
 
 #include "gpsCommandService.h"
 
