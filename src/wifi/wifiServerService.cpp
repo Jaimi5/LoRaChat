@@ -113,6 +113,7 @@ void WiFiServerService::responseCommand(WiFiClient client, String header) {
     Log.verboseln(command.c_str());
     MessageManager& messageManager = MessageManager::getInstance();
     // messageManager.sendMessage(messagePort::WIFI, command);
+    //TODO: The execution of the command should be done in other thread
     commandResponse = messageManager.executeCommand("/" + command);
 
     //Send command response html with a title
@@ -136,7 +137,15 @@ void WiFiServerService::ServerLoop(void*) {
             if (client) {                             // If a new client connects,
                 Log.verboseln("New Client.");          // print a message out in the serial port
                 String currentLine = "";                // make a String to hold incoming data from the client
-                while (client.connected()) {  // loop while the client's connected
+
+                //Get actual priority
+                UBaseType_t prevPriority = uxTaskPriorityGet(NULL);
+
+                //Set max priority
+                vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
+                uint32_t startTime = millis();
+
+                while (client.connected() && ((millis() - startTime) < SERVER_CONNECTION_TIMEOUT)) {  // loop while the client's connected
                     if (client.available()) {             // if there's bytes to read from the client,
                         char c = client.read();             // read a byte, then
                         Serial.write(c);                    // print it out the serial monitor
@@ -151,8 +160,6 @@ void WiFiServerService::ServerLoop(void*) {
                                 client.println(F("Content-type:text/html"));
                                 client.println(F("Connection: close"));
                                 client.println();
-
-
 
                                 client.printf(indexHeaderHTML);
                                 client.printf(indexBodyHTML);
@@ -183,12 +190,15 @@ void WiFiServerService::ServerLoop(void*) {
                         }
                     }
                 }
-                // Clear the header variable
-                header = "";
                 // Close the connection
                 client.stop();
+
+                //Set previous priority
+                vTaskPrioritySet(NULL, prevPriority);
+
+                // Clear the header variable
+                header = "";
                 Serial.println(F("Client disconnected."));
-                Serial.println("");
             }
 
             vTaskDelay(50 / portTICK_PERIOD_MS);
