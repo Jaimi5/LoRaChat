@@ -205,7 +205,7 @@ String LoRaChatService::receiveChatMessage(messagePort port, DataMessage* messag
     if (name.length() == 0)
         name = String(msg->addrSrc);
 
-    uint32_t msgSize = msg->messageSize - (sizeof(LoRaChatMessageGeneric) + sizeof(DataMessageGeneric));
+    uint32_t msgSize = msg->messageSize - (sizeof(LoRaChatMessage) - sizeof(DataMessage));
 
     //Check for message size
     if (msgSize > MAX_MESSAGE_LENGTH) {
