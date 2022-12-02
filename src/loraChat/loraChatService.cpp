@@ -29,7 +29,9 @@ void LoRaChatService::processReceivedMessage(messagePort port, DataMessage* mess
 }
 
 void LoRaChatService::initLoRaChatService() {
-
+    String defaultName = String(LoRaMeshService::getInstance().getDeviceID());
+    //Add the defaultName to the variable myName String to Char array
+    defaultName.toCharArray(myName, MAX_NAME_LENGTH);
 }
 
 void LoRaChatService::addContact(DataMessage* message) {
@@ -61,7 +63,7 @@ void LoRaChatService::addContact(String name, uint16_t src) {
     contactsList->Append(ci);
     contactsList->releaseInUse();
 
-    BluetoothService::getInstance().writeToBluetooth(String("New contact: ") + name + String(" - ") + String(src));
+    BluetoothService::getInstance().writeToBluetooth(String("New contact: ") + String(ci->name) + String(" - ") + String(src));
 }
 
 String LoRaChatService::getNameContact(uint16_t addr) {
@@ -205,13 +207,83 @@ String LoRaChatService::receiveChatMessage(messagePort port, DataMessage* messag
 
     uint32_t msgSize = msg->messageSize - (sizeof(LoRaChatMessageGeneric) + sizeof(DataMessageGeneric));
 
-    String chatMessage = name + ": " + String(msg->message, msgSize) + "\n";
+    //Check for message size
+    if (msgSize > MAX_MESSAGE_LENGTH) {
+        return F("Message too long");
+    }
+
+    String messageStringed = String(msg->message, msgSize);
+
+    String chatMessage = name + ": " + messageStringed + "\n";
+
+    addPreviousMessage(msg->addrSrc, messageStringed);
 
     BluetoothService::getInstance().writeToBluetooth(chatMessage);
 
     Serial.println(chatMessage);
 
     return "Message received";
+}
+
+void LoRaChatService::addPreviousMessage(uint16_t address, String message) {
+    uint32_t actualTime = millis();
+
+    //Iterate through previousMessage attribute, find the first empty message or the oldest message
+    uint8_t oldestMessageIndex = 0;
+    uint32_t oldestMessageTime = UINT32_MAX;
+
+    for (uint8_t i = 0; i < MAX_PREVIOUS_MESSAGES; i++) {
+        if (previousMessage[i] == nullptr) {
+            oldestMessageIndex = i;
+            break;
+        }
+        else {
+            uint32_t messageTime = previousMessage[i]->time;
+            if (messageTime < oldestMessageTime) {
+                oldestMessageTime = messageTime;
+                oldestMessageIndex = i;
+            }
+        }
+    }
+
+    //If previousMessage exists, delete it
+    if (previousMessage[oldestMessageIndex] != nullptr) {
+        delete previousMessage[oldestMessageIndex];
+    }
+
+    //Create new previousMessage
+    previousMessage[oldestMessageIndex] = new PreviousMessage(address, actualTime, String(message));
+}
+
+void LoRaChatService::orderPreviousMessagesByTime() {
+    //Order previousMessages by time
+    for (uint8_t i = 0; i < MAX_PREVIOUS_MESSAGES; i++) {
+        if (previousMessage[i] == nullptr)
+            break;
+
+        for (uint8_t j = i + 1; j < MAX_PREVIOUS_MESSAGES; j++) {
+            if (previousMessage[j] == nullptr)
+                break;
+
+            if (previousMessage[i]->time > previousMessage[j]->time) {
+                PreviousMessage* aux = previousMessage[i];
+                previousMessage[i] = previousMessage[j];
+                previousMessage[j] = aux;
+            }
+        }
+    }
+}
+
+String LoRaChatService::previousMessageToString(PreviousMessage* previousMessage) {
+    String message = previousMessage->message;
+    String name = getNameContact(previousMessage->address);
+    uint32_t timeSinceMessage = millis() - previousMessage->time;
+    String time = TimeHelper::getReadableTime(timeSinceMessage);
+
+    if (name.length() == 0)
+        name = String(previousMessage->address);
+
+    return "(Received " + time + " ago) " + name + ": " + message;
 }
 
 String LoRaChatService::ackChatMessage(messagePort port, DataMessage* message) {
@@ -262,6 +334,22 @@ String LoRaChatService::findContacts() {
     return sent ? "Request sent, waiting for response" : "No contacts found";
 }
 
+String LoRaChatService::getPreviousMessages() {
+    String previousMessages = "Previous messages:\n";
+
+    //Iterate through previousMessages ordered by time
+    orderPreviousMessagesByTime();
+
+    for (uint8_t i = 0; i < MAX_PREVIOUS_MESSAGES; i++) {
+        if (previousMessage[i] == nullptr)
+            break;
+
+        previousMessages += previousMessageToString(previousMessage[i]) + "\n";
+    }
+
+    return previousMessages;
+}
+
 void LoRaChatService::requestContactInfo(messagePort port, uint16_t dst) {
     LoRaChatMessage* msg = createLoRaChatMessage();
     msg->addrDst = dst;
@@ -290,7 +378,7 @@ LoRaChatMessage* LoRaChatService::createLoRaChatMessage(String message) {
     if (message.length() > MAX_MESSAGE_LENGTH)
         return nullptr;
 
-    uint32_t size = sizeof(LoRaChatMessage) + message.length() + 1; //TODO: +1 is for the null terminator, is this needed?
+    uint32_t size = sizeof(LoRaChatMessage) + message.length() + 1;
 
     LoRaChatMessage* msg = (LoRaChatMessage*) malloc(size);
     memcpy(msg->message, message.c_str(), message.length() + 1);
