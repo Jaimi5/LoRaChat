@@ -33,4 +33,9 @@ LoRaChatCommandService::LoRaChatCommandService() {
         [this](String args) {
         return LoRaChatService::getInstance().getPreviousMessages();
     }));
+
+    addCommand(Command("/sendChatToWifi", "Send the chat to the wifi", LoRaChatMessageType::sendChatToWifi, 1,
+        [this](String args) {
+        return LoRaChatService::getInstance().sendChatToWifi(args);
+    }));
 }

@@ -10,7 +10,9 @@
 
 #include "messageService.h"
 
-#include "./loramesh/loraMeshService.h"
+#include "loramesh/loraMeshService.h"
+
+#include "wifi/wifiServerService.h"
 
 class MessageManager {
 public:
@@ -49,6 +51,10 @@ public:
 
     String executeCommand(String command);
 
+    String getJSON(DataMessage* message);
+
+    String printDataMessageHeader(String title, DataMessage* message);
+
 private:
 
     MessageManager() {};
@@ -64,7 +70,7 @@ private:
 
     static void sendMessageBluetooth(DataMessage* message) {};
 
-    static void sendMessageWiFi(DataMessage* message) {};
+    static void sendMessageWiFi(DataMessage* message);
 
     void createTasks();
 };

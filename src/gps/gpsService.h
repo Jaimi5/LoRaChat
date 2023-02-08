@@ -20,11 +20,11 @@
 
 #define GPS_DELAY 2000 // 2 seconds
 
-#include "./message/messageManager.h"
+#include "message/messageManager.h"
 
-#include "./message/messageService.h"
+#include "message/messageService.h"
 
-#include "./time/timeHelper.h"
+#include "time/timeHelper.h"
 
 #include "gpsCommandService.h"
 
@@ -121,6 +121,8 @@ public:
     GPSMessageResponse* getGPSMessageResponse(DataMessage* message);
 
     String gpsResponse(messagePort port, DataMessage* message);
+
+    GPSMessage getGPSMessage();
 
 private:
 

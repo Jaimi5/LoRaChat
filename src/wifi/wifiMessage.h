@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "./message/dataMessage.h"
+#include "message/dataMessage.h"
 
 #pragma pack(1)
 
@@ -13,7 +13,8 @@ enum WiFiMessageType: uint8_t {
     connectWiFi = 4,
     startServer = 5,
     stopServer = 6,
-    getIP = 7
+    getIP = 7,
+    resetConfig = 8
 };
 
 class WiFiMessage: public DataMessageGeneric {

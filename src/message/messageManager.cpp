@@ -108,57 +108,40 @@ String MessageManager::executeCommand(String command) {
     return result;
 }
 
-// void MessageManager::loopReceivedMessages(void*) {
-//     MessageManager& manager = MessageManager::getInstance();
-//     ManagerMessage* message;
+String MessageManager::getJSON(DataMessage* message) {
+    printDataMessageHeader("JSON", message);
 
-//     for (;;) {
+    for (auto service : services) {
+        if (service->serviceId == message->appPortSrc) {
+            return service->getJSON(message);
+        }
+    }
 
-//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    Log.errorln("Service Not Found");
 
-//         if (manager.xProcessQueue != 0) {
-//             // Receive a message on the created queue.  Block for 10 ticks if a
-//             // message is not immediately available.
-//             if (xQueueReceive(manager.xProcessQueue, &(message), (portTickType) 10)) {
-//                 // pcRxedMessage now points to the struct AMessage variable posted
-//                 // by vATask.
-//                 manager.processReceivedMessage(message);
-//                 delete message->message;
-//                 delete message;
-//             }
-//         }
-//     }
-// }
+    return "{\"Empty\":\"true\"}";
+}
 
-// /**
-//  * @brief Create a Bluetooth Task
-//  *
-//  */
-// void MessageManager::createTasks() {
-//     int res = xTaskCreate(
-//         loopReceivedMessages,
-//         "Manager Receive Task",
-//         4096,
-//         (void*) 1,
-//         2,
-//         &sendMessageManager_TaskHandle);
-//     if (res != pdPASS) {
-//         Log.errorln(F("Manager Receive task handle error: %d"), res);
-//     }
+String MessageManager::printDataMessageHeader(String title, DataMessage* message) {
+    DynamicJsonDocument doc(1024);
 
-//     res = xTaskCreate(
-//         loopSendMessages,
-//         "Manager Send Task",
-//         4096,
-//         (void*) 1,
-//         2,
-//         &receiveMessageManager_TaskHandle);
-//     if (res != pdPASS) {
-//         Log.errorln(F("Manager Send task handle error: %d"), res);
-//     }
-// }
+    doc["title"] = title;
+
+    JsonObject data = doc.createNestedObject("dataMessage");
+
+    message->serialize(data);
+
+    String json;
+    serializeJson(doc, json);
+
+    Log.verboseln(json.c_str());
+
+    return json;
+}
 
 void MessageManager::processReceivedMessage(messagePort port, DataMessage* message) {
+    printDataMessageHeader("Received", message);
+
     for (auto service : services) {
         if (service->serviceId == message->appPortDst) {
             service->processReceivedMessage(port, message);
@@ -198,4 +181,23 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
 void MessageManager::sendMessageLoRaMesher(DataMessage* message) {
     LoRaMeshService& mesher = LoRaMeshService::getInstance();
     mesher.sendReliable(message);
+}
+
+void MessageManager::sendMessageWiFi(DataMessage* message) {
+    WiFiServerService& wifi = WiFiServerService::getInstance();
+    if (wifi.connectAndSend(message)) {
+        Log.verboseln(F("Message sent to WiFi"));
+        return;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Log.errorln(F("Error sending message to WiFi"));
+        //TODO: Retry adding it into a queue and send it later or send to closest gateway 
+        return;
+    }
+    else
+        Log.errorln(F("WiFi not connected"));
+
+    LoRaMeshService& mesher = LoRaMeshService::getInstance();
+    mesher.sendClosestGateway(message);
 }

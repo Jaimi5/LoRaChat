@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "./config.h"
+#include "config.h"
 
 #pragma pack(1)
 class Info {

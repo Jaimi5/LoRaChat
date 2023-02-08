@@ -350,6 +350,12 @@ String LoRaChatService::getPreviousMessages() {
     return previousMessages;
 }
 
+String LoRaChatService::sendChatToWifi(String args) {
+    //TODO: Need to implement
+    // HTTPService::sendHTTPPOST((uint8_t*) args.c_str(), args.length());
+    return "Send";
+}
+
 void LoRaChatService::requestContactInfo(messagePort port, uint16_t dst) {
     LoRaChatMessage* msg = createLoRaChatMessage();
     msg->addrDst = dst;

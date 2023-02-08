@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "./message/dataMessage.h"
+#include "message/dataMessage.h"
 
 #pragma pack(1)
 
@@ -11,12 +11,7 @@ enum GPSMessageType: uint8_t {
     getGPS = 2
 };
 
-class GPSMessageGeneric: public DataMessageGeneric {
-public:
-    GPSMessageType type;
-};
-
-class GPSMessageResponse: public GPSMessageGeneric {
+class GPSMessage {
 public:
     double latitude;
     double longitude;
@@ -28,6 +23,29 @@ public:
     uint8_t day;
     uint8_t month;
     uint16_t year;
+
+    void serialize(JsonObject& doc) {
+        doc["latitude"] = latitude;
+        doc["longitude"] = longitude;
+        doc["altitude"] = altitude;
+        doc["satellites"] = satellites;
+        doc["hour"] = hour;
+        doc["minute"] = minute;
+        doc["second"] = second;
+        doc["day"] = day;
+        doc["month"] = month;
+        doc["year"] = year;
+    }
+};
+
+class GPSMessageGeneric: public DataMessageGeneric {
+public:
+    GPSMessageType type;
+};
+
+class GPSMessageResponse: public GPSMessageGeneric {
+public:
+    GPSMessage gps;
 };
 
 #pragma pack()

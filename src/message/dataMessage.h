@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include <ArduinoJson.h>
+
 
 #pragma pack(1)
 
@@ -37,6 +39,15 @@ public:
 
     uint32_t getDataMessageSize() {
         return sizeof(DataMessageGeneric) + messageSize;
+    }
+
+    void serialize(JsonObject& doc) {
+        doc["appPortDst"] = appPortDst;
+        doc["appPortSrc"] = appPortSrc;
+        doc["messageId"] = messageId;
+        doc["addrSrc"] = addrSrc;
+        doc["addrDst"] = addrDst;
+        doc["messageSize"] = messageSize;
     }
 };
 

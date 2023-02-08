@@ -2,15 +2,15 @@
 
 #include <Arduino.h>
 
-#include "LoRaMesher.h"
+#include "LoraMesher.h"
 
 #include "ArduinoLog.h"
 
 #include "loraMeshMessage.h"
 
-#include "./message/messageManager.h"
+#include "message/messageManager.h"
 
-#include "./message/messageService.h"
+#include "message/messageService.h"
 
 #include "loraMeshCommandService.h"
 
@@ -36,6 +36,12 @@ public:
     String getRoutingTable();
 
     void sendReliable(DataMessage* message);
+
+    bool sendClosestGateway(DataMessage* message);
+
+    void setGateway();
+
+    void removeGateway();
 
     LoRaMeshCommandService* loraMesherCommandService = new LoRaMeshCommandService();
 

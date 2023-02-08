@@ -22,18 +22,13 @@ WiFiCommandService::WiFiCommandService() {
         return WiFiServerService::getInstance().connectWiFi();
     }));
 
-    addCommand(Command("/startServer", "Start WiFi Server", WiFiMessageType::startServer, 1,
-        [this](String args) {
-        return WiFiServerService::getInstance().startServer();
-    }));
-
-    addCommand(Command("/stopServer", "Stop WiFi Server", WiFiMessageType::stopServer, 1,
-        [this](String args) {
-        return WiFiServerService::getInstance().stopServer();
-    }));
-
     addCommand(Command("/getIP", "Get IP of the device", WiFiMessageType::getIP, 1,
         [this](String args) {
         return WiFiServerService::getInstance().getIP();
+    }));
+
+    addCommand(Command("/resetWiFiData", "Reset WiFi Data", WiFiMessageType::resetConfig, 1,
+        [this](String args) {
+        return WiFiServerService::getInstance().resetWiFiData();
     }));
 }

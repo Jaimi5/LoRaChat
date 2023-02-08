@@ -3,6 +3,9 @@
 //Configuration
 #include "config.h"
 
+//Log
+#include "ArduinoLog.h"
+
 //Helpers
 #include "helpers/helper.h"
 
@@ -19,13 +22,13 @@
 #include "loramesh/loraMeshService.h"
 
 //GPS libraries
-#include "gps\gpsService.h"
+#include "gps/gpsService.h"
 
 //Bluetooth
-#include "bluetooth\bluetoothService.h"
+#include "bluetooth/bluetoothService.h"
 
 //WiFi
-#include "wifi\wifiServerService.h"
+#include "wifi/wifiServerService.h"
 
 #pragma region WiFi
 
@@ -103,8 +106,10 @@ void initManager() {
     manager.addMessageService(&loraMeshService);
     Log.verboseln("LoRaMesher service added to manager");
 
+#ifdef LORACHAT_ENABLED
     manager.addMessageService(&loraChatService);
     Log.verboseln("LoRaChat service added to manager");
+#endif
 
     manager.addMessageService(&wiFiService);
     Log.verboseln("WiFi service added to manager");
@@ -140,17 +145,17 @@ void display_Task(void* pvParameters) {
 
 #ifdef GPS_ENABLED
         //Update line three every DISPLAY_LINE_THREE_DELAY ms
-        if (millis() - lastLineThreeUpdate > DISPLAY_LINE_THREE_DELAY) {
-            lastLineThreeUpdate = millis();
-            String lineThree = gpsService.getGPSString();
-            Screen.changeLineThree(lineThree);
-        }
+        // if (millis() - lastLineThreeUpdate > DISPLAY_LINE_THREE_DELAY) {
+        //     lastLineThreeUpdate = millis();
+        //     String lineThree = gpsService.getGPSString();
+        //     Screen.changeLineThree(lineThree);
+        // }
 
-        //Update GPS every UPDATE_GPS_DELAY ms
-        if (millis() - lastGPSUpdate > UPDATE_GPS_DELAY) {
-            lastGPSUpdate = millis();
-            gpsService.notifyUpdate();
-        }
+        // //Update GPS every UPDATE_GPS_DELAY ms
+        // if (millis() - lastGPSUpdate > UPDATE_GPS_DELAY) {
+        //     lastGPSUpdate = millis();
+        //     gpsService.notifyUpdate();
+        // }
 #endif
         Screen.drawDisplay();
         vTaskDelay(DISPLAY_TASK_DELAY / portTICK_PERIOD_MS);
@@ -184,6 +189,9 @@ void setup() {
     // Initialize Log
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
+    // Initialize Manager
+    initManager();
+
 #ifdef GPS_ENABLED
     // Initialize GPS
     initGPS();
@@ -195,14 +203,13 @@ void setup() {
     // Initialize Bluetooth
     initBluetooth();
 
+#ifdef LORACHAT_ENABLED
     // Initialize LoRaChat
     initLoRaChat();
+#endif
 
     // Initialize WiFi
     initWiFi();
-
-    // Initialize Manager
-    initManager();
 
     // Initialize Display
     initDisplay();

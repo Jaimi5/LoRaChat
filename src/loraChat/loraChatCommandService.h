@@ -2,7 +2,7 @@
 
 #include "Arduino.h"
 
-#include "./commands/commandService.h"
+#include "commands/commandService.h"
 
 #include "loraChatMessage.h"
 

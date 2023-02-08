@@ -45,7 +45,7 @@ void GPSService::initGPS() {
         delay(1000);
     } while (1);
 
-    createGPSTask();
+    // createGPSTask();
 
     Serial.println("GPS Initialized");
 }
@@ -58,7 +58,7 @@ void GPSService::createGPSTask() {
     int res = xTaskCreate(
         GPSLoop,
         "GPS Task",
-        4096,
+        2048,
         (void*) 1,
         2,
         &gps_TaskHandle);
@@ -100,6 +100,24 @@ String GPSService::gpsResponse(messagePort port, DataMessage* message) {
     return "GPS response sent";
 }
 
+GPSMessage GPSService::getGPSMessage() {
+    getGPSUpdatedWait();
+
+    GPSMessage gpsMessage;
+
+    gpsMessage.latitude = gps.location.lat();
+    gpsMessage.longitude = gps.location.lng();
+    gpsMessage.altitude = gps.altitude.meters();
+    gpsMessage.satellites = gps.satellites.value();
+    gpsMessage.second = gps.time.second();
+    gpsMessage.minute = gps.time.minute();
+    gpsMessage.hour = gps.time.hour();
+    gpsMessage.day = gps.date.day();
+    gpsMessage.month = gps.date.month();
+    gpsMessage.year = gps.date.year();
+
+    return gpsMessage;
+}
 
 GPSMessageResponse* GPSService::getGPSMessageResponse(DataMessage* message) {
     getGPSUpdatedWait();
@@ -115,16 +133,7 @@ GPSMessageResponse* GPSService::getGPSMessageResponse(DataMessage* message) {
     response->messageId = message->messageId;
     response->type = GPSMessageType::getGPS;
 
-    response->latitude = gps.location.lat();
-    response->longitude = gps.location.lng();
-    response->altitude = gps.altitude.meters();
-    response->satellites = gps.satellites.value();
-    response->second = gps.time.second();
-    response->minute = gps.time.minute();
-    response->hour = gps.time.hour();
-    response->day = gps.date.day();
-    response->month = gps.date.month();
-    response->year = gps.date.year();
+    response->gps = getGPSMessage();
 
     return response;
 }
@@ -194,10 +203,10 @@ double GPSService::distanceBetween(double lat1, double lng1, double lat2, double
 }
 
 String GPSService::getGPSUpdatedWait(uint8_t maxTries) {
-    notifyUpdate();
+    updateGPS();
     vTaskDelay(500 / portTICK_PERIOD_MS);
     while (!isGPSValid() && maxTries > 0) {
-        notifyUpdate();
+        updateGPS();
         vTaskDelay(500 / portTICK_PERIOD_MS);
         maxTries--;
     }

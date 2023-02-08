@@ -2,9 +2,9 @@
 
 #include <Arduino.h>
 
-#include "./config.h"
+#include "config.h"
 
-#include "./message/dataMessage.h"
+#include "message/dataMessage.h"
 
 #pragma pack(1)
 
@@ -20,7 +20,8 @@ enum LoRaChatMessageType: uint8_t {
     ackChat = 9,
     requestGPS = 10,
     responseGPS = 11,
-    getPreviousMessages = 12
+    getPreviousMessages = 12,
+    sendChatToWifi = 13,
 };
 
 class LoRaChatMessageGeneric: public DataMessageGeneric {

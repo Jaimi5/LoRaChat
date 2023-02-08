@@ -4,9 +4,11 @@
 
 #include <ArduinoLog.h>
 
-#include "./config.h"
+#include "config.h"
 
-#include "./helpers/helper.h"
+#include "LoraMesher.h"
+
+#include "helpers/helper.h"
 
 // Load Wi-Fi library
 #include <WiFi.h>
@@ -15,11 +17,16 @@
 
 #include "pages/index.h"
 
-#include "./configuration/configService.h"
+#include "configuration/configService.h"
 
-#include "./message/messageManager.h"
+#include "message/messageManager.h"
 
-#include "./message/messageService.h"
+#include "message/messageService.h"
+
+#include "httpService.h"
+
+#define DEFAULT_WIFI_SSID "DEFAULT_SSID"
+#define DEFAULT_WIFI_PASSWORD "DEFAULT_PASSWORD"
 
 class WiFiServerService: public MessageService {
 public:
@@ -35,11 +42,13 @@ public:
 
     void initWiFi();
 
-    WiFiServer* server = new WiFiServer(80);
-
     WiFiCommandService* wiFiCommandService = new WiFiCommandService();
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
+
+    void sendMessage(DataMessage* message);
+
+    bool connectAndSend(DataMessage* message);
 
     String addSSID(String ssid);
 
@@ -47,19 +56,11 @@ public:
 
     String saveWiFiData();
 
+    String resetWiFiData();
+
     String connectWiFi();
 
-    String initWiFiServer();
-
-    String startServer();
-
-    String stopServer();
-
     String getIP();
-
-    bool serverAvailable = false;
-
-    void sendAdditionalBodyHTML(WiFiClient client);
 
     void responseCommand(WiFiClient client, String header);
 
@@ -71,12 +72,6 @@ private:
 
     String ssid = "DEFAULT_SSID";
     String password = "DEFAULT_PASSWORD";
-
-    TaskHandle_t server_TaskHandle = NULL;
-
-    static void ServerLoop(void*);
-
-    void createServerTask();
 
     bool restartWiFiData();
 };

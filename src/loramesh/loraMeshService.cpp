@@ -141,3 +141,28 @@ void LoRaMeshService::sendReliable(DataMessage* message) {
 
     free(loraMeshMessage);
 }
+
+bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
+    RouteNode* gatewayNode = radio.getClosestGateway();
+
+    if (!gatewayNode) {
+        Log.errorln(F("No gateway found"));
+        return false;
+    }
+
+    message->addrDst = gatewayNode->networkNode.address;
+
+    sendReliable(message);
+
+    Log.verboseln(F("Message sent to gateway %d"), message->addrDst);
+
+    return true;
+}
+
+void LoRaMeshService::setGateway() {
+    radio.addGatewayRole();
+}
+
+void LoRaMeshService::removeGateway() {
+    radio.removeGatewayRole();
+}

@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "./message/dataMessage.h"
+#include "message/dataMessage.h"
 
 #include "LoraMesher.h"
 
@@ -12,7 +12,6 @@ enum LoRaMeshMessageType: uint8_t {
     sendMessage = 1,
     getRoutingTable = 2,
 };
-//TODO: This could be optimized, now we are sending two times id, srcAddr, dstAddr and messageSize
 
 class LoRaMeshMessage {
 public:

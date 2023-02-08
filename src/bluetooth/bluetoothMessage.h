@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "./message/dataMessage.h"
+#include "message/dataMessage.h"
 
 #pragma pack(1)
 

@@ -4,7 +4,7 @@
 
 #include <LoraMesher.h>
 
-#include "./config.h"
+#include "config.h"
 
 #include "loraChat.h"
 
@@ -12,15 +12,17 @@
 
 #include "loraChatCommandService.h"
 
-#include "./message/messageService.h"
+#include "message/messageService.h"
 
-#include "./message/messageManager.h"
+#include "message/messageManager.h"
 
-#include "./gps/gpsService.h"
+#include "gps/gpsService.h"
 
-#include "./bluetooth/bluetoothService.h"
+#include "bluetooth/bluetoothService.h"
 
-#include "./time/timeHelper.h"
+#include "time/timeHelper.h"
+
+#include "wifi/httpService.h"
 
 //TODO: Add contact service (or bluetooth), only ask for contact info to thus that have bluetooth port open
 
@@ -66,6 +68,8 @@ public:
     String findContacts();
 
     String getPreviousMessages();
+
+    String sendChatToWifi(String args);
 
     LoRaChatMessage* createLoRaChatMessage();
 

@@ -9,11 +9,11 @@
 
 #include "bluetoothCommandService.h"
 
-#include "./message/messageService.h"
+#include "message/messageService.h"
 
-#include "./message/messageManager.h"
+#include "message/messageManager.h"
 
-#include "./helpers/helper.h"
+#include "helpers/helper.h"
 
 //TODO: Check for wake from sleep mode.
 //TODO: Check for max characters in a message to avoid buffer overflow.
