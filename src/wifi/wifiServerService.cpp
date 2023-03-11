@@ -70,6 +70,7 @@ String WiFiServerService::connectWiFi() {
         return F("WiFi not configured");
 
     WiFi.scanNetworks();
+    Log.verbose(F("Trying to connect to WiFi network %s with pwd: %s!"), ssid.c_str(), password.c_str());
 
     WiFi.begin(ssid.c_str(), password.c_str());
     int i = 0;

@@ -1,40 +1,44 @@
 #include <Arduino.h>
 
-//Configuration
+// Configuration
 #include "config.h"
 
-//Log
+// Log
 #include "ArduinoLog.h"
 
-//Helpers
+// Helpers
 #include "helpers/helper.h"
 
-//LoRaChat
+// LoRaChat
 #include "loraChat/loraChatService.h"
 
-//Manager
+// Manager
 #include "message/messageManager.h"
 
-//Display
+// Display
 #include "display.h"
 
-//LoRaMesh
+// LoRaMesh
 #include "loramesh/loraMeshService.h"
 
-//GPS libraries
+// GPS libraries
 #include "gps/gpsService.h"
 
-//Bluetooth
+// Bluetooth
 #include "bluetooth/bluetoothService.h"
 
-//WiFi
+// Mqtt
+#include "mqtt/mqttService.h"
+
+// WiFi
 #include "wifi/wifiServerService.h"
 
 #pragma region WiFi
 
-WiFiServerService& wiFiService = WiFiServerService::getInstance();
+WiFiServerService &wiFiService = WiFiServerService::getInstance();
 
-void initWiFi() {
+void initWiFi()
+{
     wiFiService.initWiFi();
 }
 
@@ -42,10 +46,11 @@ void initWiFi() {
 
 #pragma region LoRaMesher
 
-LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
+LoRaMeshService &loraMeshService = LoRaMeshService::getInstance();
 
-void initLoRaMesher() {
-    //Init LoRaMesher
+void initLoRaMesher()
+{
+    // Init LoRaMesher
     loraMeshService.initLoraMesherService();
 }
 
@@ -53,10 +58,11 @@ void initLoRaMesher() {
 
 #pragma region LoRaChat
 
-LoRaChatService& loraChatService = LoRaChatService::getInstance();
+LoRaChatService &loraChatService = LoRaChatService::getInstance();
 
-void initLoRaChat() {
-    //Init LoRaChat
+void initLoRaChat()
+{
+    // Init LoRaChat
     loraChatService.initLoRaChatService();
 }
 
@@ -65,12 +71,13 @@ void initLoRaChat() {
 #pragma region GPS
 
 #ifdef GPS_ENABLED
-#define UPDATE_GPS_DELAY 10000 //ms
+#define UPDATE_GPS_DELAY 10000 // ms
 
-GPSService& gpsService = GPSService::getInstance();
+GPSService &gpsService = GPSService::getInstance();
 
-void initGPS() {
-    //Initialize GPS
+void initGPS()
+{
+    // Initialize GPS
     gpsService.initGPS();
 }
 #endif
@@ -79,25 +86,43 @@ void initGPS() {
 
 #pragma region SerialBT
 
-BluetoothService& bluetoothService = BluetoothService::getInstance();
+#ifdef BLUETOOTH_ENABLED
 
-void initBluetooth() {
+BluetoothService &bluetoothService = BluetoothService::getInstance();
+
+void initBluetooth()
+{
     bluetoothService.initBluetooth(String(loraMeshService.getDeviceID()));
+}
+
+#endif
+
+#pragma endregion
+
+#pragma region Mqtt
+
+MqttService &mqttService = MqttService::getInstance();
+
+void initMqtt()
+{
+    mqttService.initMqtt(String(loraMeshService.getDeviceID()));
 }
 
 #pragma endregion
 
 #pragma region Manager
 
-MessageManager& manager = MessageManager::getInstance();
+MessageManager &manager = MessageManager::getInstance();
 
-void initManager() {
+void initManager()
+{
     manager.init();
     Log.verboseln("Manager initialized");
-
+#ifdef BLUETOOTH_ENABLED
     manager.addMessageService(&bluetoothService);
     Log.verboseln("Bluetooth service added to manager");
 
+#endif
 #ifdef GPS_ENABLED
     manager.addMessageService(&gpsService);
     Log.verboseln("GPS service added to manager");
@@ -114,6 +139,9 @@ void initManager() {
     manager.addMessageService(&wiFiService);
     Log.verboseln("WiFi service added to manager");
 
+    manager.addMessageService(&mqttService);
+    Log.verboseln("Mqtt service added to manager");
+
     Serial.println(manager.getAvailableCommands());
 }
 
@@ -123,33 +151,35 @@ void initManager() {
 
 TaskHandle_t display_TaskHandle = NULL;
 
-#define DISPLAY_TASK_DELAY 50 //ms
-#define DISPLAY_LINE_TWO_DELAY 10000 //ms
-#define DISPLAY_LINE_THREE_DELAY 50000 //ms
+#define DISPLAY_TASK_DELAY 50          // ms
+#define DISPLAY_LINE_TWO_DELAY 10000   // ms
+#define DISPLAY_LINE_THREE_DELAY 50000 // ms
 
-
-void display_Task(void* pvParameters) {
+void display_Task(void *pvParameters)
+{
 
     uint32_t lastLineTwoUpdate = 0;
     uint32_t lastLineThreeUpdate = 0;
 #ifdef GPS_ENABLED
     uint32_t lastGPSUpdate = 0;
 #endif
-    while (true) {
-        //Update line two every DISPLAY_LINE_TWO_DELAY ms
-        if (millis() - lastLineTwoUpdate > DISPLAY_LINE_TWO_DELAY) {
+    while (true)
+    {
+        // Update line two every DISPLAY_LINE_TWO_DELAY ms
+        if (millis() - lastLineTwoUpdate > DISPLAY_LINE_TWO_DELAY)
+        {
             lastLineTwoUpdate = millis();
             String lineTwo = String(loraMeshService.getDeviceID()) + " | " + wiFiService.getIP();
             Screen.changeLineTwo(lineTwo);
         }
 
 #ifdef GPS_ENABLED
-        //Update line three every DISPLAY_LINE_THREE_DELAY ms
-        // if (millis() - lastLineThreeUpdate > DISPLAY_LINE_THREE_DELAY) {
-        //     lastLineThreeUpdate = millis();
-        //     String lineThree = gpsService.getGPSString();
-        //     Screen.changeLineThree(lineThree);
-        // }
+        // Update line three every DISPLAY_LINE_THREE_DELAY ms
+        //  if (millis() - lastLineThreeUpdate > DISPLAY_LINE_THREE_DELAY) {
+        //      lastLineThreeUpdate = millis();
+        //      String lineThree = gpsService.getGPSString();
+        //      Screen.changeLineThree(lineThree);
+        //  }
 
         // //Update GPS every UPDATE_GPS_DELAY ms
         // if (millis() - lastGPSUpdate > UPDATE_GPS_DELAY) {
@@ -162,27 +192,31 @@ void display_Task(void* pvParameters) {
     }
 }
 
-void createUpdateDisplay() {
+void createUpdateDisplay()
+{
     int res = xTaskCreate(
         display_Task,
         "Display Task",
         4096,
-        (void*) 1,
+        (void *)1,
         2,
         &display_TaskHandle);
-    if (res != pdPASS) {
+    if (res != pdPASS)
+    {
         Log.errorln(F("Display Task creation gave error: %d"), res);
     }
 }
 
-void initDisplay() {
+void initDisplay()
+{
     Screen.initDisplay();
     createUpdateDisplay();
 }
 
 #pragma endregion
 
-void setup() {
+void setup()
+{
     // Initialize Serial Monitor
     Serial.begin(115200);
 
@@ -200,9 +234,11 @@ void setup() {
     // Initialize LoRaMesh
     initLoRaMesher();
 
+#ifdef BLUETOOTH_ENABLED
     // Initialize Bluetooth
     initBluetooth();
 
+#endif
 #ifdef LORACHAT_ENABLED
     // Initialize LoRaChat
     initLoRaChat();
@@ -211,6 +247,9 @@ void setup() {
     // Initialize WiFi
     initWiFi();
 
+    // Initialize Mqtt
+    initMqtt();
+
     // Initialize Display
     initDisplay();
 
@@ -218,7 +257,8 @@ void setup() {
     Helper::ledBlink(2, 100);
 }
 
-void loop() {
-    //Suspend this task
+void loop()
+{
+    // Suspend this task
     vTaskSuspend(NULL);
 }

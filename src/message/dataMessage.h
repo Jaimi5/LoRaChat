@@ -23,7 +23,8 @@ enum appPort: uint8_t {
     GPSApp = 4,
     SOSApp = 5,
     CommandApp = 6,
-    LoRaMesherApp = 7
+    LoRaMesherApp = 7,
+    MQTTApp = 8
 };
 
 class DataMessageGeneric {
