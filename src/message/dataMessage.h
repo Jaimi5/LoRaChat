@@ -11,7 +11,8 @@
 enum messagePort: uint8_t {
     LoRaMeshPort = 1,
     BluetoothPort = 2,
-    WiFiPort = 3
+    WiFiPort = 3,
+    MqttPort = 4
 };
 
 //TODO: This should be defined by the user, all the apps that are available and their numbers should be the same

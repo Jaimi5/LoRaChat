@@ -34,16 +34,31 @@ bool MqttService::isDeviceConnected()
     return client.connected();
 }
 
-bool MqttService::writeToMqtt(String message)
+bool MqttService::writeToMqtt(DataMessage *message)
 {
-    Serial.println("Sending message to mqtt: " + message);
+    Log.info(F("Sending message to mqtt: %s"), message->message);
 
     if (!isDeviceConnected())
     {
-        Serial.println("No Mqtt device connected");
+        Log.warning(F("No Mqtt device connected"));
         return false;
     }
+    // String json = MessageManager::getInstance().getJSON(message);
+    client.publish("/hello", "world");
 
+    return true;
+}
+
+bool MqttService::writeToMqtt(String message)
+{
+    Log.info(F("Sending message to mqtt: %s"), message);
+
+    if (!isDeviceConnected())
+    {
+        Log.warning(F("No Mqtt device connected"));
+        return false;
+    }
+    // String json = MessageManager::getInstance().getJSON(message);
     client.publish("/hello", message);
 
     return true;

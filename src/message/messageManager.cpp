@@ -160,6 +160,9 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
         case WiFiPort:
             sendMessageWiFi(message);
             break;
+         case MqttPort:
+            sendMessageMqtt(message);
+            break;
         default:
             break;
     }
@@ -181,6 +184,11 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
 void MessageManager::sendMessageLoRaMesher(DataMessage* message) {
     LoRaMeshService& mesher = LoRaMeshService::getInstance();
     mesher.sendReliable(message);
+}
+
+void MessageManager::sendMessageMqtt(DataMessage* message) {
+    MqttService& mqtt = MqttService::getInstance();
+    mqtt.writeToMqtt(message);
 }
 
 void MessageManager::sendMessageWiFi(DataMessage* message) {

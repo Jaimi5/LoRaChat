@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <MQTT.h>
 
 #include <ArduinoLog.h>
@@ -37,6 +37,7 @@ public:
 
     bool isDeviceConnected();
 
+    bool writeToMqtt(DataMessage *message);
     bool writeToMqtt(String message);
 
     WiFiClientSecure net;

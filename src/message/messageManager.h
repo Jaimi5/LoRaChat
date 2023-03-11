@@ -12,6 +12,8 @@
 
 #include "loramesh/loraMeshService.h"
 
+#include "mqtt/mqttService.h"
+
 #include "wifi/wifiServerService.h"
 
 class MessageManager {
@@ -71,6 +73,7 @@ private:
     static void sendMessageBluetooth(DataMessage* message) {};
 
     static void sendMessageWiFi(DataMessage* message);
+    static void sendMessageMqtt(DataMessage* message);
 
     void createTasks();
 };
