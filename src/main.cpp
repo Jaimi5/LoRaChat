@@ -223,6 +223,8 @@ void setup()
     // Initialize Log
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
+    Log.infoln(F("Free ram before starting Manager %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
     // Initialize Manager
     initManager();
 
@@ -230,7 +232,7 @@ void setup()
     // Initialize GPS
     initGPS();
 #endif
-
+    Log.infoln(F("Free ram before starting LoRaMesher %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     // Initialize LoRaMesh
     initLoRaMesher();
 
@@ -240,16 +242,17 @@ void setup()
 
 #endif
 #ifdef LORACHAT_ENABLED
+    Log.infoln(F("Free ram before starting LoRaChat %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     // Initialize LoRaChat
     initLoRaChat();
 #endif
-
+    Log.infoln(F("Free ram before starting WiFi %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     // Initialize WiFi
     initWiFi();
-
+    Log.infoln(F("Free ram before starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     // Initialize Mqtt
     initMqtt();
-
+    Log.infoln(F("Free ram before starting Display %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     // Initialize Display
     initDisplay();
 

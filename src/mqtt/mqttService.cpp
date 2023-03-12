@@ -105,9 +105,9 @@ void MqttService::initMqtt(String lclName)
 
     localName = lclName;
 
-    Log.verbose(F("DeviceID: %s"), lclName);
+    Log.verboseln(F("DeviceID: %s"), lclName);
 
-    Log.info(F("Connecting to %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    Log.infoln(F("Free ram before starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
     // do not verify tls certificate
     // check the following example for methods to verify the server:
@@ -139,6 +139,8 @@ void MqttService::initMqtt(String lclName)
     client.subscribe("/toLora");
 
     createMqttTask();
+
+    Log.infoln(F("Free ram after starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 }
 
 void MqttService::loop()
