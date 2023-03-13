@@ -4,42 +4,37 @@
  * @brief Create a Bluetooth Task
  *
  */
-void MqttService::createMqttTask()
-{
+void MqttService::createMqttTask() {
     int res = xTaskCreate(
         MqttLoop,
         "Mqtt Task",
         4096,
-        (void *)1,
+        (void*) 1,
         2,
         &mqtt_TaskHandle);
-    if (res != pdPASS)
-    {
+    if (res != pdPASS) {
         Log.errorln(F("Mqtt task handle error: %d"), res);
     }
 }
 
-void MqttService::MqttLoop(void *)
-{
-    MqttService &mqttService = MqttService::getInstance();
-    for (;;)
-    {
+void MqttService::MqttLoop(void*) {
+    Log.traceln(F("Mqtt loop started"));
+    MqttService& mqttService = MqttService::getInstance();
+
+    for (;;) {
         mqttService.loop();
         vTaskDelay(20 / portTICK_PERIOD_MS);
     }
 }
 
-bool MqttService::isDeviceConnected()
-{
+bool MqttService::isDeviceConnected() {
     return client.connected();
 }
 
-bool MqttService::writeToMqtt(DataMessage *message)
-{
+bool MqttService::writeToMqtt(DataMessage* message) {
     Log.info(F("Sending message to mqtt: %s"), message->message);
 
-    if (!isDeviceConnected())
-    {
+    if (!isDeviceConnected()) {
         Log.warning(F("No Mqtt device connected"));
         return false;
     }
@@ -49,12 +44,10 @@ bool MqttService::writeToMqtt(DataMessage *message)
     return true;
 }
 
-bool MqttService::writeToMqtt(String message)
-{
+bool MqttService::writeToMqtt(String message) {
     Log.info(F("Sending message to mqtt: %s"), message);
 
-    if (!isDeviceConnected())
-    {
+    if (!isDeviceConnected()) {
         Log.warning(F("No Mqtt device connected"));
         return false;
     }
@@ -80,8 +73,7 @@ bool MqttService::writeToMqtt(String message)
 //     }
 // }
 
-void callback(String &topic, String &payload)
-{
+void callback(String& topic, String& payload) {
     Serial.println("incoming: " + topic + " - " + payload);
 
     // Note: Do not use the client in the callback to publish, subscribe or
@@ -90,8 +82,7 @@ void callback(String &topic, String &payload)
     // or push to a queue and handle it in the loop after calling `client.loop()`.
 }
 
-void MqttService::initMqtt(String lclName)
-{
+void MqttService::initMqtt(String lclName) {
     // if (SerialBT->register_callback(callback) == ESP_OK) {
     //     Log.infoln(F("Bluetooth callback registered"));
     // }
@@ -112,74 +103,64 @@ void MqttService::initMqtt(String lclName)
     // do not verify tls certificate
     // check the following example for methods to verify the server:
     // https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFiClientSecure/examples/WiFiClientSecure/WiFiClientSecure.ino
-    net.setInsecure();
+    // net.setInsecure();
     // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
     // by Arduino. You need to set the IP address directly.
-    client.begin("carmelofiorello.com", 8883, net);
+    client.begin(MQTT_SERVER, MQTT_PORT, net);
     client.onMessage(callback);
 
     Serial.print("checking wifi...");
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        Serial.print(".");
-        // delay(1000);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    WiFiServerService::getInstance().connectWiFi();
+    if (WiFi.status() != WL_CONNECTED) {
+        Log.infoln(F("Wifi not connected"));
+        return;
     }
 
-    Serial.print("\nconnecting...");
-    while (!client.connect("joan", "joan", "joan1234"))
-    {
+    Log.errorln(F("Wifi connected"));
+
+    Serial.print("Connecting MQTT...");
+
+    while (!client.connect(lclName.c_str())) {
         Serial.print(".");
-        // delay(1000);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
     Serial.println("\nconnected!");
 
-    client.subscribe("/toLora");
+    // TODO: When routing table update notification, update the subscriptions accordingly
+    // TODO: Or when sending a message, add an attribute to send to an specific node
+    if (client.subscribe(MQTT_TOPIC_SUB)) {
+        Log.infoln(F("Subscribed to topic %s"), MQTT_TOPIC_SUB);
+    }
+    else {
+        Log.errorln(F("Error subscribing to topic %s"), MQTT_TOPIC_SUB);
+    }
 
     createMqttTask();
 
     Log.infoln(F("Free ram after starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 }
 
-void MqttService::loop()
-{
-    // while (SerialBT->available())
-    // {
-    //     String message = SerialBT->readStringUntil('\n');
-    //     message.remove(message.length() - 1, 1);
-    //     Serial.println(message);
-    //     String executedProgram = MessageManager::getInstance().executeCommand(message);
-    //     Serial.println(executedProgram);
-    //     writeToBluetooth(executedProgram);
-    // }
+void MqttService::loop() {
     client.loop();
-    // delay(10); // <- fixes some issues with WiFi stability
+
     vTaskDelay(10 / portTICK_PERIOD_MS);
 
-    // if (!client.connected())
-    // {
-    //     connect();
-    // }
-
     // publish a message roughly every second.
-    if (millis() - lastMillis > 10000)
-    {
+    if (millis() - lastMillis > 10000) {
+        Log.traceln(F("Sending message to mqtt"));
         lastMillis = millis();
-        client.publish("/fromLora", "world");
+        client.publish(MQTT_TOPIC_OUT, "world");
     }
 }
 
-void MqttService::processReceivedMessage(messagePort port, DataMessage *message)
-{
-    MqttMessage *mqttMessage = (MqttMessage *)message;
-    switch (mqttMessage->type)
-    {
-    case MqttMessageType::mqttMessage:
-        writeToMqtt(Helper::uint8ArrayToString(mqttMessage->message, mqttMessage->getPayloadSize()));
-        break;
-    default:
-        break;
+void MqttService::processReceivedMessage(messagePort port, DataMessage* message) {
+    MqttMessage* mqttMessage = (MqttMessage*) message;
+    switch (mqttMessage->type) {
+        case MqttMessageType::mqttMessage:
+            writeToMqtt(Helper::uint8ArrayToString(mqttMessage->message, mqttMessage->getPayloadSize()));
+            break;
+        default:
+            break;
     }
 }

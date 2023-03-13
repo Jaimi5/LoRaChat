@@ -178,7 +178,7 @@ void setup() {
     Log.infoln(F("Free ram before starting Display %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
     // Initialize Display
-    initDisplay();
+    // initDisplay();
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);

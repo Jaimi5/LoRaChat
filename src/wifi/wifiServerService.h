@@ -66,8 +66,8 @@ private:
         commandService = wiFiCommandService;
     };
 
-    String ssid = "DEFAULT_SSID";
-    String password = "DEFAULT_PASSWORD";
+    String ssid = WIFI_SSID;
+    String password = WIFI_PASSWORD;
 
     bool restartWiFiData();
 };
