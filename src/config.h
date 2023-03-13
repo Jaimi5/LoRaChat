@@ -1,13 +1,6 @@
 #pragma once
 
-//If the device has a GPS module
-//#define GPS_ENABLED
 //#define BLUETOOTH_ENABLED
-
-//Using LILYGO TTGO T-BEAM v1.1 
-#define BOARD_LED   LED_BUILTIN
-#define LED_ON      LOW
-#define LED_OFF     HIGH
 
 //LoRaChat Configuration
 #define LORACHAT_ENABLED

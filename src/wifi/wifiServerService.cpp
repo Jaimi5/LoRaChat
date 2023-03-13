@@ -31,7 +31,8 @@ bool WiFiServerService::connectAndSend(DataMessage* message) {
     //TODO: Check last time connected and if it's too long ago, try to send it lora mesh
 
     String json = MessageManager::getInstance().getJSON(message);
-    return HTTPService::sendHTTPPOST(json);
+    return false;
+    // return HTTPService::sendHTTPPOST(json);
 }
 
 String WiFiServerService::addSSID(String ssid) {
