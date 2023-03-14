@@ -6,8 +6,8 @@
 #define MAX_CONNECTION_TRY 15
 
 // WiFi credentials
-#define WIFI_SSID "Fibracat_21123"
-#define WIFI_PASSWORD "85392c7e38"
+#define WIFI_SSID "****"
+#define WIFI_PASSWORD "****"
 
 // MQTT configuration
 #define MQTT_SERVER "192.168.1.16"
