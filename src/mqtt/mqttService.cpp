@@ -107,6 +107,10 @@ void MqttService::initMqtt(String lclName) {
     // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
     // by Arduino. You need to set the IP address directly.
     client.begin(MQTT_SERVER, MQTT_PORT, net);
+
+    // we should set the keep alive interval to a greater value than the default
+    // client.setKeepAlive(20);
+
     client.onMessage(callback);
 
     Serial.print("checking wifi...");
