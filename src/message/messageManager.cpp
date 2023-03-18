@@ -160,7 +160,7 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
         case WiFiPort:
             sendMessageWiFi(message);
             break;
-         case MqttPort:
+        case MqttPort:
             sendMessageMqtt(message);
             break;
         default:
