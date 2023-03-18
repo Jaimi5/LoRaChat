@@ -5,23 +5,15 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-//OLED pins
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+// OLED pins
+#define SCREEN_WIDTH 128  // OLED display width, in pixels
+#define SCREEN_HEIGHT 64  // OLED display height, in pixels
 #define DISP_ADDRESS 0x3C // Address 0x3D for 128x64
 
-#ifndef OLED_SDA
-#define OLED_SDA SDA
-#endif
-#ifndef OLED_SCL
-#define OLED_SCL SCL
-#endif
+#define SSD1306_NO_SPLASH
 
-#ifndef OLED_RST
-#define OLED_RST -1
-#endif
-
-class Display {
+class Display
+{
 public:
     Display();
     void initDisplay();
@@ -32,13 +24,13 @@ public:
     void changeLineFFour(String str);
     void drawDisplay();
     void clearDisplay();
-    void printLine(String str, int& x, int y, int size, int minX, bool move);
+    void printLine(String str, int &x, int y, int size, int minX, bool move);
 
 private:
-    Adafruit_SSD1306 display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
+    Adafruit_SSD1306 display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, RST_OLED);
     TaskHandle_t Display_TaskHandle = NULL;
 
-    void changeLine(String str, int pos, int& x, int& minX, int size, bool& move);
+    void changeLine(String str, int pos, int &x, int &minX, int size, bool &move);
 
     String displayText[4] = {"LoRaChat v0.2", "", "", ""};
 
