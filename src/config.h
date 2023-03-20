@@ -19,3 +19,9 @@
 
 //Logging Configuration
 // #define DISABLE_LOGGING
+
+// Define default update send interval in ms
+#define TEMP_UPDATE_DELAY 60000 // 60 seconds
+
+// Sensor configuration
+#define ONE_WIRE_BUS 2

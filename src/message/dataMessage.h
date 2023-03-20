@@ -25,7 +25,8 @@ enum appPort: uint8_t {
     SOSApp = 5,
     CommandApp = 6,
     LoRaMesherApp = 7,
-    MQTTApp = 8
+    MQTTApp = 8,
+    TemperatureSensorApp = 9,
 };
 
 class DataMessageGeneric {
