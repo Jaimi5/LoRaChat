@@ -18,9 +18,6 @@
 // LoRaMesh
 #include "loramesh/loraMeshService.h"
 
-// Bluetooth
-#include "bluetooth/bluetoothService.h"
-
 // Mqtt
 #include "mqtt/mqttService.h"
 
@@ -48,20 +45,6 @@ void initLoRaMesher() {
 
 #pragma endregion
 
-#pragma region SerialBT
-
-#ifdef BLUETOOTH_ENABLED
-
-BluetoothService& bluetoothService = BluetoothService::getInstance();
-
-void initBluetooth() {
-    bluetoothService.initBluetooth(String(loraMeshService.getDeviceID()));
-}
-
-#endif
-
-#pragma endregion
-
 #pragma region Mqtt
 
 MqttService& mqttService = MqttService::getInstance();
@@ -79,11 +62,6 @@ MessageManager& manager = MessageManager::getInstance();
 void initManager() {
     manager.init();
     Log.verboseln("Manager initialized");
-
-#ifdef BLUETOOTH_ENABLED
-    manager.addMessageService(&bluetoothService);
-    Log.verboseln("Bluetooth service added to manager");
-#endif
 
     manager.addMessageService(&loraMeshService);
     Log.verboseln("LoRaMesher service added to manager");
@@ -166,11 +144,6 @@ void setup() {
     Log.infoln(F("Free ram before starting LoRaMesher %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     // Initialize LoRaMesh
     initLoRaMesher();
-
-#ifdef BLUETOOTH_ENABLED
-    // Initialize Bluetooth
-    initBluetooth();
-#endif
 
     Log.infoln(F("Free ram before starting WiFi %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
