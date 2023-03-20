@@ -30,7 +30,7 @@ public:
         ((DataMessageGeneric*) (this))->serialize(doc);
 
         // Add the derived class data to the JSON object
-        doc["sensorType"] = sensorType;
+        // doc["sensorType"] = sensorType;
     }
 };
 

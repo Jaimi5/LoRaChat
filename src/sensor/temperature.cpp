@@ -53,7 +53,7 @@ String Temperature::getJSON(DataMessage* message) {
 
     JsonObject data = doc.createNestedObject("data");
 
-    message->serialize(data);
+    temperatureMessage->serialize(data);
 
     String json;
     serializeJson(doc, json);

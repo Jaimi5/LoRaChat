@@ -24,6 +24,18 @@
 // WiFi
 #include "wifi/wifiServerService.h"
 
+// Sensors
+#include "sensor/temperature.h"
+
+#pragma region Temperature
+Temperature& temperature = Temperature::getInstance();
+
+void initTemperature() {
+    temperature.init();
+}
+
+#pragma endregion
+
 #pragma region WiFi
 
 WiFiServerService& wiFiService = WiFiServerService::getInstance();
@@ -62,6 +74,9 @@ MessageManager& manager = MessageManager::getInstance();
 void initManager() {
     manager.init();
     Log.verboseln("Manager initialized");
+
+    manager.addMessageService(&temperature);
+    Log.verboseln("Temperature service added to manager");
 
     manager.addMessageService(&loraMeshService);
     Log.verboseln("LoRaMesher service added to manager");
@@ -156,6 +171,9 @@ void setup() {
     initMqtt();
 
     Log.infoln(F("Free ram before starting Display %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
+    // Initialize Temperature
+    initTemperature();
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);
