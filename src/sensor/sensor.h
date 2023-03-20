@@ -28,8 +28,6 @@ public:
     virtual T readValueWait(uint8_t retries) = 0;
 
 protected:
-    MetadataSensorMessage* metadataMessage = new MetadataSensorMessage();
-
     void setReadEveryMs(uint32_t readEveryMs) {
         this->readEveryMs = readEveryMs;
     }
