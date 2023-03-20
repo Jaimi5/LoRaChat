@@ -32,19 +32,33 @@ bool MqttService::isDeviceConnected() {
 }
 
 bool MqttService::writeToMqtt(DataMessage* message) {
-    Log.info(F("Sending message to mqtt: %s"), message->message);
 
     if (!isDeviceConnected()) {
-        Log.warning(F("No Mqtt device connected"));
+        Log.warningln(F("No Mqtt device connected"));
         return false;
     }
 
     String json = MessageManager::getInstance().getJSON(message);
-    bool sended = client.publish(MQTT_TOPIC_OUT, json);
+
+    if (json.length() > MQTT_MAX_PACKET_SIZE) {
+        Log.errorln(F("Message too long"));
+        return false;
+    }
+
+    memcpy(mqttMessageSend.body, json.c_str(), json.length() + 1);
+
+    if (xQueueSend(sendQueue, (void*) &mqttMessageSend, (TickType_t) 10) != pdPASS) {
+        Log.errorln(F("Error sending to queue"));
+        return false;
+    }
+
+    return true;
+
+    // bool sended = client.publish(MQTT_TOPIC_OUT, json.c_str());
 
     // If connected but not sended, try to reconnect and send?
 
-    return sended;
+    // return sended;
 }
 
 bool MqttService::writeToMqtt(String message) {
@@ -86,6 +100,8 @@ void callback(String& topic, String& payload) {
 }
 
 void MqttService::initMqtt(String lclName) {
+    sendQueue = xQueueCreate(MQTT_MAX_QUEUE_SIZE, MQTT_MAX_PACKET_SIZE);
+
     // if (SerialBT->register_callback(callback) == ESP_OK) {
     //     Log.infoln(F("Bluetooth callback registered"));
     // }
@@ -116,32 +132,7 @@ void MqttService::initMqtt(String lclName) {
 
     client.onMessage(callback);
 
-    Serial.print("checking wifi...");
-    WiFiServerService::getInstance().connectWiFi();
-    if (WiFi.status() != WL_CONNECTED) {
-        Log.infoln(F("Wifi not connected"));
-        return;
-    }
-
-    Log.errorln(F("Wifi connected"));
-
-    Serial.print("Connecting MQTT...");
-
-    while (!client.connect(lclName.c_str())) {
-        Serial.print(".");
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-
-    Serial.println("\nconnected!");
-
-    // TODO: When routing table update notification, update the subscriptions accordingly
-    // TODO: Or when sending a message, add an attribute to send to an specific node
-    if (client.subscribe(MQTT_TOPIC_SUB)) {
-        Log.infoln(F("Subscribed to topic %s"), MQTT_TOPIC_SUB);
-    }
-    else {
-        Log.errorln(F("Error subscribing to topic %s"), MQTT_TOPIC_SUB);
-    }
+    connect();
 
     createMqttTask();
 
@@ -153,11 +144,56 @@ void MqttService::loop() {
 
     vTaskDelay(10 / portTICK_PERIOD_MS);
 
+    if (!client.connected()) {
+        connect();
+    }
+
+    if (!client.connected())
+        return;
+
+    if (xQueueReceive(sendQueue, (void*) &mqttMessageReceive, 0) == pdTRUE) {
+        Log.traceln(F("Sending message to mqtt"));
+        client.publish(MQTT_TOPIC_OUT, mqttMessageReceive.body);
+    }
+
     // publish a message roughly every second.
     if (millis() - lastMillis > 10000) {
         Log.traceln(F("Sending message to mqtt"));
         lastMillis = millis();
         client.publish(MQTT_TOPIC_OUT, "world");
+    }
+}
+
+void MqttService::connect() {
+
+    Serial.print("checking wifi...");
+    WiFiServerService::getInstance().connectWiFi();
+    if (WiFi.status() != WL_CONNECTED) {
+        Log.infoln(F("Wifi not connected"));
+        return;
+    }
+
+    Log.errorln(F("Wifi connected"));
+
+    Serial.print("Connecting MQTT...");
+
+    // TODO: Add username and password
+    int retries = 0;
+    while (!client.connect(localName.c_str()) && retries < 5) {
+        Serial.print(".");
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        retries++;
+    }
+
+    Serial.println("\nconnected!");
+
+    // TODO: When routing table update notification, update the subscriptions accordingly
+    // TODO: Or when sending a message, add an attribute to send to an specific node
+    if (client.subscribe(MQTT_TOPIC_SUB)) {
+        Log.infoln(F("Subscribed to topic %s"), MQTT_TOPIC_SUB);
+    }
+    else {
+        Log.errorln(F("Error subscribing to topic %s"), MQTT_TOPIC_SUB);
     }
 }
 

@@ -33,9 +33,12 @@ public:
         return instance;
     }
 
+
     void initMqtt(String localName);
 
     void loop();
+
+    void connect();
 
     bool isDeviceConnected();
 
@@ -64,4 +67,12 @@ private:
     TaskHandle_t mqtt_TaskHandle = NULL;
 
     String localName = "";
+
+    struct MQTTQueueMessage {
+        char body[MQTT_MAX_PACKET_SIZE];
+    };
+
+    QueueHandle_t sendQueue;
+    MQTTQueueMessage mqttMessageSend;
+    MQTTQueueMessage mqttMessageReceive;
 };
