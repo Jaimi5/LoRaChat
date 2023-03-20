@@ -38,10 +38,13 @@ bool MqttService::writeToMqtt(DataMessage* message) {
         Log.warning(F("No Mqtt device connected"));
         return false;
     }
-    // String json = MessageManager::getInstance().getJSON(message);
-    client.publish("/hello", "world");
 
-    return true;
+    String json = MessageManager::getInstance().getJSON(message);
+    bool sended = client.publish(MQTT_TOPIC_OUT, json);
+
+    // If connected but not sended, try to reconnect and send?
+
+    return sended;
 }
 
 bool MqttService::writeToMqtt(String message) {
