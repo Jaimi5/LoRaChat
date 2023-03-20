@@ -136,7 +136,13 @@ void MessageManager::sendMessageLoRaMesher(DataMessage* message) {
 
 void MessageManager::sendMessageMqtt(DataMessage* message) {
     MqttService& mqtt = MqttService::getInstance();
-    mqtt.writeToMqtt(message);
+    if (mqtt.writeToMqtt(message)) {
+        Log.verboseln(F("Message sent to MQTT"));
+        return;
+    }
+
+    LoRaMeshService& mesher = LoRaMeshService::getInstance();
+    mesher.sendClosestGateway(message);
 }
 
 void MessageManager::sendMessageWiFi(DataMessage* message) {
