@@ -28,11 +28,11 @@ void MqttService::MqttLoop(void*) {
 }
 
 bool MqttService::isDeviceConnected() {
-    return client.connected();
+    return client->connected();
 }
 
 bool MqttService::writeToMqtt(DataMessage* message) {
-
+    // TODO: Check for wifi connection, not mqtt connection
     if (!isDeviceConnected()) {
         Log.warningln(F("No Mqtt device connected"));
         return false;
@@ -40,25 +40,27 @@ bool MqttService::writeToMqtt(DataMessage* message) {
 
     String json = MessageManager::getInstance().getJSON(message);
 
-    if (json.length() > MQTT_MAX_PACKET_SIZE) {
+    // TODO: Need to find the correct number but this is a good start
+    uint16_t length = json.length() + 1 + sizeof(lwmqtt_message_t);
+
+    Log.verboseln(F("Message length: %d"), length);
+
+    if (length > MQTT_MAX_PACKET_SIZE) {
         Log.errorln(F("Message too long"));
         return false;
     }
 
-    memcpy(mqttMessageSend.body, json.c_str(), json.length() + 1);
+    MQTTQueueMessage* mqttMessageSend = new MQTTQueueMessage();
 
-    if (xQueueSend(sendQueue, (void*) &mqttMessageSend, (TickType_t) 10) != pdPASS) {
+    memcpy(mqttMessageSend->body, json.c_str(), json.length() + 1);
+
+    if (xQueueSend(sendQueue, &mqttMessageSend, (TickType_t) 10) != pdPASS) {
         Log.errorln(F("Error sending to queue"));
+        delete mqttMessageSend;
         return false;
     }
 
     return true;
-
-    // bool sended = client.publish(MQTT_TOPIC_OUT, json.c_str());
-
-    // If connected but not sended, try to reconnect and send?
-
-    // return sended;
 }
 
 bool MqttService::writeToMqtt(String message) {
@@ -69,7 +71,7 @@ bool MqttService::writeToMqtt(String message) {
         return false;
     }
     // String json = MessageManager::getInstance().getJSON(message);
-    client.publish("/hello", message);
+    client->publish("/hello", message);
 
     return true;
 }
@@ -96,11 +98,15 @@ void callback(String& topic, String& payload) {
     // Note: Do not use the client in the callback to publish, subscribe or
     // unsubscribe as it may cause deadlocks when other things arrive while
     // sending and receiving acknowledgments. Instead, change a global variable,
-    // or push to a queue and handle it in the loop after calling `client.loop()`.
+    // or push to a queue and handle it in the loop after calling `client->loop()`.
 }
 
 void MqttService::initMqtt(String lclName) {
-    sendQueue = xQueueCreate(MQTT_MAX_QUEUE_SIZE, MQTT_MAX_PACKET_SIZE);
+    sendQueue = xQueueCreate(MQTT_MAX_QUEUE_SIZE, sizeof(MQTTQueueMessage*));
+
+    if (sendQueue == NULL) {
+        Log.errorln(F("Error creating queue"));
+    }
 
     // if (SerialBT->register_callback(callback) == ESP_OK) {
     //     Log.infoln(F("Bluetooth callback registered"));
@@ -125,12 +131,12 @@ void MqttService::initMqtt(String lclName) {
     // net.setInsecure();
     // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
     // by Arduino. You need to set the IP address directly.
-    client.begin(MQTT_SERVER, MQTT_PORT, net);
+    client->begin(MQTT_SERVER, MQTT_PORT, net);
 
     // we should set the keep alive interval to a greater value than the default
-    // client.setKeepAlive(20);
+    // client->setKeepAlive(20);
 
-    client.onMessage(callback);
+    client->onMessage(callback);
 
     connect();
 
@@ -140,27 +146,48 @@ void MqttService::initMqtt(String lclName) {
 }
 
 void MqttService::loop() {
-    client.loop();
+
+    // TODO: If we can connect to wifi multiple times we should remove this service
+
+    client->loop();
 
     vTaskDelay(10 / portTICK_PERIOD_MS);
 
-    if (!client.connected()) {
+    if (!client->connected()) {
         connect();
     }
 
-    if (!client.connected())
+    if (!client->connected()) {
+        wifiRetries++;
+        if (wifiRetries > MAX_CONNECTION_TRY) {
+            Log.errorln(F("Removing mqtt service"));
+            vTaskDelete(NULL);
+            return;
+        }
         return;
+    }
 
-    if (xQueueReceive(sendQueue, (void*) &mqttMessageReceive, 0) == pdTRUE) {
-        Log.traceln(F("Sending message to mqtt"));
-        client.publish(MQTT_TOPIC_OUT, mqttMessageReceive.body);
+    wifiRetries = 0;
+
+    if (xQueueReceive(sendQueue, &mqttMessageReceive, 0) == pdTRUE) {
+        Log.traceln(F("Sending message to mqtt queue"));
+        if (client->publish(MQTT_TOPIC_OUT, mqttMessageReceive->body)) {
+            Log.traceln(F("Queue message sent"));
+            delete mqttMessageReceive;
+        }
+        else {
+            if (xQueueSendToFront(sendQueue, &mqttMessageReceive, (TickType_t) 0) != pdPASS) {
+                delete mqttMessageReceive;
+                Log.errorln(F("Error sending message to mqtt"));
+            }
+        }
     }
 
     // publish a message roughly every second.
-    if (millis() - lastMillis > 10000) {
+    if (millis() - lastMillis > 20000) {
         Log.traceln(F("Sending message to mqtt"));
         lastMillis = millis();
-        client.publish(MQTT_TOPIC_OUT, "world");
+        client->publish(MQTT_TOPIC_OUT, "Since boot: " + String(millis() / 1000));
     }
 }
 
@@ -179,7 +206,7 @@ void MqttService::connect() {
 
     // TODO: Add username and password
     int retries = 0;
-    while (!client.connect(localName.c_str()) && retries < 5) {
+    while (!client->connect(localName.c_str()) && retries < 5) {
         Serial.print(".");
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         retries++;
@@ -189,7 +216,7 @@ void MqttService::connect() {
 
     // TODO: When routing table update notification, update the subscriptions accordingly
     // TODO: Or when sending a message, add an attribute to send to an specific node
-    if (client.subscribe(MQTT_TOPIC_SUB)) {
+    if (client->subscribe(MQTT_TOPIC_SUB)) {
         Log.infoln(F("Subscribed to topic %s"), MQTT_TOPIC_SUB);
     }
     else {
@@ -198,12 +225,6 @@ void MqttService::connect() {
 }
 
 void MqttService::processReceivedMessage(messagePort port, DataMessage* message) {
-    MqttMessage* mqttMessage = (MqttMessage*) message;
-    switch (mqttMessage->type) {
-        case MqttMessageType::mqttMessage:
-            writeToMqtt(Helper::uint8ArrayToString(mqttMessage->message, mqttMessage->getPayloadSize()));
-            break;
-        default:
-            break;
-    }
+    // TODO: Add some checks?
+    writeToMqtt(message);
 }

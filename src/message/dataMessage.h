@@ -45,12 +45,12 @@ public:
     }
 
     void serialize(JsonObject& doc) {
-        // doc["appPortDst"] = appPortDst;
-        // doc["appPortSrc"] = appPortSrc;
-        // doc["messageId"] = messageId;
+        doc["appPortDst"] = appPortDst;
+        doc["appPortSrc"] = appPortSrc;
+        doc["messageId"] = messageId;
         doc["addrSrc"] = addrSrc;
-        // doc["addrDst"] = addrDst;
-        // doc["messageSize"] = messageSize;
+        doc["addrDst"] = addrDst;
+        doc["messageSize"] = messageSize;
     }
 };
 

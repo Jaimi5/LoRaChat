@@ -33,7 +33,6 @@ public:
         return instance;
     }
 
-
     void initMqtt(String localName);
 
     void loop();
@@ -48,7 +47,7 @@ public:
     // WiFiClientSecure net;
     WiFiClient net;
 
-    MQTTClient client;
+    MQTTClient* client = new MQTTClient(MQTT_MAX_PACKET_SIZE);
 
     MqttCommandService* mqttCommandService = new MqttCommandService();
 
@@ -73,6 +72,7 @@ private:
     };
 
     QueueHandle_t sendQueue;
-    MQTTQueueMessage mqttMessageSend;
-    MQTTQueueMessage mqttMessageReceive;
+    MQTTQueueMessage* mqttMessageReceive;
+
+    uint8_t wifiRetries = 0;
 };

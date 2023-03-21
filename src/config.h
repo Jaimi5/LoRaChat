@@ -3,7 +3,7 @@
 //#define BLUETOOTH_ENABLED
 
 //WiFi Configuration
-#define MAX_CONNECTION_TRY 15
+#define MAX_CONNECTION_TRY 5
 
 // WiFi credentials
 #define WIFI_SSID "****"
@@ -16,7 +16,7 @@
 #define MQTT_PASSWORD "public"
 #define MQTT_TOPIC_SUB "from-server"
 #define MQTT_TOPIC_OUT "to-server"
-#define MQTT_MAX_PACKET_SIZE 126
+#define MQTT_MAX_PACKET_SIZE 256 // 128, 256 or 512
 #define MQTT_MAX_QUEUE_SIZE 10
 
 //Logging Configuration
