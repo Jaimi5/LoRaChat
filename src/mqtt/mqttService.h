@@ -68,6 +68,7 @@ private:
     String localName = "";
 
     struct MQTTQueueMessage {
+        uint16_t topic;
         char body[MQTT_MAX_PACKET_SIZE];
     };
 
@@ -75,4 +76,6 @@ private:
     MQTTQueueMessage* mqttMessageReceive;
 
     uint8_t wifiRetries = 0;
+
+    bool sendMqttMessage(MQTTQueueMessage* message);
 };

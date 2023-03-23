@@ -27,6 +27,10 @@ void MqttService::MqttLoop(void*) {
     }
 }
 
+bool MqttService::sendMqttMessage(MQTTQueueMessage* message) {
+    return client->publish(MQTT_TOPIC_OUT + String(message->topic), message->body);
+}
+
 bool MqttService::isDeviceConnected() {
     return client->connected();
 }
@@ -53,6 +57,7 @@ bool MqttService::writeToMqtt(DataMessage* message) {
     MQTTQueueMessage* mqttMessageSend = new MQTTQueueMessage();
 
     memcpy(mqttMessageSend->body, json.c_str(), json.length() + 1);
+    mqttMessageSend->topic = message->addrSrc;
 
     if (xQueueSend(sendQueue, &mqttMessageSend, (TickType_t) 10) != pdPASS) {
         Log.errorln(F("Error sending to queue"));
@@ -76,29 +81,14 @@ bool MqttService::writeToMqtt(String message) {
     return true;
 }
 
-// void callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
-// {
-//     BluetoothService &instance = MqttService::getInstance();
-//     if (event == ESP_SPP_SRV_OPEN_EVT && instance.SerialBT->hasClient())
-//     {
-//         Log.verboseln("Bluetooth Connected");
-//         String help = MessageManager::getInstance().getAvailableCommands();
-//         Serial.println(help);
-//         instance.writeToBluetooth(help);
-//     }
-//     else if (event == ESP_SPP_CLOSE_EVT && !instance.SerialBT->hasClient())
-//     {
-//         Log.verboseln("Bluetooth Disconnected");
-//     }
-// }
-
 void callback(String& topic, String& payload) {
-    Serial.println("incoming: " + topic + " - " + payload);
 
-    // Note: Do not use the client in the callback to publish, subscribe or
-    // unsubscribe as it may cause deadlocks when other things arrive while
-    // sending and receiving acknowledgments. Instead, change a global variable,
-    // or push to a queue and handle it in the loop after calling `client->loop()`.
+    Log.infoln(F("Message arrived on topic: %s"), topic.c_str());
+
+    // MessageManager::getInstance().processReceivedMessage(messagePort::MQTT, payload);
+
+    // Serial.println("incoming: " + topic + " - " + payload);
+
 }
 
 void MqttService::initMqtt(String lclName) {
@@ -107,17 +97,6 @@ void MqttService::initMqtt(String lclName) {
     if (sendQueue == NULL) {
         Log.errorln(F("Error creating queue"));
     }
-
-    // if (SerialBT->register_callback(callback) == ESP_OK) {
-    //     Log.infoln(F("Bluetooth callback registered"));
-    // }
-    // else {
-    //     Log.errorln(F("Bluetooth callback not registered"));
-    // }
-
-    // if (!SerialBT->begin(lclName)) {
-    //     Log.errorln("BT init error");
-    // }
 
     localName = lclName;
 
@@ -171,7 +150,7 @@ void MqttService::loop() {
 
     if (xQueueReceive(sendQueue, &mqttMessageReceive, 0) == pdTRUE) {
         Log.traceln(F("Sending message to mqtt queue"));
-        if (client->publish(MQTT_TOPIC_OUT, mqttMessageReceive->body)) {
+        if (sendMqttMessage(mqttMessageReceive)) {
             Log.traceln(F("Queue message sent"));
             delete mqttMessageReceive;
         }
