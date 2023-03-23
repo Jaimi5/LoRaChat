@@ -30,6 +30,5 @@
         "numeric": "cpp",
         "thread": "cpp",
         "utility": "cpp"
-    },
-    "C_Cpp.formatting": "vcFormat"
+    }
 }

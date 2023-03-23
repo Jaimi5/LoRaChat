@@ -1,40 +1,34 @@
 #include <Arduino.h>
 
-// Configuration
+//Configuration
 #include "config.h"
 
-// Log
+//Log
 #include "ArduinoLog.h"
 
-// Helpers
+//Helpers
 #include "helpers/helper.h"
 
-// Manager
+//LoRaChat
+#include "loraChat/loraChatService.h"
+
+//Manager
 #include "message/messageManager.h"
 
-// Display
+//Display
 #include "display.h"
 
-// LoRaMesh
+//LoRaMesh
 #include "loramesh/loraMeshService.h"
 
-// Mqtt
-#include "mqtt/mqttService.h"
+//GPS libraries
+#include "gps/gpsService.h"
 
-// WiFi
+//Bluetooth
+#include "bluetooth/bluetoothService.h"
+
+//WiFi
 #include "wifi/wifiServerService.h"
-
-// Sensors
-#include "sensor/temperature.h"
-
-#pragma region Temperature
-Temperature& temperature = Temperature::getInstance();
-
-void initTemperature() {
-    temperature.init();
-}
-
-#pragma endregion
 
 #pragma region WiFi
 
@@ -51,18 +45,44 @@ void initWiFi() {
 LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
 
 void initLoRaMesher() {
-    // Init LoRaMesher
+    //Init LoRaMesher
     loraMeshService.initLoraMesherService();
 }
 
 #pragma endregion
 
-#pragma region Mqtt
+#pragma region LoRaChat
 
-MqttService& mqttService = MqttService::getInstance();
+LoRaChatService& loraChatService = LoRaChatService::getInstance();
 
-void initMqtt() {
-    mqttService.initMqtt(String(loraMeshService.getDeviceID()));
+void initLoRaChat() {
+    //Init LoRaChat
+    loraChatService.initLoRaChatService();
+}
+
+#pragma endregion
+
+#pragma region GPS
+
+#ifdef GPS_ENABLED
+#define UPDATE_GPS_DELAY 10000 //ms
+
+GPSService& gpsService = GPSService::getInstance();
+
+void initGPS() {
+    //Initialize GPS
+    gpsService.initGPS();
+}
+#endif
+
+#pragma endregion
+
+#pragma region SerialBT
+
+BluetoothService& bluetoothService = BluetoothService::getInstance();
+
+void initBluetooth() {
+    bluetoothService.initBluetooth(String(loraMeshService.getDeviceID()));
 }
 
 #pragma endregion
@@ -75,17 +95,24 @@ void initManager() {
     manager.init();
     Log.verboseln("Manager initialized");
 
-    manager.addMessageService(&temperature);
-    Log.verboseln("Temperature service added to manager");
+    manager.addMessageService(&bluetoothService);
+    Log.verboseln("Bluetooth service added to manager");
+
+#ifdef GPS_ENABLED
+    manager.addMessageService(&gpsService);
+    Log.verboseln("GPS service added to manager");
+#endif
 
     manager.addMessageService(&loraMeshService);
     Log.verboseln("LoRaMesher service added to manager");
 
+#ifdef LORACHAT_ENABLED
+    manager.addMessageService(&loraChatService);
+    Log.verboseln("LoRaChat service added to manager");
+#endif
+
     manager.addMessageService(&wiFiService);
     Log.verboseln("WiFi service added to manager");
-
-    manager.addMessageService(&mqttService);
-    Log.verboseln("Mqtt service added to manager");
 
     Serial.println(manager.getAvailableCommands());
 }
@@ -96,26 +123,40 @@ void initManager() {
 
 TaskHandle_t display_TaskHandle = NULL;
 
-#define DISPLAY_TASK_DELAY 50          // ms
-#define DISPLAY_LINE_TWO_DELAY 10000   // ms
-#define DISPLAY_LINE_THREE_DELAY 50000 // ms
+#define DISPLAY_TASK_DELAY 50 //ms
+#define DISPLAY_LINE_TWO_DELAY 10000 //ms
+#define DISPLAY_LINE_THREE_DELAY 50000 //ms
+
 
 void display_Task(void* pvParameters) {
 
     uint32_t lastLineTwoUpdate = 0;
     uint32_t lastLineThreeUpdate = 0;
-    char lineThree[25];
+#ifdef GPS_ENABLED
+    uint32_t lastGPSUpdate = 0;
+#endif
     while (true) {
-        // Update line two every DISPLAY_LINE_TWO_DELAY ms
+        //Update line two every DISPLAY_LINE_TWO_DELAY ms
         if (millis() - lastLineTwoUpdate > DISPLAY_LINE_TWO_DELAY) {
             lastLineTwoUpdate = millis();
             String lineTwo = String(loraMeshService.getDeviceID()) + " | " + wiFiService.getIP();
-            // write availbale amount of ram to lineThree
-            sprintf(lineThree, "Free ram: %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
             Screen.changeLineTwo(lineTwo);
-            Screen.changeLineThree(lineThree);
         }
 
+#ifdef GPS_ENABLED
+        //Update line three every DISPLAY_LINE_THREE_DELAY ms
+        // if (millis() - lastLineThreeUpdate > DISPLAY_LINE_THREE_DELAY) {
+        //     lastLineThreeUpdate = millis();
+        //     String lineThree = gpsService.getGPSString();
+        //     Screen.changeLineThree(lineThree);
+        // }
+
+        // //Update GPS every UPDATE_GPS_DELAY ms
+        // if (millis() - lastGPSUpdate > UPDATE_GPS_DELAY) {
+        //     lastGPSUpdate = millis();
+        //     gpsService.notifyUpdate();
+        // }
+#endif
         Screen.drawDisplay();
         vTaskDelay(DISPLAY_TASK_DELAY / portTICK_PERIOD_MS);
     }
@@ -148,38 +189,36 @@ void setup() {
     // Initialize Log
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
-    // Initialize Display
-    initDisplay();
-
-    Log.infoln(F("Free ram before starting Manager %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
     // Initialize Manager
     initManager();
 
-    Log.infoln(F("Free ram before starting LoRaMesher %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+#ifdef GPS_ENABLED
+    // Initialize GPS
+    initGPS();
+#endif
+
     // Initialize LoRaMesh
     initLoRaMesher();
 
-    Log.infoln(F("Free ram before starting WiFi %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    // Initialize Bluetooth
+    initBluetooth();
+
+#ifdef LORACHAT_ENABLED
+    // Initialize LoRaChat
+    initLoRaChat();
+#endif
 
     // Initialize WiFi
     initWiFi();
 
-    Log.infoln(F("Free ram before starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
-    // Initialize Mqtt
-    initMqtt();
-
-    Log.infoln(F("Free ram before starting Display %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
-    // Initialize Temperature
-    initTemperature();
+    // Initialize Display
+    initDisplay();
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);
 }
 
 void loop() {
-    // Suspend this task
+    //Suspend this task
     vTaskSuspend(NULL);
 }

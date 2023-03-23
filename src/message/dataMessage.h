@@ -11,8 +11,7 @@
 enum messagePort: uint8_t {
     LoRaMeshPort = 1,
     BluetoothPort = 2,
-    WiFiPort = 3,
-    MqttPort = 4
+    WiFiPort = 3
 };
 
 //TODO: This should be defined by the user, all the apps that are available and their numbers should be the same
@@ -24,9 +23,7 @@ enum appPort: uint8_t {
     GPSApp = 4,
     SOSApp = 5,
     CommandApp = 6,
-    LoRaMesherApp = 7,
-    MQTTApp = 8,
-    TemperatureSensorApp = 9,
+    LoRaMesherApp = 7
 };
 
 class DataMessageGeneric {

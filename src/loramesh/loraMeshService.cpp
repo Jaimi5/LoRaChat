@@ -2,7 +2,7 @@
 
 void LoRaMeshService::initLoraMesherService() {
     //Initialize LoRaMesher
-    radio.begin(SX1262_MOD);
+    radio.begin();
 
     //Create the receive task and add it to the LoRaMesher
     createReceiveMessages();

@@ -12,3 +12,4 @@ LoRaMeshCommandService::LoRaMeshCommandService() {
         return LoRaMeshService::getInstance().getRoutingTable();
     }));
 }
+ 
