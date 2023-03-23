@@ -15,15 +15,11 @@
 
 #include "wifiCommandService.h"
 
-#include "pages/index.h"
-
 #include "configuration/configService.h"
 
 #include "message/messageManager.h"
 
 #include "message/messageService.h"
-
-#include "httpService.h"
 
 #define DEFAULT_WIFI_SSID "DEFAULT_SSID"
 #define DEFAULT_WIFI_PASSWORD "DEFAULT_PASSWORD"
@@ -70,8 +66,8 @@ private:
         commandService = wiFiCommandService;
     };
 
-    String ssid = "DEFAULT_SSID";
-    String password = "DEFAULT_PASSWORD";
+    String ssid = WIFI_SSID;
+    String password = WIFI_PASSWORD;
 
     bool restartWiFiData();
 };

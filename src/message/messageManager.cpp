@@ -1,10 +1,6 @@
 #include "messageManager.h"
 
 void MessageManager::init() {
-    // xProcessQueue = xQueueCreate(10, sizeof(ManagerMessage*));
-    // xSendQueue = xQueueCreate(10, sizeof(ManagerMessage*));
-
-    // createTasks();
 }
 
 void MessageManager::addMessageService(MessageService* service) {
@@ -22,28 +18,6 @@ void MessageManager::addMessageService(MessageService* service) {
     }
 }
 
-// void MessageManager::loopSendMessages(void*) {
-//     MessageManager& manager = MessageManager::getInstance();
-//     ManagerMessage* message;
-
-//     for (;;) {
-//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-//         if (manager.xProcessQueue != 0) {
-//             // Receive a message on the created queue.  Block for 10 ticks if a
-//             // message is not immediately available.
-//             if (xQueueReceive(manager.xProcessQueue, &(message), (portTickType) 10)) {
-//                 // pcRxedMessage now points to the struct AMessage variable posted
-//                 // by vATask.
-//                 manager.sendMessage(message);
-//                 delete message->message;
-//                 delete message;
-//             }
-//         }
-
-//     }
-// }
-
 String MessageManager::getAvailableCommands() {
     String commands = "";
 
@@ -53,19 +27,6 @@ String MessageManager::getAvailableCommands() {
     }
 
     return commands;
-}
-
-String MessageManager::getAvailableCommandsHTML() {
-    String html = "<dl>";
-
-    for (auto service : services) {
-        html += "<dt>" + service->toString() + "</dt>";
-        html += service->commandService->publicCommandsHTML();
-    }
-
-    html += "</dl>";
-
-    return html;
 }
 
 String MessageManager::executeCommand(uint8_t serviceId, uint8_t commandId, String args) {
@@ -160,27 +121,28 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
         case WiFiPort:
             sendMessageWiFi(message);
             break;
+        case MqttPort:
+            sendMessageMqtt(message);
+            break;
         default:
             break;
     }
 }
 
-// void MessageManager::sendCommand(messagePort port, uint8_t id, uint16_t dst, uint8_t appPortSrc, uint8_t appPortDst, uint8_t command, uint32_t size, uint8_t* args[]) {
-//     DataMessage* message = new DataMessage();
-//     message->appPortSrc = appPortSrc;
-//     message->appPortDst = appPortDst;
-//     message->command = command;
-//     message->size = size;
-//     message->args = args;
-//     message->dst = dst;
-//     message->src = serviceSrc;
-
-//     sendMessage(port, message);
-// }
-
 void MessageManager::sendMessageLoRaMesher(DataMessage* message) {
     LoRaMeshService& mesher = LoRaMeshService::getInstance();
     mesher.sendReliable(message);
+}
+
+void MessageManager::sendMessageMqtt(DataMessage* message) {
+    MqttService& mqtt = MqttService::getInstance();
+    if (mqtt.writeToMqtt(message)) {
+        Log.verboseln(F("Message sent to MQTT"));
+        return;
+    }
+
+    LoRaMeshService& mesher = LoRaMeshService::getInstance();
+    mesher.sendClosestGateway(message);
 }
 
 void MessageManager::sendMessageWiFi(DataMessage* message) {
