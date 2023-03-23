@@ -39,13 +39,7 @@ public:
 
     void sendMessage(messagePort port, DataMessage* message);
 
-    static void loopReceivedMessages(void*);
-
-    static void loopSendMessages(void*);
-
     String getAvailableCommands();
-
-    String getAvailableCommandsHTML();
 
     String executeCommand(uint8_t serviceId, uint8_t commandId, String args);
 
@@ -74,6 +68,4 @@ private:
 
     static void sendMessageWiFi(DataMessage* message);
     static void sendMessageMqtt(DataMessage* message);
-
-    void createTasks();
 };

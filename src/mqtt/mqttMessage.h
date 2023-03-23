@@ -7,11 +7,6 @@
 #pragma pack(1)
 
 enum MqttMessageType: uint8_t {
-    // contactRequest = 1,
-    // contactResponse = 2,
-    // sendMessage = 3,
-    // gpsMessage = 4,
-    // SOSMessage = 5,
     mqttMessage = 1
 };
 

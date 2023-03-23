@@ -31,7 +31,8 @@ bool WiFiServerService::connectAndSend(DataMessage* message) {
     //TODO: Check last time connected and if it's too long ago, try to send it lora mesh
 
     String json = MessageManager::getInstance().getJSON(message);
-    return HTTPService::sendHTTPPOST(json);
+    return false;
+    // return HTTPService::sendHTTPPOST(json);
 }
 
 String WiFiServerService::addSSID(String ssid) {
@@ -98,5 +99,11 @@ bool WiFiServerService::restartWiFiData() {
     ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
     password = configService.getConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
 
-    return ssid != DEFAULT_WIFI_SSID && password != DEFAULT_WIFI_PASSWORD;
+    //TODO: Remove this when we have a way to set the default wifi data
+    if (ssid == DEFAULT_WIFI_SSID && password == DEFAULT_WIFI_PASSWORD) {
+        ssid = WIFI_SSID;
+        password = WIFI_PASSWORD;
+    }
+
+    return true;
 }

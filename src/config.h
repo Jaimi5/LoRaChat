@@ -1,25 +1,29 @@
 #pragma once
 
-//If the device has a GPS module
-//#define GPS_ENABLED
 //#define BLUETOOTH_ENABLED
 
-//Using LILYGO TTGO T-BEAM v1.1 
-#define BOARD_LED   LED_BUILTIN
-#define LED_ON      LOW
-#define LED_OFF     HIGH
-
-//LoRaChat Configuration
-#define LORACHAT_ENABLED
-#define MAX_NAME_LENGTH 10
-#define MAX_MESSAGE_LENGTH 100
-#define MAX_PREVIOUS_MESSAGES 10
-
 //WiFi Configuration
-#define MAX_CONNECTION_TRY 15
-#define SERVER_CONNECTION_TIMEOUT 1000 //ms
-#define SERVER_PORT 8080
-#define SERVER_URL "http://192.168.1.38:58394"
+#define MAX_CONNECTION_TRY 5
+
+// WiFi credentials
+#define WIFI_SSID "****"
+#define WIFI_PASSWORD "****"
+
+// MQTT configuration
+#define MQTT_SERVER "192.168.1.16"
+#define MQTT_PORT 1883
+#define MQTT_USERNAME "admin"
+#define MQTT_PASSWORD "public"
+#define MQTT_TOPIC_SUB "from-server/#"
+#define MQTT_TOPIC_OUT "to-server/"
+#define MQTT_MAX_PACKET_SIZE 256 // 128, 256 or 512
+#define MQTT_MAX_QUEUE_SIZE 10
 
 //Logging Configuration
 // #define DISABLE_LOGGING
+
+// Define default update send interval in ms
+#define TEMP_UPDATE_DELAY 60000 // 60 seconds
+
+// Sensor configuration
+#define ONE_WIRE_BUS 2
