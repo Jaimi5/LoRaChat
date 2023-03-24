@@ -29,7 +29,7 @@ public:
 
     void initLoraMesherService();
 
-    uint16_t getDeviceID();
+    uint16_t getLocalAddress();
 
     void loopReceivedPackets();
 

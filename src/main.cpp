@@ -62,7 +62,7 @@ void initLoRaMesher() {
 MqttService& mqttService = MqttService::getInstance();
 
 void initMqtt() {
-    mqttService.initMqtt(String(loraMeshService.getDeviceID()));
+    mqttService.initMqtt(String(loraMeshService.getLocalAddress()));
 }
 
 #pragma endregion
