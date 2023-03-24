@@ -16,9 +16,14 @@ public:
         serviceName = name;
     };
 
-    virtual void processReceivedMessage(messagePort port, DataMessage* message) {};
+    virtual void processReceivedMessage(messagePort port, DataMessage* message) {
+        Log.error("processReceivedMessage not implemented for service %s" CR, serviceName);
+    };
 
-    virtual String getJSON(DataMessage* message) { return ""; };
+    virtual String getJSON(DataMessage* message) {
+        Log.error("getJSON not implemented for service %s" CR, serviceName);
+        return "";
+    };
 
     TaskHandle_t receiveMessage_TaskHandle = NULL;
 
@@ -32,4 +37,13 @@ public:
 
     String toString() { return "Id: " + String(serviceId) + " - " + serviceName; }
 
+    virtual DataMessage* getDataMessage(JsonObject data) {
+        Log.error("getDataMessage not implemented for service %s" CR, serviceName);
+        return nullptr;
+    };
+
+    virtual DataMessage* getDataMessage(JsonObject data, DataMessage* message) {
+        Log.error("getDataMessage not implemented for service %s" CR, serviceName);
+        return nullptr;
+    };
 };
