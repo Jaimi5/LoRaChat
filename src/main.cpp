@@ -109,7 +109,7 @@ void display_Task(void* pvParameters) {
         // Update line two every DISPLAY_LINE_TWO_DELAY ms
         if (millis() - lastLineTwoUpdate > DISPLAY_LINE_TWO_DELAY) {
             lastLineTwoUpdate = millis();
-            String lineTwo = String(loraMeshService.getDeviceID()) + " | " + wiFiService.getIP();
+            String lineTwo = String(loraMeshService.getLocalAddress()) + " | " + wiFiService.getIP();
             // write availbale amount of ram to lineThree
             sprintf(lineThree, "Free ram: %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
             Screen.changeLineTwo(lineTwo);
