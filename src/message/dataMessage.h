@@ -52,6 +52,15 @@ public:
         doc["addrDst"] = addrDst;
         doc["messageSize"] = messageSize;
     }
+
+    void deserialize(JsonObject& doc) {
+        appPortDst = (appPort) doc["appPortDst"];
+        appPortSrc = (appPort) doc["appPortSrc"];
+        messageId = doc["messageId"];
+        addrSrc = doc["addrSrc"];
+        addrDst = doc["addrDst"];
+        messageSize = doc["messageSize"];
+    }
 };
 
 class DataMessage: public DataMessageGeneric {
