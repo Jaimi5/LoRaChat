@@ -27,7 +27,21 @@
 // Sensors
 #include "sensor/temperature.h"
 
+// Led
+#include "led/led.h"
+
+#pragma region Led
+
+Led& led = Led::getInstance();
+
+void initLed() {
+    led.init();
+}
+
+#pragma endregion
+
 #pragma region Temperature
+
 Temperature& temperature = Temperature::getInstance();
 
 void initTemperature() {
@@ -86,6 +100,9 @@ void initManager() {
 
     manager.addMessageService(&mqttService);
     Log.verboseln("Mqtt service added to manager");
+
+    manager.addMessageService(&led);
+    Log.verboseln("Led service added to manager");
 
     Serial.println(manager.getAvailableCommands());
 }
@@ -174,6 +191,9 @@ void setup() {
 
     // Initialize Temperature
     initTemperature();
+
+    // Initialize Led
+    initLed();
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);
