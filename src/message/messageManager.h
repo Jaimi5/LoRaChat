@@ -49,6 +49,8 @@ public:
 
     String getJSON(DataMessage* message);
 
+    DataMessage* getDataMessage(String json);
+
     String printDataMessageHeader(String title, DataMessage* message);
 
 private:
