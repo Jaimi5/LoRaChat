@@ -30,6 +30,12 @@
 // Led
 #include "led/led.h"
 
+#ifdef BLUETOOTH_ENABLED
+// Bluetooth
+#include "bluetooth/bluetoothService.h"
+
+#endif
+
 #pragma region Led
 
 Led& led = Led::getInstance();
@@ -82,6 +88,17 @@ void initMqtt() {
 #pragma endregion
 
 #pragma region Manager
+#ifdef BLUETOOTH_ENABLED
+#pragma region Bluetooth
+
+BluetoothService& bluetoothService = BluetoothService::getInstance();
+
+void initBluetooth() {
+    bluetoothService.initBluetooth("LoRaMesher");
+}
+
+#pragma endregion
+#endif
 
 MessageManager& manager = MessageManager::getInstance();
 
@@ -103,6 +120,15 @@ void initManager() {
 
     manager.addMessageService(&led);
     Log.verboseln("Led service added to manager");
+
+#ifdef BLUETOOTH_ENABLED
+
+    BluetoothService& bluetoothService = BluetoothService::getInstance();
+
+    manager.addMessageService(&bluetoothService);
+    Log.verboseln("Bluetooth service added to manager");
+
+#endif
 
     Serial.println(manager.getAvailableCommands());
 }
@@ -143,7 +169,7 @@ void createUpdateDisplay() {
         display_Task,
         "Display Task",
         4096,
-        (void*) 1,
+        (void*)1,
         2,
         &display_TaskHandle);
     if (res != pdPASS) {
@@ -181,6 +207,13 @@ void setup() {
 
     // Initialize WiFi
     initWiFi();
+
+#ifdef BLUETOOTH_ENABLED
+
+    Log.infoln(F("Free ram before starting BLE %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    initBluetooth();
+
+#endif
 
     Log.infoln(F("Free ram before starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
