@@ -84,11 +84,29 @@ bool MqttService::writeToMqtt(String message) {
 void callback(String& topic, String& payload) {
 
     Log.infoln(F("Message arrived on topic: %s"), topic.c_str());
+    DataMessage* message = MessageManager::getInstance().getDataMessage(payload);
 
-    // MessageManager::getInstance().processReceivedMessage(messagePort::MQTT, payload);
+    if (message == NULL) {
+        Log.errorln(F("Error parsing message"));
+        return;
+    }
 
-    // Serial.println("incoming: " + topic + " - " + payload);
+    if (message->addrDst == 0) {
+        String getDst = topic.substring(topic.lastIndexOf("/") + 1);
+        message->addrDst = getDst.toInt();
 
+        if (message->addrDst == 0) {
+            Log.errorln(F("Error parsing destination address"));
+            delete message;
+            return;
+        }
+    }
+
+    MessageManager::getInstance().processReceivedMessage(messagePort::MqttPort, message);
+
+    Log.verboseln(F("Message sent to services"));
+
+    delete message;
 }
 
 void MqttService::initMqtt(String lclName) {
@@ -138,6 +156,7 @@ void MqttService::loop() {
 
     if (!client->connected()) {
         wifiRetries++;
+        // TODO: This should be different, try reconnect every x minutes if wifi available?
         if (wifiRetries > MAX_CONNECTION_TRY) {
             Log.errorln(F("Removing mqtt service"));
             vTaskDelete(NULL);
@@ -166,7 +185,7 @@ void MqttService::loop() {
     if (millis() - lastMillis > 20000) {
         Log.traceln(F("Sending message to mqtt"));
         lastMillis = millis();
-        client->publish(MQTT_TOPIC_OUT, "Since boot: " + String(millis() / 1000));
+        client->publish(MQTT_TOPIC_OUT + localName, "Since boot: " + String(millis() / 1000));
     }
 }
 

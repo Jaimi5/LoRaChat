@@ -27,7 +27,21 @@
 // Sensors
 #include "sensor/temperature.h"
 
+// Led
+#include "led/led.h"
+
+#pragma region Led
+
+Led& led = Led::getInstance();
+
+void initLed() {
+    led.init();
+}
+
+#pragma endregion
+
 #pragma region Temperature
+
 Temperature& temperature = Temperature::getInstance();
 
 void initTemperature() {
@@ -62,7 +76,7 @@ void initLoRaMesher() {
 MqttService& mqttService = MqttService::getInstance();
 
 void initMqtt() {
-    mqttService.initMqtt(String(loraMeshService.getDeviceID()));
+    mqttService.initMqtt(String(loraMeshService.getLocalAddress()));
 }
 
 #pragma endregion
@@ -87,6 +101,9 @@ void initManager() {
     manager.addMessageService(&mqttService);
     Log.verboseln("Mqtt service added to manager");
 
+    manager.addMessageService(&led);
+    Log.verboseln("Led service added to manager");
+
     Serial.println(manager.getAvailableCommands());
 }
 
@@ -109,7 +126,7 @@ void display_Task(void* pvParameters) {
         // Update line two every DISPLAY_LINE_TWO_DELAY ms
         if (millis() - lastLineTwoUpdate > DISPLAY_LINE_TWO_DELAY) {
             lastLineTwoUpdate = millis();
-            String lineTwo = String(loraMeshService.getDeviceID()) + " | " + wiFiService.getIP();
+            String lineTwo = String(loraMeshService.getLocalAddress()) + " | " + wiFiService.getIP();
             // write availbale amount of ram to lineThree
             sprintf(lineThree, "Free ram: %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
             Screen.changeLineTwo(lineTwo);
@@ -174,6 +191,9 @@ void setup() {
 
     // Initialize Temperature
     initTemperature();
+
+    // Initialize Led
+    initLed();
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);

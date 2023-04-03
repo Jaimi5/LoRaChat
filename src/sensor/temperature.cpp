@@ -112,7 +112,7 @@ TemperatureMessage* Temperature::getTemperatureForSend(float value) {
 
     temperatureMessage->appPortDst = appPort::MQTTApp;
     temperatureMessage->appPortSrc = appPort::TemperatureSensorApp;
-    temperatureMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    temperatureMessage->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     temperatureMessage->addrDst = 0;
     temperatureMessage->messageId = sensorMessageId++;
 

@@ -105,7 +105,7 @@ DataMessage* LoRaMeshService::createDataMessage(AppPacket<LoRaMeshMessage>* appP
     return dataMessage;
 }
 
-uint16_t LoRaMeshService::getDeviceID() {
+uint16_t LoRaMeshService::getLocalAddress() {
     return radio.getLocalAddress();
 }
 

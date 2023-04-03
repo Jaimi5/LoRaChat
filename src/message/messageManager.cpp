@@ -83,6 +83,31 @@ String MessageManager::getJSON(DataMessage* message) {
     return "{\"Empty\":\"true\"}";
 }
 
+DataMessage* MessageManager::getDataMessage(String json) {
+    DynamicJsonDocument doc(1024);
+
+    DeserializationError error = deserializeJson(doc, json);
+
+    if (error) {
+        Log.errorln(F("deserializeJson() failed: %s"), error.c_str());
+        return nullptr;
+    }
+
+    JsonObject data = doc["dataMessage"];
+
+    uint8_t serviceId = data["appPortSrc"];
+
+    for (auto service : services) {
+        if (service->serviceId == serviceId) {
+            return service->getDataMessage(data);
+        }
+    }
+
+    Log.errorln("Service Not Found");
+
+    return nullptr;
+}
+
 String MessageManager::printDataMessageHeader(String title, DataMessage* message) {
     DynamicJsonDocument doc(1024);
 
@@ -102,6 +127,16 @@ String MessageManager::printDataMessageHeader(String title, DataMessage* message
 
 void MessageManager::processReceivedMessage(messagePort port, DataMessage* message) {
     printDataMessageHeader("Received", message);
+
+    // TODO: Add a list to track the messages already received to avoid loops and duplicates
+
+    if (message->addrDst != 0 && message->addrDst != LoRaMeshService::getInstance().getLocalAddress()) {
+        Log.verboseln(F("Message not for me"));
+        if (port == MqttPort) {
+            sendMessage(LoRaMeshPort, message);
+        }
+        return;
+    }
 
     for (auto service : services) {
         if (service->serviceId == message->appPortDst) {

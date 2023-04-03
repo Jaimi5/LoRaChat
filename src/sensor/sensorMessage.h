@@ -24,6 +24,7 @@ enum SensorMessageType: uint8_t {
 class SensorMessageGeneric: public DataMessageGeneric {
 public:
     DataSensorType sensorType;
+    SensorMessageType messageType;
 
     void serialize(JsonObject& doc) {
         // Call the base class serialize function

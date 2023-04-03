@@ -27,6 +27,7 @@ enum appPort: uint8_t {
     LoRaMesherApp = 7,
     MQTTApp = 8,
     TemperatureSensorApp = 9,
+    LedApp = 10
 };
 
 class DataMessageGeneric {
@@ -51,6 +52,15 @@ public:
         doc["addrSrc"] = addrSrc;
         doc["addrDst"] = addrDst;
         doc["messageSize"] = messageSize;
+    }
+
+    void deserialize(JsonObject& doc) {
+        appPortDst = (appPort) doc["appPortDst"];
+        appPortSrc = (appPort) doc["appPortSrc"];
+        messageId = doc["messageId"];
+        addrSrc = doc["addrSrc"];
+        addrDst = doc["addrDst"];
+        messageSize = doc["messageSize"];
     }
 };
 
