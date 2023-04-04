@@ -27,7 +27,8 @@ enum appPort: uint8_t {
     LoRaMesherApp = 7,
     MQTTApp = 8,
     TemperatureSensorApp = 9,
-    LedApp = 10
+    LedApp = 10,
+    SimApp = 11
 };
 
 class DataMessageGeneric {

@@ -30,6 +30,20 @@
 // Led
 #include "led/led.h"
 
+// Simulator
+#include "simulator/sim.h"
+
+#pragma region Simulator
+
+Sim& simulator = Sim::getInstance();
+
+void initSimulator() {
+    // Init Simulator
+    simulator.init();
+}
+
+#pragma endregion
+
 #pragma region Led
 
 Led& led = Led::getInstance();
@@ -103,6 +117,9 @@ void initManager() {
 
     manager.addMessageService(&led);
     Log.verboseln("Led service added to manager");
+
+    manager.addMessageService(&simulator);
+    Log.verboseln("Simulator service added to manager");
 
     Serial.println(manager.getAvailableCommands());
 }
@@ -194,6 +211,9 @@ void setup() {
 
     // Initialize Led
     initLed();
+
+    // Initialize Simulator
+    initSimulator();
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);
