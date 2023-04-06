@@ -44,10 +44,13 @@ private:
         commandService = bluetoothCommandService;
     };
 
-    BLEService configService = BLEService("19B10010-E8F2-537E-4F6C-D104768A1214"); // create service
+    BLEService configService = BLEService("0d38784b-07a0-4642-9f14-a460a538104b"); // create service
 
     // create switch characteristic and allow remote device to read and write
-    BLECharacteristic wifiNameCharacteristic = BLECharacteristic("19B10011-E8F2-537E-4F6C-D104768A1214", BLERead | BLEWrite, "VeryLongPasswordToStayFresh");
+    BLECharacteristic wifiNameCharacteristic = BLECharacteristic("85b96737-8b13-4d84-8d42-3d98bba40f07", BLERead | BLEWrite, "VeryLongPasswordToStayFresh");
+
+    BLECharacteristic wifiPwdCharacteristic = BLECharacteristic("6e118941-a653-4ecb-98e1-b4710d216a1a", BLERead | BLEWrite, "VeryLongPasswordToStayFresh");
+
 
     void createBluetoothTask();
 
