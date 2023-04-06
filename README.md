@@ -34,8 +34,11 @@ To use MQTT you need to be connected to the WiFi network. There are other parame
 ```json
 {
   "dataMessage": {
-    "appPortSrc": 10,
+    /** The message header. */
+    "appPortSrc": 10, // The app port of the application that is sending the message. In this case, the LED App.
     "addrDst": 1234, // The destination device ID, Optional
+
+    /** The message payload. Specific for each App */
     "ledCommand": 1
   }
 }
