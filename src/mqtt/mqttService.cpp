@@ -125,7 +125,7 @@ void MqttService::initMqtt(String lclName) {
     // do not verify tls certificate
     // check the following example for methods to verify the server:
     // https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFiClientSecure/examples/WiFiClientSecure/WiFiClientSecure.ino
-    // net.setInsecure();
+    net.setInsecure();
     // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
     // by Arduino. You need to set the IP address directly.
     client->begin(MQTT_SERVER, MQTT_PORT, net);

@@ -65,8 +65,37 @@ void wifiNameCharacteristicWritten(BLEDevice central, BLECharacteristic characte
 
     Serial.println(value);
 
+    WiFiServerService& wiFiService = WiFiServerService::getInstance();
+
+    wiFiService.addSSID(value);
+
+    wiFiService.saveWiFiData();
     //TODO: here we need to save the new wifi name to the flash memory
 
+}
+
+void wifiPwdCharacteristicWritten(BLEDevice central, BLECharacteristic characteristic) {
+    // central wrote new value to characteristic, update LED
+    Serial.print("Characteristic event, written: ");
+
+
+    // yes, get the value
+    char value[30];
+
+    characteristic.readValue(value, 30);
+
+
+    Serial.println(value);
+
+    WiFiServerService& wiFiService = WiFiServerService::getInstance();
+
+    wiFiService.addPassword(value);
+
+
+    wiFiService.saveWiFiData();
+
+
+    //TODO: here we need to save the new wifi pwd to the flash memory
 
 }
 
@@ -86,6 +115,7 @@ void BluetoothService::initBluetooth(String lclName) {
 
     // add the characteristics to the service
     configService.addCharacteristic(wifiNameCharacteristic);
+    configService.addCharacteristic(wifiPwdCharacteristic);
 
     // add the service
     BLE.addService(configService);
@@ -99,6 +129,7 @@ void BluetoothService::initBluetooth(String lclName) {
 
     // assign event handlers for characteristic
     wifiNameCharacteristic.setEventHandler(BLEWritten, wifiNameCharacteristicWritten);
+    wifiPwdCharacteristic.setEventHandler(BLEWritten, wifiPwdCharacteristicWritten);
 
     // start advertising
     BLE.advertise();
