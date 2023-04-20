@@ -58,6 +58,10 @@ public:
 
     String getIP();
 
+    String getSSID();
+
+    String getPassword();
+
     void responseCommand(WiFiClient client, String header);
 
 private:

@@ -121,7 +121,13 @@ void BluetoothService::initBluetooth(String lclName) {
     BLE.addService(configService);
 
     // set the initial value for the characeristic: TODO: here we need to take thename of the currently saved wifi
-    wifiNameCharacteristic.writeValue("test");
+
+    WiFiServerService& wiFiService = WiFiServerService::getInstance();
+
+    wifiNameCharacteristic.writeValue(wiFiService.getSSID().c_str());
+
+    wifiPwdCharacteristic.writeValue(wiFiService.getPassword().c_str());
+
 
     // assign event handlers for connected, disconnected to peripheral
     BLE.setEventHandler(BLEConnected, blePeripheralConnectHandler);
