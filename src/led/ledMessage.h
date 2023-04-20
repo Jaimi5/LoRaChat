@@ -9,8 +9,8 @@
 #pragma pack(1)
 
 enum LedCommand: uint8_t {
-    On = 0,
-    Off = 1
+    Off = 0,
+    On = 1
 };
 
 class LedMessage: public DataMessageGeneric {
