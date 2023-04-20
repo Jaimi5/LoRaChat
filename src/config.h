@@ -26,6 +26,7 @@
 
 // Define default update send interval in ms
 #define TEMP_UPDATE_DELAY 60000 // 60 seconds
+#define DHT22_UPDATE_DELAY 30000 // 30 seconds
 
 // Sensor configuration
 #define ONE_WIRE_BUS 2

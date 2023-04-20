@@ -25,7 +25,9 @@
 #include "wifi/wifiServerService.h"
 
 // Sensors
-#include "sensor/temperature.h"
+#include "sensor/temperature-onewire/temperature.h"
+
+#include "sensor/dht22/dht22.h"
 
 // Led
 #include "led/led.h"
@@ -52,6 +54,17 @@ Temperature& temperature = Temperature::getInstance();
 
 void initTemperature() {
     temperature.init();
+}
+
+#pragma endregion
+
+
+#pragma region Dht22
+
+Dht22& dht22 = Dht22::getInstance();
+
+void initDht22() {
+    dht22.init();
 }
 
 #pragma endregion
@@ -108,6 +121,9 @@ void initManager() {
 
     manager.addMessageService(&temperature);
     Log.verboseln("Temperature service added to manager");
+
+    manager.addMessageService(&dht22);
+    Log.verboseln("dht22 service added to manager");
 
     manager.addMessageService(&loraMeshService);
     Log.verboseln("LoRaMesher service added to manager");
@@ -223,7 +239,10 @@ void setup() {
     Log.infoln(F("Free ram before starting Display %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
     // Initialize Temperature
-    initTemperature();
+    //initTemperature();
+
+    // Initialize Dht22
+    initDht22();
 
     // Initialize Led
     initLed();
