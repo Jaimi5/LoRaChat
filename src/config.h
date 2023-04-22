@@ -14,8 +14,8 @@
 //#define MQTT_SERVER "test.mosquitto.org"
 #define MQTT_PORT 8883
 //#define MQTT_PORT 8883
-#define MQTT_USERNAME "admin"
-#define MQTT_PASSWORD "password"
+#define MQTT_USERNAME "vase-smart"
+#define MQTT_PASSWORD "&eHC**4pv4?5dx=&"
 #define MQTT_TOPIC_SUB "from-server/#"
 #define MQTT_TOPIC_OUT "to-server/"
 #define MQTT_MAX_PACKET_SIZE 256 // 128, 256 or 512

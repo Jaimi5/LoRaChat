@@ -204,7 +204,7 @@ void MqttService::connect() {
 
     // TODO: Add username and password
     int retries = 0;
-    while (!client->connect(localName.c_str()) && retries < 5) {
+    while (!client->connect(localName.c_str(), MQTT_USERNAME, MQTT_PASSWORD) && retries < 5) {
         Serial.print(".");
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         retries++;
