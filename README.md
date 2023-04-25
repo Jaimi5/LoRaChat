@@ -84,3 +84,14 @@ With this example we are using a Heltec WIFI LoRa 32 (V3) board. You can use any
 Be aware that when changing the board you need to change the module in the `loramesh/LoRaMeshService.cpp` file.
 
 As we are using the Heltec WIFI LoRa 32 (V3) we needed to use a custom board configuration. [Here is why](http://community.heltec.cn/t/heltec-board-migration-from-v2-to-v3/12667).
+
+# TODO LIST
+
+- [ ] ACK of the state of the LED (On/Off).
+- [ ] Generic multiple read of the sensor in a single message. (Peripheral application).
+    - [ ] Add state of the LED/PUMP to the message.
+- [ ] Minimum time between messages, an estimation.
+    - [ ] Automatically calculate the minimum time between messages.
+- [ ] Power management.
+    - [ ] Sleep mode.
+    - [ ] Deep sleep mode.
