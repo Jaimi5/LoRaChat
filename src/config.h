@@ -1,13 +1,13 @@
 #pragma once
 
-//#define BLUETOOTH_ENABLED
+#define BLUETOOTH_ENABLED
 
 //WiFi Configuration
 #define MAX_CONNECTION_TRY 5
 
 // WiFi credentials
-#define WIFI_SSID "****"
-#define WIFI_PASSWORD "****"
+#define WIFI_SSID "*********"
+#define WIFI_PASSWORD "*********"
 
 // MQTT configuration
 #define MQTT_SERVER "192.168.0.108"
@@ -24,6 +24,7 @@
 
 // Define default update send interval in ms
 #define TEMP_UPDATE_DELAY 60000 // 60 seconds
+#define DHT22_UPDATE_DELAY 30000 // 30 seconds
 
 // Sensor configuration
 #define ONE_WIRE_BUS 2

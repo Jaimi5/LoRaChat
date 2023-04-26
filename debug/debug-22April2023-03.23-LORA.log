@@ -1,0 +1,520 @@
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -28 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 171 Type: 1010 Via: 0x87F8 Seq_Id: 34 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+E: Dht22 reading error
+W: No Mqtt device connected
+T: Packet created with 12 bytes
+T: Packet created with 29 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Size of Send Packets Queue: 1
+V: Send n. 117
+V: RandomDelay 3832 ms
+V: Message sent to gateway 18256
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 117 Type: 1010011 Via: 0x4750 Seq_Id: 40 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 16 bytes
+I: Receiving LoRa packet: Size: 16 bytes RSSI: -27 SNR: 13
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 16 Src: 0x4750 Dst: 0xFFFF Id: 172 Type: 100
+V: Route packet from 0x4750 with size 2
+V: Reset Receive SNR from 0x4750: 13
+V: Current routing table:
+V: 0 - 0x4750 via 0x4750 metric 1 Role 1
+V: 1 - 0x87F8 via 0x4750 metric 2 Role 0
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 173 Type: 1010 Via: 0x87F8 Seq_Id: 35 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+T: Creating Routing Packet
+T: Packet created with 16 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Size of Send Packets Queue: 1
+V: Send n. 118
+V: RandomDelay 2395 ms
+V: Starting scanning channel
+V: Packet send -- Size: 16 Src: 0x87D8 Dst: 0xFFFF Id: 118 Type: 100
+V: TimeOnAir 63 ms, next message in 6237 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 174 Type: 1010 Via: 0x87D8 Seq_Id: 34 Num: 0
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+V: Sending next packet after receiving an ACK
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 1
+V: Send n. 119
+V: RandomDelay 2874 ms
+V: Starting scanning channel
+V: Packet send -- Size: 29 Src: 0x87D8 Dst: 0x4750 Id: 119 Type: 10011 Via: 0x4750 Seq_Id: 34 Num: 1
+V: TimeOnAir 85 ms, next message in 8415 ms
+T: Deleting packet
+T: Deleting packet queue
+E: Dht22 reading error
+W: No Mqtt device connected
+T: Packet created with 12 bytes
+T: Packet created with 29 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Message sent to gateway 18256
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 175 Type: 1010 Via: 0x87D8 Seq_Id: 35 Num: 0
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+V: Sending next packet after receiving an ACK
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 2
+V: Send n. 120
+V: RandomDelay 479 ms
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 120 Type: 1010011 Via: 0x4750 Seq_Id: 41 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 176 Type: 1010 Via: 0x87F8 Seq_Id: 32 Num: 1
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 1
+V: Send n. 121
+V: RandomDelay 479 ms
+V: Starting scanning channel
+V: Packet send -- Size: 29 Src: 0x87D8 Dst: 0x4750 Id: 121 Type: 10011 Via: 0x4750 Seq_Id: 35 Num: 1
+V: TimeOnAir 85 ms, next message in 8415 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 177 Type: 1010 Via: 0x87F8 Seq_Id: 36 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -28 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 178 Type: 1010 Via: 0x87D8 Seq_Id: 37 Num: 0
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+V: Sending next packet after receiving an ACK
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+T: Deleting packet
+V: Size of Send Packets Queue: T: Deleting packet queue
+1
+V: Send n. 122
+V: RandomDelay 1437 ms
+V: Starting scanning channel
+V: Packet send -- Size: 29 Src: 0x87D8 Dst: 0x4750 Id: 122 Type: 10011 Via: 0x4750 Seq_Id: 37 Num: 1
+V: TimeOnAir 85 ms, next message in 8415 ms
+T: Deleting packet
+T: Deleting packet queue
+E: Dht22 reading error
+W: No Mqtt device connected
+T: Packet created with 12 bytes
+T: Packet created with 29 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Message sent to gateway 18256
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 13
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 179 Type: 1010 Via: 0x87D8 Seq_Id: 34 Num: 1
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+T: All the packets has been arrived to the seq_Id: 34
+T: Clearing list configuration Seq_Id: 34 Src: 0x4750
+T: Deleting packet
+T: Deleting packet queue
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 1
+V: Send n. 123
+V: RandomDelay 4311 ms
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 123 Type: 1010011 Via: 0x4750 Seq_Id: 42 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 180 Type: 1010 Via: 0x87D8 Seq_Id: 38 Num: 0
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+V: Sending next packet after receiving an ACK
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+T: Deleting packet
+T: Deleting packet queue
+V: Checking routes timeout
+V: Current routing table:
+V: 0 - 0x4750 via 0x4750 metric 1 Role 1
+V: 1 - 0x87F8 via 0x4750 metric 2 Role 0
+V: Checking Q_WRP timeouts
+V: Checking Q_WSP timeouts
+W: Timeout reached from Waiting Send Queue, Seq_Id: 35, N.TimeOuts 1
+W: Timeout reached from Waiting Send Queue, Seq_Id: 36, N.TimeOuts 1
+W: Timeout reached from Waiting Send Queue, Seq_Id: 37, N.TimeOuts 1
+W: Timeout reached from Waiting Send Queue, Seq_Id: 38, N.TimeOuts 1
+W: Timeout reached from Waiting Send Queue, Seq_Id: 39, N.TimeOuts 1
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+W: Timeout reached from Waiting Send Queue, Seq_Id: 40, N.TimeOuts 1
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+W: Timeout reached from Waiting Send Queue, Seq_Id: 41, N.TimeOuts 1
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+W: Timeout reached from Waiting Send Queue, Seq_Id: 42, N.TimeOuts 1
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+T: Creating Routing Packet
+T: Packet created with 16 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Size of Send Packets Queue: 6
+V: Send n. 124
+V: RandomDelay 4311 ms
+V: Starting scanning channel
+V: Packet send -- Size: 16 Src: 0x87D8 Dst: 0xFFFF Id: 124 Type: 100
+V: TimeOnAir 63 ms, next message in 6237 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 16 bytes
+I: Receiving LoRa packet: Size: 16 bytes RSSI: -27 SNR: 13
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 16 Src: 0x4750 Dst: 0xFFFF Id: 181 Type: 100
+V: Route packet from 0x4750 with size 2
+V: Reset Receive SNR from 0x4750: 13
+V: Current routing table:
+V: 0 - 0x4750 via 0x4750 metric 1 Role 1
+V: 1 - 0x87F8 via 0x4750 metric 2 Role 0
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 5
+V: Send n. 125
+V: RandomDelay 958 ms
+V: Starting scanning channel
+V: Packet send -- Size: 29 Src: 0x87D8 Dst: 0x4750 Id: 125 Type: 10011 Via: 0x4750 Seq_Id: 38 Num: 1
+V: TimeOnAir 85 ms, next message in 8415 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 13
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 182 Type: 1010 Via: 0x87D8 Seq_Id: 39 Num: 0
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+V: Sending next packet after receiving an ACK
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 183 Type: 1010 Via: 0x87F8 Seq_Id: 37 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 5
+V: Send n. 126
+V: RandomDelay 2874 ms
+E: Dht22 reading error
+W: No Mqtt device connected
+T: Packet created with 12 bytes
+T: Packet created with 29 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Message sent to gateway 18256
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -98 SNR: -13
+E: Reading packet data gave error: -7
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 126 Type: 1010011 Via: 0x4750 Seq_Id: 39 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 184 Type: 1010 Via: 0x87D8 Seq_Id: 36 Num: 1
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+T: All the packets has been arrived to the seq_Id: 36
+T: Clearing list configuration Seq_Id: 36 Src: 0x4750
+T: Deleting packet
+T: Deleting packet queue
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 5
+V: Send n. 127
+V: RandomDelay 3353 ms
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 127 Type: 1010011 Via: 0x4750 Seq_Id: 40 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 185 Type: 1010 Via: 0x87F8 Seq_Id: 38 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 4
+V: Send n. 128
+V: RandomDelay 1916 ms
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 128 Type: 1010011 Via: 0x4750 Seq_Id: 41 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -28 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 186 Type: 1010 Via: 0x87F8 Seq_Id: 34 Num: 1
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 3
+V: Send n. 129
+V: RandomDelay 2874 ms
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 129 Type: 1010011 Via: 0x4750 Seq_Id: 42 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 187 Type: 1010 Via: 0x87D8 Seq_Id: 40 Num: 0
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+V: Sending next packet after receiving an ACK
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 3
+V: Send n. 130
+V: RandomDelay 4311 ms
+E: Dht22 reading error
+W: No Mqtt device connected
+T: Packet created with 12 bytes
+T: Packet created with 29 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Message sent to gateway 18256
+V: Preamble detected, starting reception... 
+T: Packet created with 16 bytes
+I: Receiving LoRa packet: Size: 16 bytes RSSI: -27 SNR: 13
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 16 Src: 0x4750 Dst: 0xFFFF Id: 188 Type: 100
+V: Route packet from 0x4750 with size 2
+V: Reset Receive SNR from 0x4750: 13
+V: Current routing table:
+V: 0 - 0x4750 via 0x4750 metric 1 Role 1
+V: 1 - 0x87F8 via 0x4750 metric 2 Role 0
+T: Deleting packet
+T: Deleting packet queue
+V: Starting scanning channel
+V: Packet send -- Size: 29 Src: 0x87D8 Dst: 0x4750 Id: 130 Type: 10011 Via: 0x4750 Seq_Id: 39 Num: 1
+V: TimeOnAir 85 ms, next message in 8415 ms
+T: Deleting packet
+T: Deleting packet queue
+T: Creating Routing Packet
+T: Packet created with 16 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -28 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 189 Type: 1010 Via: 0x87F8 Seq_Id: 33 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 4
+V: Send n. 131
+V: RandomDelay 2395 ms
+V: Starting scanning channel
+V: Packet send -- Size: 16 Src: 0x87D8 Dst: 0xFFFF Id: 131 Type: 100
+V: TimeOnAir 63 ms, next message in 6237 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 190 Type: 1010 Via: 0x87F8 Seq_Id: 35 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 3
+V: Send n. 132
+V: RandomDelay 1916 ms
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 132 Type: 1010011 Via: 0x4750 Seq_Id: 43 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -28 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 191 Type: 1010 Via: 0x87F8 Seq_Id: 36 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 2
+V: Send n. 133
+V: RandomDelay 958 ms
+V: Starting scanning channel
+V: Packet send -- Size: 29 Src: 0x87D8 Dst: 0x4750 Id: 133 Type: 10011 Via: 0x4750 Seq_Id: 40 Num: 1
+V: TimeOnAir 85 ms, next message in 8415 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 192 Type: 1010 Via: 0x87D8 Seq_Id: 41 Num: 0
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+V: Sending next packet after receiving an ACK
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+T: Deleting packet
+T: Deleting packet queue
+E: Dht22 reading error
+W: No Mqtt device connected
+T: Packet created with 12 bytes
+T: Packet created with 29 bytes
+T: Adding packet to Q_SP
+T: Created packet to Q_SP
+T: Added packet to Q_SP, notifying sender task
+V: Message sent to gateway 18256
+V: Size of Send Packets Queue: 3
+V: Send n. 134
+V: RandomDelay 479 ms
+V: Starting scanning channel
+V: Packet send -- Size: 12 Src: 0x87D8 Dst: 0x4750 Id: 134 Type: 1010011 Via: 0x4750 Seq_Id: 44 Num: 1
+V: TimeOnAir 49 ms, next message in 4851 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87D8 Id: 193 Type: 1010 Via: 0x87D8 Seq_Id: 35 Num: 1
+T: Data packet from 0x4750, destination 0x87D8, via 0x87D8
+V: Data packet from 0x4750 for me
+V: ACK Packet received
+T: All the packets has been arrived to the seq_Id: 35
+T: Clearing list configuration Seq_Id: 35 Src: 0x4750
+T: Deleting packet
+T: Deleting packet queue
+T: Deleting packet
+T: Deleting packet queue
+V: Size of Send Packets Queue: 2
+V: Send n. 135
+V: RandomDelay 479 ms
+V: Starting scanning channel
+V: Packet send -- Size: 29 Src: 0x87D8 Dst: 0x4750 Id: 135 Type: 10011 Via: 0x4750 Seq_Id: 41 Num: 1
+V: TimeOnAir 85 ms, next message in 8415 ms
+T: Deleting packet
+T: Deleting packet queue
+V: Preamble detected, starting reception... 
+T: Packet created with 12 bytes
+I: Receiving LoRa packet: Size: 12 bytes RSSI: -27 SNR: 12
+V: Size of Received Packets Queue: 1
+V: Packet received -- Size: 12 Src: 0x4750 Dst: 0x87F8 Id: 194 Type: 1010 Via: 0x87F8 Seq_Id: 37 Num: 0
+T: Data packet from 0x4750, destination 0x87F8, via 0x87F8
+V: Packet not for me, deleting it
+T: Deleting packet
+T: Deleting packet queue

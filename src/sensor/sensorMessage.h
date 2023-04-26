@@ -9,7 +9,8 @@
 #pragma pack(1)
 
 enum DataSensorType: uint8_t {
-    SensorTemperature = 0
+    SensorTemperature = 0,
+    SensorDht22 = 1
 };
 
 // TODO: SensorMessageType generic for all sensors, we can add more types later. Not implemented yet. 

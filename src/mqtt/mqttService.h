@@ -2,8 +2,8 @@
 
 #include <Arduino.h>
 
-// #include <WiFiClientSecure.h>
-#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
+//#include <WiFiClient.h>
 
 #include <MQTT.h>
 
@@ -44,8 +44,8 @@ public:
     bool writeToMqtt(DataMessage* message);
     bool writeToMqtt(String message);
 
-    // WiFiClientSecure net;
-    WiFiClient net;
+    WiFiClientSecure net;
+    //WiFiClient net;
 
     MQTTClient* client = new MQTTClient(MQTT_MAX_PACKET_SIZE);
 
