@@ -2,7 +2,9 @@
 
 #include <Arduino.h>
 
-#include "sensorMessage.h"
+//#include "sensorMessage.h"
+
+#include "sensor/sensorMessage.h"
 
 #pragma pack(1)
 class TemperatureMessage: public SensorMessageGeneric {

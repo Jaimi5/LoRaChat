@@ -8,7 +8,7 @@
 
 #include <ArduinoLog.h>
 
-#include "sensor.h"
+#include "sensor/sensor.h"
 
 #include "temperatureCommandService.h"
 

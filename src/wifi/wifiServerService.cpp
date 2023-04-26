@@ -94,6 +94,15 @@ String WiFiServerService::getIP() {
     return WiFi.localIP().toString();
 }
 
+String WiFiServerService::getSSID() {
+    ConfigService& configService = ConfigService::getInstance();
+    return configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
+}
+String WiFiServerService::getPassword() {
+    ConfigService& configService = ConfigService::getInstance();
+    return configService.getConfig("WiFiPsw", DEFAULT_WIFI_SSID);
+}
+
 bool WiFiServerService::restartWiFiData() {
     ConfigService& configService = ConfigService::getInstance();
     ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);

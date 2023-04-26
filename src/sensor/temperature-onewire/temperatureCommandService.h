@@ -4,9 +4,9 @@
 
 #include "commands/commandService.h"
 
-#include "sensor.h"
+#include "sensor/sensor.h"
 
-#include "sensorMessage.h"
+#include "sensor/sensorMessage.h"
 
 class TemperatureCommandService: public CommandService {
 public:

@@ -44,6 +44,7 @@ public:
         doc["QWSP"] = state.q_WSPSize;
         doc["RT"] = state.routingTableSize;
         doc["SSS"] = state.secondsSinceStart;
+        doc["FMA"] = state.freeMemoryAllocation;
 
         JsonObject packetHeader = doc.createNestedObject("packetHeader");
 
