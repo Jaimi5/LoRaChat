@@ -86,6 +86,16 @@ void Sim::simLoop(void* pvParameters) {
 
         vTaskDelay(10000 / portTICK_PERIOD_MS); // Wait 10 seconds to avoid other messages to propagate
 
+        String ssid = "Fibracat_21123";
+        String password = "85392c7e38";
+
+        WiFiServerService::getInstance().addSSID(ssid);
+        WiFiServerService::getInstance().addPassword(password);
+
+        WiFiServerService::getInstance().connectWiFi();
+
+        vTaskDelay(60000 / portTICK_PERIOD_MS); // Wait 60 seconds to propagate through the network
+
         sim.sendAllData();
     }
 }
@@ -100,11 +110,17 @@ void Sim::sendAllData() {
             }
 
             SimMessage* simMessage = createSimMessage(state);
+
             MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simMessage);
             delete state;
             delete simMessage;
 
-            vTaskDelay(40000 / portTICK_PERIOD_MS); // Wait 40 seconds (to avoid flooding the network
+            // If wifi connected wait 1 second, else wait 40 seconds
+            if (WiFi.status() == WL_CONNECTED)
+                vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
+            else
+                vTaskDelay(40000 / portTICK_PERIOD_MS); // Wait 40 seconds (to avoid flooding the network
+
         } while (service->statesList->getLength() > 0);
     }
 }

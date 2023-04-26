@@ -10,7 +10,7 @@
 #define WIFI_PASSWORD "*********"
 
 // MQTT configuration
-#define MQTT_SERVER "192.168.0.108"
+#define MQTT_SERVER "192.168.1.11"
 #define MQTT_PORT 1883
 #define MQTT_USERNAME "admin"
 #define MQTT_PASSWORD "public"
@@ -28,3 +28,11 @@
 
 // Sensor configuration
 #define ONE_WIRE_BUS 2
+
+// Led configuration
+#define LED LED_BUILTIN
+
+// Display configuration
+#define RST_OLED -1
+#define SDA_OLED SDA
+#define SCL_OLED SCL

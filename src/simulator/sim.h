@@ -4,6 +4,7 @@
 
 #include <ArduinoLog.h>
 
+#include "wifi/wifiServerService.h"
 
 #include "message/messageService.h"
 
