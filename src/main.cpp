@@ -38,6 +38,19 @@
 
 #endif
 
+// Simulator
+#include "simulator/sim.h"
+
+#pragma region Simulator
+
+Sim& simulator = Sim::getInstance();
+
+void initSimulator() {
+    // Init Simulator
+    simulator.init();
+}
+#pragma endregion
+
 #pragma region Led
 
 Led& led = Led::getInstance();
@@ -138,13 +151,12 @@ void initManager() {
     Log.verboseln("Led service added to manager");
 
 #ifdef BLUETOOTH_ENABLED
-
-    BluetoothService& bluetoothService = BluetoothService::getInstance();
-
     manager.addMessageService(&bluetoothService);
     Log.verboseln("Bluetooth service added to manager");
-
 #endif
+
+    manager.addMessageService(&simulator);
+    Log.verboseln("Simulator service added to manager");
 
     Serial.println(manager.getAvailableCommands());
 }
@@ -246,6 +258,9 @@ void setup() {
 
     // Initialize Led
     initLed();
+
+    // Initialize Simulator
+    initSimulator();
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);
