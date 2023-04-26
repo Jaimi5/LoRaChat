@@ -13,6 +13,8 @@
 
 #include "ledMessage.h"
 
+#include "config.h"
+
 class Led: public MessageService {
 public:
     /**
