@@ -84,6 +84,8 @@ void Sim::simLoop(void* pvParameters) {
 
         Temperature::getInstance().pause();
 
+        Dht22::getInstance().pause();
+
         vTaskDelay(10000 / portTICK_PERIOD_MS); // Wait 10 seconds to avoid other messages to propagate
 
         String ssid = "Fibracat_21123";
