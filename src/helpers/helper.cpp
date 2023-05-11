@@ -9,12 +9,12 @@ String Helper::uint8ArrayToString(uint8_t* array, uint8_t length) {
 }
 
 void Helper::ledBlink(uint8_t times, uint16_t delayTime, uint8_t pin) {
-    pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(LED, OUTPUT);
 
     for (uint16_t index = 0; index < times; index++) {
-        digitalWrite(LED_BUILTIN, HIGH);
+        digitalWrite(LED, LED_ON);
         vTaskDelay(delayTime / portTICK_PERIOD_MS);
-        digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(LED, LED_OFF);
         vTaskDelay(delayTime / portTICK_PERIOD_MS);
     }
 }

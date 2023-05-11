@@ -33,7 +33,9 @@
 #define ONE_WIRE_BUS 2
 
 // Led configuration
-#define LED LED_BUILTIN
+#define LED 4
+#define LED_ON      LOW
+#define LED_OFF     HIGH
 
 // Display configuration
 #define RST_OLED -1

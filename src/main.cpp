@@ -184,6 +184,9 @@ void setup() {
     // Initialize Serial Monitor
     Serial.begin(115200);
 
+    // Blink 2 times to show that the device is ready
+    Helper::ledBlink(2, 100);
+
     // Initialize Log
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 

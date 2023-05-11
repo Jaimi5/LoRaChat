@@ -5,12 +5,14 @@ void Led::init() {
 }
 
 String Led::ledOn() {
-    digitalWrite(LED, HIGH);
+    digitalWrite(LED, LED_ON);
+    Log.verboseln(F("Led On"));
     return "Led On";
 }
 
 String Led::ledOff() {
-    digitalWrite(LED, LOW);
+    digitalWrite(LED, LED_OFF);
+    Log.verboseln(F("Led Off"));
     return "Led Off";
 }
 
