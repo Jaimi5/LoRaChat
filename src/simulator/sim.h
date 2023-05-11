@@ -6,6 +6,8 @@
 
 #include "wifi/wifiServerService.h"
 
+#include "mqtt/mqttService.h"
+
 #include "message/messageService.h"
 
 #include "message/messageManager.h"
@@ -16,9 +18,9 @@
 
 #include "LoraMesher.h"
 
-#include "sensor/temperature-onewire/temperature.h"
+// #include "sensor/temperature-onewire/temperature.h"
 
-#include "sensor/dht22/dht22.h"
+// #include "sensor/dht22/dht22.h"
 
 class Sim: public MessageService {
 public:
@@ -47,6 +49,8 @@ public:
 
     void processReceivedMessage(messagePort port, DataMessage* message);
 
+    void sendPacketsToServer(size_t packetCount, size_t packetSize, size_t delayMs);
+
 private:
     Sim(): MessageService(SimApp, "Sim") {
         commandService = simCommandService;
@@ -63,4 +67,6 @@ private:
     void sendAllData();
 
     SimMessage* createSimMessage(LM_State* state);
+
+    SimMessage* createSimPayloadMessage(size_t packetSize);
 };

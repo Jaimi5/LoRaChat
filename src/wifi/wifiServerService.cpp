@@ -105,14 +105,21 @@ String WiFiServerService::getPassword() {
 
 bool WiFiServerService::restartWiFiData() {
     ConfigService& configService = ConfigService::getInstance();
-    ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
-    password = configService.getConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
+    if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED)
+        return false;
 
-    //TODO: Remove this when we have a way to set the default wifi data
-    if (ssid == DEFAULT_WIFI_SSID && password == DEFAULT_WIFI_PASSWORD) {
-        ssid = WIFI_SSID;
-        password = WIFI_PASSWORD;
-    }
+    // TODO: Don't leave this here, it's just for testing
+    ssid = WIFI_SSID;
+    password = WIFI_PASSWORD;
+
+    // ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
+    // password = configService.getConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
+
+    // //TODO: Remove this when we have a way to set the default wifi data
+    // if (ssid == DEFAULT_WIFI_SSID && password == DEFAULT_WIFI_PASSWORD) {
+    //     ssid = WIFI_SSID;
+    //     password = WIFI_PASSWORD;
+    // }
 
     return true;
 }

@@ -3,14 +3,17 @@
 #define BLUETOOTH_ENABLED
 
 //WiFi Configuration
-#define MAX_CONNECTION_TRY 5
+#define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID "*********"
-#define WIFI_PASSWORD "*********"
+#define WIFI_SSID "Calafou"
+#define WIFI_PASSWORD ""
+
+// The address of the device that will connect at the beginning of the simulation 
+#define WIFI_ADDR_CONNECTED 0xDE9C
 
 // MQTT configuration
-#define MQTT_SERVER "192.168.1.11"
+#define MQTT_SERVER "10.1.20.55"
 #define MQTT_PORT 1883
 #define MQTT_USERNAME "admin"
 #define MQTT_PASSWORD "public"
@@ -24,7 +27,7 @@
 
 // Define default update send interval in ms
 #define TEMP_UPDATE_DELAY 60000 // 60 seconds
-#define DHT22_UPDATE_DELAY 30000 // 30 seconds
+#define DHT22_UPDATE_DELAY 60000 // 60 seconds
 
 // Sensor configuration
 #define ONE_WIRE_BUS 2

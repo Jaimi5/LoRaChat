@@ -78,4 +78,6 @@ private:
     uint8_t wifiRetries = 0;
 
     bool sendMqttMessage(MQTTQueueMessage* message);
+
+    bool mqttTaskCreated = false;
 };

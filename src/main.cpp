@@ -24,11 +24,6 @@
 // WiFi
 #include "wifi/wifiServerService.h"
 
-// Sensors
-#include "sensor/temperature-onewire/temperature.h"
-
-#include "sensor/dht22/dht22.h"
-
 // Led
 #include "led/led.h"
 
@@ -57,27 +52,6 @@ Led& led = Led::getInstance();
 
 void initLed() {
     led.init();
-}
-
-#pragma endregion
-
-#pragma region Temperature
-
-Temperature& temperature = Temperature::getInstance();
-
-void initTemperature() {
-    temperature.init();
-}
-
-#pragma endregion
-
-
-#pragma region Dht22
-
-Dht22& dht22 = Dht22::getInstance();
-
-void initDht22() {
-    dht22.init();
 }
 
 #pragma endregion
@@ -131,12 +105,6 @@ MessageManager& manager = MessageManager::getInstance();
 void initManager() {
     manager.init();
     Log.verboseln("Manager initialized");
-
-    manager.addMessageService(&temperature);
-    Log.verboseln("Temperature service added to manager");
-
-    manager.addMessageService(&dht22);
-    Log.verboseln("dht22 service added to manager");
 
     manager.addMessageService(&loraMeshService);
     Log.verboseln("LoRaMesher service added to manager");
@@ -197,7 +165,7 @@ void createUpdateDisplay() {
         display_Task,
         "Display Task",
         4096,
-        (void*)1,
+        (void*) 1,
         2,
         &display_TaskHandle);
     if (res != pdPASS) {
@@ -249,12 +217,6 @@ void setup() {
     initMqtt();
 
     Log.infoln(F("Free ram before starting Display %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
-    // Initialize Temperature
-    //initTemperature();
-
-    // Initialize Dht22
-    initDht22();
 
     // Initialize Led
     initLed();

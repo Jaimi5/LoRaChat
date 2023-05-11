@@ -13,40 +13,30 @@
 enum SimCommand: uint8_t {
     StartSim = 0,
     StopSim = 1,
-    Message = 2
+    Message = 2,
+    Payload = 3
 };
 
-class SimMessage: public DataMessageGeneric {
+
+class SimMessageState {
 public:
-    SimCommand simCommand;
-    // TODO: Remove state if commands are On/Off
     LM_State state;
 
-    void serialize(JsonObject& doc) {
-        // Call the base class serialize function
-        ((DataMessageGeneric*) (this))->serialize(doc);
-
-        // Add the derived class data to the JSON object
-        doc["simCommand"] = simCommand;
-
+    void serializeState(JsonObject& doc) {
         JsonObject data = doc.createNestedObject("state");
 
-        this->serializeState(data);
-    }
+        data["Id"] = state.id;
+        data["Type"] = state.type;
+        data["QR"] = state.receivedQueueSize;
+        data["QS"] = state.sentQueueSize;
+        data["QRU"] = state.receivedUserQueueSize;
+        data["QWRP"] = state.q_WRPSize;
+        data["QWSP"] = state.q_WSPSize;
+        data["RT"] = state.routingTableSize;
+        data["SSS"] = state.secondsSinceStart;
+        data["FMA"] = state.freeMemoryAllocation;
 
-    void serializeState(JsonObject& doc) {
-        doc["Id"] = state.id;
-        doc["Type"] = state.type;
-        doc["QR"] = state.receivedQueueSize;
-        doc["QS"] = state.sentQueueSize;
-        doc["QRU"] = state.receivedUserQueueSize;
-        doc["QWRP"] = state.q_WRPSize;
-        doc["QWSP"] = state.q_WSPSize;
-        doc["RT"] = state.routingTableSize;
-        doc["SSS"] = state.secondsSinceStart;
-        doc["FMA"] = state.freeMemoryAllocation;
-
-        JsonObject packetHeader = doc.createNestedObject("packetHeader");
+        JsonObject packetHeader = data.createNestedObject("packetHeader");
 
         this->serializePacketHeader(packetHeader);
     }
@@ -61,6 +51,48 @@ public:
         doc["SeqId"] = state.packetHeader.seq_id;
         doc["Num"] = state.packetHeader.number;
     }
+};
+
+class SimPayloadMessage {
+public:
+    uint32_t packetSize;
+
+    uint8_t payload[];
+
+    void serializePayload(JsonObject& doc) {
+        doc["packetSize"] = packetSize;
+        doc["payload"] = payload;
+    }
+};
+
+class SimMessage: public DataMessageGeneric {
+public:
+    SimCommand simCommand;
+
+    uint8_t payload[];
+
+    void serialize(JsonObject& doc) {
+        // Call the base class serialize function
+        ((DataMessageGeneric*) (this))->serialize(doc);
+
+        // Add the derived class data to the JSON object
+        doc["simCommand"] = simCommand;
+
+        switch (simCommand) {
+            case::SimCommand::Message:
+                {
+                    SimMessageState* message = (SimMessageState*) this->payload;
+                    message->serializeState(doc);
+                    break;
+                }
+            case::SimCommand::Payload:
+                {
+                    SimPayloadMessage* payloadMessage = (SimPayloadMessage*) this->payload;
+                    payloadMessage->serializePayload(doc);
+                    break;
+                }
+        }
+    }
 
     void deserialize(JsonObject& doc) {
         // Call the base class deserialize function
@@ -70,4 +102,5 @@ public:
         simCommand = (SimCommand) doc["simCommand"];
     }
 };
+
 #pragma pack()

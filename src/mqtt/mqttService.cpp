@@ -5,6 +5,11 @@
  *
  */
 void MqttService::createMqttTask() {
+    if (mqttTaskCreated) {
+        Log.warningln(F("Mqtt task already created"));
+        return;
+    }
+
     int res = xTaskCreate(
         MqttLoop,
         "Mqtt Task",
@@ -12,9 +17,10 @@ void MqttService::createMqttTask() {
         (void*) 1,
         2,
         &mqtt_TaskHandle);
-    if (res != pdPASS) {
+    if (res != pdPASS)
         Log.errorln(F("Mqtt task handle error: %d"), res);
-    }
+    else
+        mqttTaskCreated = true;
 }
 
 void MqttService::MqttLoop(void*) {
@@ -32,7 +38,7 @@ bool MqttService::sendMqttMessage(MQTTQueueMessage* message) {
 }
 
 bool MqttService::isDeviceConnected() {
-    return client->connected();
+    return client->connected() && mqttTaskCreated;
 }
 
 bool MqttService::writeToMqtt(DataMessage* message) {
@@ -110,6 +116,9 @@ void callback(String& topic, String& payload) {
 }
 
 void MqttService::initMqtt(String lclName) {
+    if (mqttTaskCreated)
+        return;
+
     sendQueue = xQueueCreate(MQTT_MAX_QUEUE_SIZE, sizeof(MQTTQueueMessage*));
 
     if (sendQueue == NULL) {
@@ -127,7 +136,7 @@ void MqttService::initMqtt(String lclName) {
     // https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFiClientSecure/examples/WiFiClientSecure/WiFiClientSecure.ino
     // net.setInsecure();
 
-    
+
     // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
     // by Arduino. You need to set the IP address directly.
     client->begin(MQTT_SERVER, MQTT_PORT, net);
@@ -161,6 +170,7 @@ void MqttService::loop() {
         // TODO: This should be different, try reconnect every x minutes if wifi available?
         if (wifiRetries > MAX_CONNECTION_TRY) {
             Log.errorln(F("Removing mqtt service"));
+            mqttTaskCreated = false;
             vTaskDelete(NULL);
             return;
         }

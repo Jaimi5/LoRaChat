@@ -67,7 +67,7 @@ void Sim::createSimTask() {
     xTaskCreate(
         simLoop, /* Task function. */
         "SimTask", /* name of task. */
-        2048, /* Stack size of task */
+        4096, /* Stack size of task */
         (void*) 1, /* parameter of the task */
         2, /* priority of the task */
         &sim_TaskHandle); /* Task handle to keep track of created task */
@@ -78,27 +78,40 @@ void Sim::simLoop(void* pvParameters) {
     Sim sim = Sim::getInstance();
 
     for (;;) {
-        vTaskDelay(60000 * 15 / portTICK_PERIOD_MS); // Wait 15 minutes
+        vTaskDelay(60000 * 8 / portTICK_PERIOD_MS); // Wait 2 minutes to propagate all the network status
+
+        sim.sendPacketsToServer(10, 10, 10000);
+
+        Log.verboseln(F("Simulator stopped"));
+
+        vTaskDelay(60000 * 5 / portTICK_PERIOD_MS); // Wait 5 minutes to avoid other messages to propagate
 
         sim.stop();
 
-        Temperature::getInstance().pause();
+        Log.verboseln(F("Simulator connecting to WiFi"));
 
-        Dht22::getInstance().pause();
-
-        vTaskDelay(10000 / portTICK_PERIOD_MS); // Wait 10 seconds to avoid other messages to propagate
-
-        String ssid = "Fibracat_21123";
-        String password = "85392c7e38";
-
-        WiFiServerService::getInstance().addSSID(ssid);
-        WiFiServerService::getInstance().addPassword(password);
+        WiFiServerService::getInstance().addSSID(WIFI_SSID);
+        WiFiServerService::getInstance().addPassword(WIFI_PASSWORD);
 
         WiFiServerService::getInstance().connectWiFi();
 
-        vTaskDelay(60000 / portTICK_PERIOD_MS); // Wait 60 seconds to propagate through the network
+        int maxTries = 10;
+        while (WiFi.status() != WL_CONNECTED && maxTries > 0) {
+            Log.verboseln(F("Simulator WiFi not connected"));
+            vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
+            maxTries--;
+            WiFiServerService::getInstance().connectWiFi();
+        }
+
+        MqttService::getInstance().initMqtt(String(LoraMesher::getInstance().getLocalAddress()));
+
+        vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 5 minutes to propagate through the network
+
+        Log.verboseln(F("Simulator sending data"));
 
         sim.sendAllData();
+
+        vTaskDelete(NULL);
     }
 }
 
@@ -115,7 +128,7 @@ void Sim::sendAllData() {
 
             MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simMessage);
             delete state;
-            delete simMessage;
+            free(simMessage);
 
             // If wifi connected wait 1 second, else wait 40 seconds
             if (WiFi.status() == WL_CONNECTED)
@@ -128,11 +141,14 @@ void Sim::sendAllData() {
 }
 
 SimMessage* Sim::createSimMessage(LM_State* state) {
-    SimMessage* simMessage = new SimMessage();
+    uint32_t messageSize = sizeof(SimMessage) + sizeof(SimMessageState);
 
-    simMessage->messageSize = sizeof(SimMessage) - sizeof(DataMessageGeneric);
+    SimMessage* simMessage = (SimMessage*) malloc(messageSize);
+
+    simMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
     simMessage->simCommand = SimCommand::Message;
-    simMessage->state = *state;
+
+    memcpy(simMessage->payload, state, sizeof(SimMessageState));
 
     simMessage->appPortDst = appPort::MQTTApp;
     simMessage->appPortSrc = appPort::SimApp;
@@ -142,3 +158,39 @@ SimMessage* Sim::createSimMessage(LM_State* state) {
 
     return simMessage;
 }
+
+void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t delayMs) {
+    SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
+    for (size_t i = 0; i < packetCount; i++) {
+        simPayloadMessage->messageId = i;
+        MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simPayloadMessage);
+
+        vTaskDelay(delayMs / portTICK_PERIOD_MS); // Wait delayMs milliseconds
+    }
+
+    free(simPayloadMessage);
+}
+
+SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
+    uint32_t messageSize = sizeof(SimMessage) + sizeof(SimPayloadMessage) + packetSize;
+
+    SimMessage* simMessage = (SimMessage*) malloc(messageSize);
+    simMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
+
+    simMessage->simCommand = SimCommand::Payload;
+    simMessage->appPortDst = appPort::MQTTApp;
+    simMessage->appPortSrc = appPort::SimApp;
+    simMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    simMessage->addrDst = 0;
+    simMessage->messageId = 0;
+    SimPayloadMessage* simPayloadMessage = (SimPayloadMessage*) simMessage->payload;
+    simPayloadMessage->packetSize = packetSize;
+
+    // Add 0, 1, 2, 3... packetSize to the payload
+    for (size_t i = 0; i < packetSize; i++) {
+        simPayloadMessage->payload[i] = i;
+    }
+
+    return simMessage;
+}
+
