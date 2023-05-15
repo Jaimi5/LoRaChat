@@ -67,7 +67,7 @@ void Sim::createSimTask() {
     xTaskCreate(
         simLoop, /* Task function. */
         "SimTask", /* name of task. */
-        4096, /* Stack size of task */
+        2048, /* Stack size of task */
         (void*) 1, /* parameter of the task */
         2, /* priority of the task */
         &sim_TaskHandle); /* Task handle to keep track of created task */
