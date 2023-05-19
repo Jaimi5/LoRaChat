@@ -115,8 +115,10 @@ void initManager() {
     manager.addMessageService(&mqttService);
     Log.verboseln("Mqtt service added to manager");
 
+#ifdef LED_ENABLED
     manager.addMessageService(&led);
     Log.verboseln("Led service added to manager");
+#endif
 
 #ifdef BLUETOOTH_ENABLED
     manager.addMessageService(&bluetoothService);
@@ -223,8 +225,12 @@ void setup() {
 
     Log.infoln(F("Free ram before starting Display %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
+#ifdef LED_ENABLED
     // Initialize Led
     initLed();
+#endif
+
+    Log.infoln(F("Free ram before starting Simulator %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
 #ifdef SIMULATION_ENABLED
     // Initialize Simulator
