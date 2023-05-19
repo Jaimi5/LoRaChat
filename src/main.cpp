@@ -123,8 +123,10 @@ void initManager() {
     Log.verboseln("Bluetooth service added to manager");
 #endif
 
+#ifdef SIMULATION_ENABLED
     manager.addMessageService(&simulator);
     Log.verboseln("Simulator service added to manager");
+#endif
 
     Serial.println(manager.getAvailableCommands());
 }
@@ -224,8 +226,10 @@ void setup() {
     // Initialize Led
     initLed();
 
+#ifdef SIMULATION_ENABLED
     // Initialize Simulator
     initSimulator();
+#endif
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);

@@ -9,9 +9,6 @@
 #define WIFI_SSID "Calafou"
 #define WIFI_PASSWORD ""
 
-// The address of the device that will connect at the beginning of the simulation 
-#define WIFI_ADDR_CONNECTED 0xDE9C
-
 // MQTT configuration
 #define MQTT_SERVER "10.1.20.55"
 #define MQTT_PORT 1883
@@ -41,3 +38,8 @@
 #define RST_OLED -1
 #define SDA_OLED SDA
 #define SCL_OLED SCL
+
+// Simulation Configuration
+#define SIMULATION_ENABLED
+// The address of the device that will connect at the beginning of the simulation
+#define WIFI_ADDR_CONNECTED 0xDE9C
