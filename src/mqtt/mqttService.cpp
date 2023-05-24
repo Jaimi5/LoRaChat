@@ -194,7 +194,7 @@ void MqttService::loop() {
     }
 
     // publish a message roughly every second.
-    if (millis() - lastMillis > 20000) {
+    if (millis() - lastMillis > MQTT_STILL_CONNECTED_INTERVAL) {
         Log.traceln(F("Sending message to mqtt"));
         lastMillis = millis();
         client->publish(MQTT_TOPIC_OUT + localName, "Since boot: " + String(millis() / 1000));

@@ -95,3 +95,6 @@ As we are using the Heltec WIFI LoRa 32 (V3) we needed to use a custom board con
 - [ ] Power management.
     - [ ] Sleep mode.
     - [ ] Deep sleep mode.
+    
+
+# Payload Size

@@ -32,7 +32,7 @@ private:
 
     void changeLine(String str, int pos, int& x, int& minX, int size, bool& move);
 
-    String displayText[4] = {"LoRaChat v0.2", "", "", ""};
+    String displayText[4] = {"LoRaMesher v0.7", "", "", ""};
 
     String routingText[25];
     int routingSize = 0;

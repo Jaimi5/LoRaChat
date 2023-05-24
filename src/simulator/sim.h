@@ -22,7 +22,7 @@
 
 // #include "sensor/dht22/dht22.h"
 
-class Sim: public MessageService {
+class Sim : public MessageService {
 public:
     /**
      * @brief Construct a new GPSService object
@@ -52,7 +52,7 @@ public:
     void sendPacketsToServer(size_t packetCount, size_t packetSize, size_t delayMs);
 
 private:
-    Sim(): MessageService(SimApp, "Sim") {
+    Sim() : MessageService(SimApp, "Sim") {
         commandService = simCommandService;
     };
 
@@ -69,4 +69,8 @@ private:
     SimMessage* createSimMessage(LM_State* state);
 
     SimMessage* createSimPayloadMessage(size_t packetSize);
+
+    SimMessage* createSimMessage(SimCommand command);
+
+    void sendStartSimMessage();
 };

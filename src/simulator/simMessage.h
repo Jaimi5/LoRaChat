@@ -10,11 +10,14 @@
 
 #pragma pack(1)
 
-enum SimCommand: uint8_t {
+enum SimCommand : uint8_t {
     StartSim = 0,
     StopSim = 1,
     Message = 2,
-    Payload = 3
+    Payload = 3,
+    StartingSimulation = 4,
+    EndedSimulation = 5, // StartedSimulationStatus
+    EndedSimulationStatus = 6,
 };
 
 
@@ -61,11 +64,11 @@ public:
 
     void serializePayload(JsonObject& doc) {
         doc["packetSize"] = packetSize;
-        doc["payload"] = payload;
+        doc["payload"] = payload[0];
     }
 };
 
-class SimMessage: public DataMessageGeneric {
+class SimMessage : public DataMessageGeneric {
 public:
     SimCommand simCommand;
 
@@ -91,6 +94,8 @@ public:
                     payloadMessage->serializePayload(doc);
                     break;
                 }
+            default:
+                break;
         }
     }
 

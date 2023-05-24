@@ -56,6 +56,8 @@ public:
 
     String connectWiFi();
 
+    String disconnectWiFi();
+
     String getIP();
 
     String getSSID();

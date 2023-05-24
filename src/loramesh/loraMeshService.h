@@ -14,7 +14,7 @@
 
 #include "loraMeshCommandService.h"
 
-class LoRaMeshService: public MessageService {
+class LoRaMeshService : public MessageService {
 
 public:
 
@@ -45,13 +45,15 @@ public:
 
     LoRaMeshCommandService* loraMesherCommandService = new LoRaMeshCommandService();
 
+    bool hasActiveConnections();
+
 private:
 
     LoraMesher& radio = LoraMesher::getInstance();
 
     TaskHandle_t receiveLoRaMessage_Handle = NULL;
 
-    LoRaMeshService(): MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
+    LoRaMeshService() : MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
         commandService = loraMesherCommandService;
     };
 

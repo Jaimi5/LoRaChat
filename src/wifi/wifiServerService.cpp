@@ -90,6 +90,12 @@ String WiFiServerService::connectWiFi() {
     return WiFi.status() == WL_CONNECTED ? F("WiFi connected") : F("WiFi connection failed");
 }
 
+String WiFiServerService::disconnectWiFi() {
+    WiFi.disconnect();
+
+    return F("WiFi disconnected");
+}
+
 String WiFiServerService::getIP() {
     return WiFi.localIP().toString();
 }
