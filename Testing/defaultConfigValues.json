@@ -1,0 +1,24 @@
+{
+    "Name": "Simulator",
+    "Simulator": {
+        "PacketCount": "1",
+        "PacketDelay": "120000",
+        "PacketSize": "100"
+    },
+    "LoRaMesher": {
+        "Band": "869.900F",
+        "Bandwidth": "125.0",
+        "SpreadingFactor": "7U",
+        "CodingRate": "7U",
+        "PreambleLength": "8U",
+        "Power": "6",
+        "DutyCycle": "100",
+        "MAXPACKETSIZE": "100",
+        "HELLO_PACKETS_DELAY": "120",
+        "DEFAULT_TIMEOUT": "HELLO_PACKETS_DELAY*5",
+        "MIN_TIMEOUT": "20",
+        "MAX_TIMEOUTS": "3",
+        "MAX_RESEND_PACKET": "3",
+        "MAX_TRY_BEFORE_SEND": "5"
+    }
+}
