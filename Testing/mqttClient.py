@@ -16,6 +16,7 @@ class MQTT:
     ):
         self.file = file
         self.fileName = os.path.join(file, "data.json")
+        self.keepAliveFile = os.path.join(file, "keepAlive.json")
         self.numberOfPorts = numberOfPorts
 
         self.packetService = packetService.PacketService(
@@ -74,7 +75,10 @@ class MQTT:
 
             # Write the file
             with open(self.fileName, "w") as file:
-                file.write(json.dumps(json_data))
-        except:
+                file.write(json.dumps(json_data, indent=4))
+        except json.JSONDecodeError:
+            with open(self.keepAliveFile, "a") as file:
+                file.write(
+                    f"{message.topic}: {date.strftime('%Y-%m-%d %H:%M:%S')} - {message.payload}\n"
+                )
             # There are data without json format and we don't want to save them
-            pass

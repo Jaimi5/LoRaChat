@@ -1,4 +1,7 @@
 import status
+import os
+import json
+from datetime import datetime
 
 
 class PacketService:
@@ -10,9 +13,46 @@ class PacketService:
         shared_state,
     ):
         self.file = file
+        self.monitorFileName = os.path.join(file, "stateMonitors.json")
+        self.dataFileName = os.path.join(file, "messages.json")
         self.status = status.Status(file, numberOfPorts)
         self.shared_state_change = shared_state_change
         self.shared_state = shared_state
+
+    def savePacket(self, fileName, packet):
+        json_data = self.createAndOpenFile(fileName)
+
+        json_data.append(
+            {
+                "payload": packet,
+                "date": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            }
+        )
+
+        # Write the file
+        with open(fileName, "w") as file:
+            file.write(json.dumps(json_data, indent=4))
+
+    def saveMonitor(self, packet):
+        self.savePacket(self.monitorFileName, packet)
+
+    def saveData(self, packet):
+        self.savePacket(self.dataFileName, packet)
+
+    def createAndOpenFile(self, fileName):
+        if not os.path.exists(fileName):
+            # If the file doesn't exist, create it
+            with open(fileName, "w") as file:
+                file.write("[]")
+
+        # Read the file
+        with open(fileName, "r") as file:
+            data = file.read()
+
+        # Parse the file
+        json_data = json.loads(data)
+
+        return json_data
 
     def processPacket(self, packet):
         # Check if "appPortSrc" key exists in the JSON data
@@ -61,3 +101,9 @@ class PacketService:
                         "error_message"
                     ] = "Device already ended Simulation"
                     self.shared_state_change.set()
+            elif simCommand == 2:
+                # Save the packet in the state monitor file
+                self.saveMonitor(packet["data"])
+
+            elif simCommand == 3:
+                self.saveData(packet["data"])

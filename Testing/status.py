@@ -43,7 +43,7 @@ class Status:
 
         # Write the file
         with open(self.fileName, "w") as file:
-            file.write(json.dumps(json_data))
+            file.write(json.dumps(json_data, indent=4))
 
         return True
 
@@ -71,7 +71,7 @@ class Status:
 
         # Write the file
         with open(self.fileName, "w") as file:
-            file.write(json.dumps(json_data))
+            file.write(json.dumps(json_data, indent=4))
 
         return True
 
@@ -103,7 +103,7 @@ class Status:
 
         # Write the file
         with open(self.fileName, "w") as file:
-            file.write(json.dumps(json_data))
+            file.write(json.dumps(json_data, indent=4))
 
         return True
 
