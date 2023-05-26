@@ -39,6 +39,8 @@ public:
 
     void connect();
 
+    void disconnect();
+
     bool isDeviceConnected();
 
     bool writeToMqtt(DataMessage* message);
@@ -80,4 +82,6 @@ private:
     bool sendMqttMessage(MQTTQueueMessage* message);
 
     bool mqttTaskCreated = false;
+
+    bool disconnecting = false;
 };

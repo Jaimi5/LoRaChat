@@ -58,4 +58,4 @@
 // Simulation Configuration
 #define SIMULATION_ENABLED
 // The address of the device that will connect at the beginning of the simulation
-#define WIFI_ADDR_CONNECTED 0x56c4
+#define WIFI_ADDR_CONNECTED 0x8C20

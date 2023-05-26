@@ -1,6 +1,13 @@
 #include "wifiServerService.h"
 
 void WiFiServerService::initWiFi() {
+    // Create the semaphore with a count of 1
+    wifiSemaphore = xSemaphoreCreateBinary();
+    if (wifiSemaphore == NULL) {
+        Log.errorln(F("Error creating WiFi semaphore"));
+    }
+    xSemaphoreGive(wifiSemaphore);
+
     if (restartWiFiData())
         connectWiFi();
 
@@ -60,38 +67,73 @@ String WiFiServerService::resetWiFiData() {
     configService.setConfig("WiFiSSid", DEFAULT_WIFI_SSID);
     configService.setConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
 
-    ssid = DEFAULT_WIFI_SSID;
-    password = DEFAULT_WIFI_PASSWORD;
+    this->ssid = DEFAULT_WIFI_SSID;
+    this->password = DEFAULT_WIFI_PASSWORD;
 
     return F("WiFi data reset");
 }
 
-String WiFiServerService::connectWiFi() {
-    if (ssid == DEFAULT_WIFI_SSID || password == DEFAULT_WIFI_PASSWORD)
-        return F("WiFi not configured");
-
-    WiFi.scanNetworks();
-    Log.verbose(F("Trying to connect to WiFi network %s with pwd: %s!"), ssid.c_str(), password.c_str());
-
-    WiFi.begin(ssid.c_str(), password.c_str());
-    int i = 0;
-    while (WiFi.status() != WL_CONNECTED && i < MAX_CONNECTION_TRY) {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        Log.verbose(F("."));
-        i++;
-    }
-
+bool WiFiServerService::isWifiConnected() {
     if (WiFi.status() == WL_CONNECTED) {
-        LoRaMeshService::getInstance().setGateway();
+        // Check if the current connection matches the provided SSID and password
+        if (WiFi.SSID() == ssid && WiFi.psk() == password) {
+            return true;
+        }
     }
-    else
-        LoRaMeshService::getInstance().removeGateway();
+    return false;
+}
 
-    return WiFi.status() == WL_CONNECTED ? F("WiFi connected") : F("WiFi connection failed");
+
+String WiFiServerService::connectWiFi() {
+    Log.verboseln(F("Connecting to WiFi..."));
+
+    // Wait for the WiFi semaphore
+    if (xSemaphoreTake(wifiSemaphore, portMAX_DELAY) == pdTRUE) {
+        if (ssid == DEFAULT_WIFI_SSID || password == DEFAULT_WIFI_PASSWORD) {
+            xSemaphoreGive(wifiSemaphore);
+            return F("WiFi not configured");
+        }
+
+        // Check if already connected to the desired WiFi network
+        if (isWifiConnected()) {
+            LoRaMeshService::getInstance().setGateway();
+            xSemaphoreGive(wifiSemaphore);
+            return F("WiFi already connected");
+        }
+
+        Log.verbose(F("Trying to connect to WiFi network %s with pwd: %s!"), ssid.c_str(), password.c_str());
+
+        WiFi.begin(ssid.c_str(), password.c_str());
+        int i = 0;
+        while (i < MAX_CONNECTION_TRY) {
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            Log.verbose(F("."));
+            if (isWifiConnected()) {
+                LoRaMeshService::getInstance().setGateway();
+                // Release the WiFi semaphore
+                xSemaphoreGive(wifiSemaphore);
+                return F("WiFi connected");
+            }
+            else if (WiFi.status() == WL_CONNECT_FAILED || WiFi.status() == WL_NO_SSID_AVAIL) {
+                // Release the WiFi semaphore
+                xSemaphoreGive(wifiSemaphore);
+                return F("WiFi connection failed");
+            }
+            i++;
+        }
+
+        // Release the WiFi semaphore
+        xSemaphoreGive(wifiSemaphore);
+    }
+
+    LoRaMeshService::getInstance().removeGateway();
+    return F("WiFi connection timeout");
+
 }
 
 String WiFiServerService::disconnectWiFi() {
     WiFi.disconnect();
+    LoRaMeshService::getInstance().removeGateway();
 
     return F("WiFi disconnected");
 }

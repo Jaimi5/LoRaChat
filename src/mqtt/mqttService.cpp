@@ -13,7 +13,7 @@ void MqttService::createMqttTask() {
     int res = xTaskCreate(
         MqttLoop,
         "Mqtt Task",
-        4096,
+        8196,
         (void*) 1,
         2,
         &mqtt_TaskHandle);
@@ -38,7 +38,7 @@ bool MqttService::sendMqttMessage(MQTTQueueMessage* message) {
 }
 
 bool MqttService::isDeviceConnected() {
-    return client->connected() && mqttTaskCreated;
+    return client->connected() && mqttTaskCreated || disconnecting;
 }
 
 bool MqttService::writeToMqtt(DataMessage* message) {
@@ -170,8 +170,7 @@ void MqttService::loop() {
         // TODO: This should be different, try reconnect every x minutes if wifi available?
         if (wifiRetries > MAX_CONNECTION_TRY) {
             Log.errorln(F("Removing mqtt service"));
-            mqttTaskCreated = false;
-            vTaskDelete(NULL);
+            disconnect();
             return;
         }
         return;
@@ -186,7 +185,7 @@ void MqttService::loop() {
             delete mqttMessageReceive;
         }
         else {
-            if (xQueueSendToFront(sendQueue, &mqttMessageReceive, (TickType_t) 0) != pdPASS) {
+            if (xQueueSendToFront(sendQueue, &mqttMessageReceive, (TickType_t) 10) != pdPASS) {
                 delete mqttMessageReceive;
                 Log.errorln(F("Error sending message to mqtt"));
             }
@@ -232,6 +231,18 @@ void MqttService::connect() {
     else {
         Log.errorln(F("Error subscribing to topic %s"), MQTT_TOPIC_SUB);
     }
+}
+
+void MqttService::disconnect() {
+    disconnecting = true;
+    client->disconnect();
+    vTaskDelete(mqtt_TaskHandle);
+    mqtt_TaskHandle = NULL;
+    // Delete the queue
+    vQueueDelete(sendQueue);
+
+    mqttTaskCreated = false;
+    disconnecting = false;
 }
 
 void MqttService::processReceivedMessage(messagePort port, DataMessage* message) {

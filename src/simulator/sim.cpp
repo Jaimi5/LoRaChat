@@ -67,7 +67,7 @@ void Sim::createSimTask() {
     xTaskCreate(
         simLoop, /* Task function. */
         "SimTask", /* name of task. */
-        4096, /* Stack size of task */
+        8192, /* Stack size of task */
         (void*) 1, /* parameter of the task */
         2, /* priority of the task */
         &sim_TaskHandle); /* Task handle to keep track of created task */
@@ -90,7 +90,7 @@ void Sim::simLoop(void* pvParameters) {
             vTaskDelay(10000 + random(0, 1000) / portTICK_PERIOD_MS); // Wait 10 second
         }
 
-        vTaskDelay(60000 * 25 / portTICK_PERIOD_MS); // Wait 30 minutes to avoid other messages to propagate
+        vTaskDelay(60000 * 15 / portTICK_PERIOD_MS); // Wait 30 minutes to avoid other messages to propagate
 
         sim.stop();
 
@@ -240,14 +240,6 @@ void Sim::sendStartSimMessage() {
 
     WiFiServerService::getInstance().connectWiFi();
 
-    int maxTries = 10;
-    while (WiFi.status() != WL_CONNECTED && maxTries > 0) {
-        Log.verboseln(F("Simulator WiFi not connected"));
-        vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
-        maxTries--;
-        WiFiServerService::getInstance().connectWiFi();
-    }
-
     MqttService::getInstance().initMqtt(String(LoraMesher::getInstance().getLocalAddress()));
 
     vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
@@ -268,5 +260,6 @@ void Sim::sendStartSimMessage() {
 
     WiFiServerService::getInstance().disconnectWiFi();
     WiFiServerService::getInstance().resetWiFiData();
+    MqttService::getInstance().disconnect();
 }
 

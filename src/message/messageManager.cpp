@@ -93,7 +93,7 @@ DataMessage* MessageManager::getDataMessage(String json) {
         return nullptr;
     }
 
-    JsonObject data = doc["dataMessage"];
+    JsonObject data = doc["data"];
 
     uint8_t serviceId = data["appPortSrc"];
 
@@ -113,7 +113,7 @@ String MessageManager::printDataMessageHeader(String title, DataMessage* message
 
     doc["title"] = title;
 
-    JsonObject data = doc.createNestedObject("dataMessage");
+    JsonObject data = doc.createNestedObject("data");
 
     message->serialize(data);
 

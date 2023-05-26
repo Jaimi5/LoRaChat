@@ -211,6 +211,8 @@ void setup() {
     // Initialize WiFi
     initWiFi();
 
+    vTaskDelay(10000 / portTICK_PERIOD_MS);
+
 #ifdef BLUETOOTH_ENABLED
 
     Log.infoln(F("Free ram before starting BLE %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));

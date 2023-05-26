@@ -76,4 +76,8 @@ private:
     String password = DEFAULT_WIFI_PASSWORD;
 
     bool restartWiFiData();
+
+    bool isWifiConnected();
+
+    SemaphoreHandle_t wifiSemaphore = NULL;
 };
