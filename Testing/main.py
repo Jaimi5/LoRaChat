@@ -14,6 +14,8 @@ def main():
     directory = sys.argv[1]
     # Use the directory_name in your code
 
+    noBuild = "-nb" in sys.argv
+
     print("Directory name:", directory)
 
     # Create an Event object to synchronize the main script
@@ -25,46 +27,46 @@ def main():
         "deviceMonitorStarted": False,  # True if the device monitor is started
         "allDevicesStartedSim": False,
         "allDevicesEndedSim": False,
-        "allDevicesStartedSendSim": False,
-        "allDevicesEndedSendSim": False,
+        "allDevicesEndedLogs": False,
         "error": False,
         "error_message": "",
     }
 
     os.makedirs(directory, exist_ok=True)
 
-    # Update the PlatformIO
-    updater = updatePlatformio.UpdatePlatformIO(
-        directory,
-        shared_state_change,
-        shared_state,
-    )
+    if not noBuild:
+        # Update the PlatformIO
+        updater = updatePlatformio.UpdatePlatformIO(
+            directory,
+            shared_state_change,
+            shared_state,
+        )
 
-    def waitUntilBuild():
-        while not shared_state["builded"]:
-            shared_state_change.wait()
+        def waitUntilBuild():
+            while not shared_state["builded"]:
+                shared_state_change.wait()
 
-            if shared_state_change.is_set():
-                shared_state_change.clear()
+                if shared_state_change.is_set():
+                    shared_state_change.clear()
 
-                if shared_state["error"]:
-                    print("Error: " + shared_state["error_message"])
-                    return
+                    if shared_state["error"]:
+                        print("Error: " + shared_state["error_message"])
+                        return
 
-    waitUntilBuild()
+        waitUntilBuild()
 
-    def waitUntilADeviceBuilded():
-        while not shared_state["deviceMonitorStarted"]:
-            shared_state_change.wait()
+        def waitUntilADeviceBuilded():
+            while not shared_state["deviceMonitorStarted"]:
+                shared_state_change.wait()
 
-            if shared_state_change.is_set():
-                shared_state_change.clear()
+                if shared_state_change.is_set():
+                    shared_state_change.clear()
 
-                if shared_state["error"]:
-                    print("Error: " + shared_state["error_message"])
-                    return
+                    if shared_state["error"]:
+                        print("Error: " + shared_state["error_message"])
+                        return
 
-    waitUntilADeviceBuilded()
+        waitUntilADeviceBuilded()
 
     message_thread = threading.Thread(
         target=mqttClient.MQTT,
@@ -99,10 +101,18 @@ def main():
                     print("Error: " + shared_state["error_message"])
                     break
 
+                if shared_state["allDevicesEndedLogs"]:
+                    print("All devices ended logs")
+                    break
+
     except KeyboardInterrupt:
         print("KeyboardInterrupt")
         message_thread.join()
-        updater.killThreads()
+
+        try:
+            updater.killThreads()
+        except NameError:
+            pass
 
     message_thread.join()
     saveStatus()

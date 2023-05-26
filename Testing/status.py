@@ -80,24 +80,24 @@ class Status:
 
         # Check if all the devices are ended
         for deviceInFile in json_data:
-            if not "endedSend" in deviceInFile or (
-                "endedSend" in deviceInFile and not deviceInFile["endedSim"]
+            if not "endedSim" in deviceInFile or (
+                "endedSim" in deviceInFile and not deviceInFile["endedSim"]
             ):
                 return False
 
         return True
 
-    def endedSendSimulation(self, device):
+    def endedLogsSimulation(self, device):
         json_data = self.createAndOpenFile()
 
         # Check if the device is already in the file
         for deviceInFile in json_data:
             if deviceInFile["device"] == device:
-                if "endedSend" in deviceInFile and deviceInFile["endedSend"]:
+                if "endedLogs" in deviceInFile and deviceInFile["endedLogs"]:
                     return False
 
-                deviceInFile["endedSend"] = True
-                deviceInFile["endedSendDate"] = datetime.now().strftime(
+                deviceInFile["endedLogs"] = True
+                deviceInFile["endedLogsDate"] = datetime.now().strftime(
                     "%d/%m/%Y %H:%M:%S"
                 )
 
@@ -107,13 +107,13 @@ class Status:
 
         return True
 
-    def checkIfAllDevicesEndedSendSimulation(self):
+    def checkIfAllDevicesEndedLogs(self):
         json_data = self.createAndOpenFile()
 
         # Check if all the devices are ended
         for deviceInFile in json_data:
-            if not "endedSend" in deviceInFile or (
-                "endedSend" in deviceInFile and deviceInFile["endedSend"]
+            if not "endedLogs" in deviceInFile or (
+                "endedLogs" in deviceInFile and not deviceInFile["endedLogs"]
             ):
                 return False
 

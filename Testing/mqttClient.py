@@ -29,14 +29,20 @@ class MQTT:
         host = "localhost"
         port = 1883
         MQTT_TOPIC_IN = "to-server/#"
-        client = mqtt.Client("Testing")
-        client.connect(host, port)
 
-        client.loop_start()
+        try:
+            client = mqtt.Client("Testing")
+            client.connect(host, port)
 
-        client.subscribe(MQTT_TOPIC_IN)
+            client.loop_start()
 
-        client.on_message = self.on_message
+            client.subscribe(MQTT_TOPIC_IN)
+
+            client.on_message = self.on_message
+        except ConnectionRefusedError:
+            self.shared_state["error"] = True
+            self.shared_state["error_message"] = "MQTT broker is not running"
+            self.shared_state_change.set()
 
     def createAndOpenFile(self):
         if not os.path.exists(self.fileName):

@@ -68,7 +68,6 @@ class PacketService:
                 if self.status.startedDevice(packet["data"]["addrSrc"]):
                     # If the device is not already in the file
                     if self.status.checkIfAllDevicesStarted():
-                        self.shared_state["error"] = False
                         self.shared_state["allDevicesStartedSim"] = True
                         self.shared_state_change.set()
                 else:
@@ -80,7 +79,6 @@ class PacketService:
                 # If the command is "end simulation"
                 if self.status.endedSimulation(packet["data"]["addrSrc"]):
                     if self.status.checkIfAllDevicesEndedSimulation():
-                        self.shared_state["error"] = False
                         self.shared_state["allDevicesEndedSim"] = True
                         self.shared_state_change.set()
                 else:
@@ -90,10 +88,9 @@ class PacketService:
 
             elif simCommand == 6:
                 # If the command is "end send simulation"
-                if self.status.endedSendSimulation(packet["data"]["addrSrc"]):
-                    if self.status.checkIfAllDevicesEndedSendSimulation():
-                        self.shared_state["error"] = False
-                        self.shared_state["allDevicesEndedSendSim"] = True
+                if self.status.endedLogsSimulation(packet["data"]["addrSrc"]):
+                    if self.status.checkIfAllDevicesEndedLogs():
+                        self.shared_state["allDevicesEndedLogs"] = True
                         self.shared_state_change.set()
                 else:
                     self.shared_state["error"] = True
