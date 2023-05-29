@@ -59,3 +59,8 @@
 #define SIMULATION_ENABLED
 // The address of the device that will connect at the beginning of the simulation
 #define WIFI_ADDR_CONNECTED 0x8C20
+
+
+#define PACKET_COUNT 1
+#define PACKET_DELAY 120000
+#define PACKET_SIZE 100

@@ -22,7 +22,7 @@
 // TODO: Check for wake from sleep mode.
 // TODO: Check for max characters in a message to avoid buffer overflow.
 
-class MqttService: public MessageService {
+class MqttService : public MessageService {
 public:
     /**
      * @brief Construct a new BluetoothService object
@@ -56,8 +56,10 @@ public:
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
 private:
-    MqttService(): MessageService(appPort::MQTTApp, String("MQTT")) {
+    MqttService() : MessageService(appPort::MQTTApp, String("MQTT")) {
         commandService = mqttCommandService;
+        mqttSemaphore = xSemaphoreCreateBinary();
+        xSemaphoreGive(mqttSemaphore);
     };
 
     void createMqttTask();
@@ -81,7 +83,7 @@ private:
 
     bool sendMqttMessage(MQTTQueueMessage* message);
 
-    bool mqttTaskCreated = false;
+    SemaphoreHandle_t mqttSemaphore = NULL;
 
-    bool disconnecting = false;
+    bool mqttTaskCreated = false;
 };

@@ -80,9 +80,9 @@ void Sim::simLoop(void* pvParameters) {
     for (;;) {
         sim.sendStartSimMessage();
 
-        vTaskDelay(60000 * 4 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
+        vTaskDelay(60000 * 2 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
 
-        sim.sendPacketsToServer(1, 400, 120000);
+        sim.sendPacketsToServer(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
 
         Log.verboseln(F("Simulator stopped"));
 
@@ -90,7 +90,7 @@ void Sim::simLoop(void* pvParameters) {
             vTaskDelay(10000 + random(0, 1000) / portTICK_PERIOD_MS); // Wait 10 second
         }
 
-        vTaskDelay(60000 * 15 / portTICK_PERIOD_MS); // Wait 30 minutes to avoid other messages to propagate
+        // vTaskDelay(60000 * 20 / portTICK_PERIOD_MS); // Wait 30 minutes to avoid other messages to propagate
 
         sim.stop();
 
@@ -252,14 +252,14 @@ void Sim::sendStartSimMessage() {
 
     delete simMessage;
 
-    vTaskDelay(10000 / portTICK_PERIOD_MS); // Wait 1 second
+    vTaskDelay(30000 / portTICK_PERIOD_MS); // Wait 1 second
 
     // Delete WiFi and MQTT
     if (LoraMesher::getInstance().getLocalAddress() == WIFI_ADDR_CONNECTED)
         return;
 
+    MqttService::getInstance().disconnect();
     WiFiServerService::getInstance().disconnectWiFi();
     WiFiServerService::getInstance().resetWiFiData();
-    MqttService::getInstance().disconnect();
 }
 

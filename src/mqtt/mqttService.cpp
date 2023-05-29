@@ -5,11 +5,6 @@
  *
  */
 void MqttService::createMqttTask() {
-    if (mqttTaskCreated) {
-        Log.warningln(F("Mqtt task already created"));
-        return;
-    }
-
     int res = xTaskCreate(
         MqttLoop,
         "Mqtt Task",
@@ -19,8 +14,6 @@ void MqttService::createMqttTask() {
         &mqtt_TaskHandle);
     if (res != pdPASS)
         Log.errorln(F("Mqtt task handle error: %d"), res);
-    else
-        mqttTaskCreated = true;
 }
 
 void MqttService::MqttLoop(void*) {
@@ -38,7 +31,7 @@ bool MqttService::sendMqttMessage(MQTTQueueMessage* message) {
 }
 
 bool MqttService::isDeviceConnected() {
-    return client->connected() && mqttTaskCreated || disconnecting;
+    return client->connected() && mqttTaskCreated;
 }
 
 bool MqttService::writeToMqtt(DataMessage* message) {
@@ -116,87 +109,105 @@ void callback(String& topic, String& payload) {
 }
 
 void MqttService::initMqtt(String lclName) {
-    if (mqttTaskCreated)
-        return;
+    if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
+        if (mqttTaskCreated) {
+            xSemaphoreGive(mqttSemaphore);
+            return;
+        }
 
-    sendQueue = xQueueCreate(MQTT_MAX_QUEUE_SIZE, sizeof(MQTTQueueMessage*));
+        sendQueue = xQueueCreate(MQTT_MAX_QUEUE_SIZE, sizeof(MQTTQueueMessage*));
 
-    if (sendQueue == NULL) {
-        Log.errorln(F("Error creating queue"));
+        if (sendQueue == NULL) {
+            Log.errorln(F("Error creating queue"));
+        }
+
+        localName = lclName;
+
+        Log.verboseln(F("DeviceID: %s"), lclName);
+
+        Log.infoln(F("Free ram before starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
+        // do not verify tls certificate
+        // check the following example for methods to verify the server:
+        // https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFiClientSecure/examples/WiFiClientSecure/WiFiClientSecure.ino
+        // net.setInsecure();
+
+
+        // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
+        // by Arduino. You need to set the IP address directly.
+        client->begin(MQTT_SERVER, MQTT_PORT, net);
+
+        // we should set the keep alive interval to a greater value than the default
+        // client->setKeepAlive(20);
+
+        client->onMessage(callback);
+
+        connect();
+
+        createMqttTask();
+
+        Log.infoln(F("Free ram after starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
+        mqttTaskCreated = true;
+
+        xSemaphoreGive(mqttSemaphore);
     }
 
-    localName = lclName;
-
-    Log.verboseln(F("DeviceID: %s"), lclName);
-
-    Log.infoln(F("Free ram before starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
-    // do not verify tls certificate
-    // check the following example for methods to verify the server:
-    // https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFiClientSecure/examples/WiFiClientSecure/WiFiClientSecure.ino
-    // net.setInsecure();
-
-
-    // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
-    // by Arduino. You need to set the IP address directly.
-    client->begin(MQTT_SERVER, MQTT_PORT, net);
-
-    // we should set the keep alive interval to a greater value than the default
-    // client->setKeepAlive(20);
-
-    client->onMessage(callback);
-
-    connect();
-
-    createMqttTask();
-
-    Log.infoln(F("Free ram after starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 }
 
 void MqttService::loop() {
-
-    // TODO: If we can connect to wifi multiple times we should remove this service
-
-    client->loop();
-
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-
-    if (!client->connected()) {
-        connect();
-    }
-
-    if (!client->connected()) {
-        wifiRetries++;
-        // TODO: This should be different, try reconnect every x minutes if wifi available?
-        if (wifiRetries > MAX_CONNECTION_TRY) {
-            Log.errorln(F("Removing mqtt service"));
-            disconnect();
+    if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
+        if (!mqttTaskCreated) {
+            xSemaphoreGive(mqttSemaphore);
             return;
         }
-        return;
-    }
 
-    wifiRetries = 0;
 
-    if (xQueueReceive(sendQueue, &mqttMessageReceive, 0) == pdTRUE) {
-        Log.traceln(F("Sending message to mqtt queue"));
-        if (sendMqttMessage(mqttMessageReceive)) {
-            Log.traceln(F("Queue message sent"));
-            delete mqttMessageReceive;
+        client->loop();
+
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+
+        if (!client->connected()) {
+            connect();
         }
-        else {
-            if (xQueueSendToFront(sendQueue, &mqttMessageReceive, (TickType_t) 10) != pdPASS) {
+
+        if (!client->connected()) {
+            wifiRetries++;
+            // TODO: This should be different, try reconnect every x minutes if wifi available?
+            if (wifiRetries > MAX_CONNECTION_TRY) {
+                Log.errorln(F("Removing mqtt service"));
+                xSemaphoreGive(mqttSemaphore);
+                disconnect();
+                return;
+            }
+            xSemaphoreGive(mqttSemaphore);
+            return;
+        }
+
+        wifiRetries = 0;
+
+        if (xQueueReceive(sendQueue, &mqttMessageReceive, 0) == pdTRUE) {
+            Log.traceln(F("Sending message to mqtt queue"));
+            if (sendMqttMessage(mqttMessageReceive)) {
+                Log.traceln(F("Queue message sent"));
                 delete mqttMessageReceive;
-                Log.errorln(F("Error sending message to mqtt"));
+            }
+            else {
+                if (xQueueSendToFront(sendQueue, &mqttMessageReceive, (TickType_t) 10) != pdPASS) {
+                    delete mqttMessageReceive;
+                    Log.errorln(F("Error sending message to mqtt"));
+                }
             }
         }
-    }
 
-    // publish a message roughly every second.
-    if (millis() - lastMillis > MQTT_STILL_CONNECTED_INTERVAL) {
-        Log.traceln(F("Sending message to mqtt"));
-        lastMillis = millis();
-        client->publish(MQTT_TOPIC_OUT + localName, "Since boot: " + String(millis() / 1000));
+        // publish a message roughly every second.
+        if (millis() - lastMillis > MQTT_STILL_CONNECTED_INTERVAL) {
+            Log.traceln(F("Sending message to mqtt"));
+            lastMillis = millis();
+            client->publish(MQTT_TOPIC_OUT + localName, "Since boot: " + String(millis() / 1000));
+        }
+
+        xSemaphoreGive(mqttSemaphore);
     }
 }
 
@@ -234,15 +245,25 @@ void MqttService::connect() {
 }
 
 void MqttService::disconnect() {
-    disconnecting = true;
-    client->disconnect();
-    vTaskDelete(mqtt_TaskHandle);
-    mqtt_TaskHandle = NULL;
-    // Delete the queue
-    vQueueDelete(sendQueue);
+    if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
+        if (!mqttTaskCreated) {
+            xSemaphoreGive(mqttSemaphore);
+            return;
+        }
 
-    mqttTaskCreated = false;
-    disconnecting = false;
+        client->disconnect();
+
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+        vTaskDelete(mqtt_TaskHandle);
+        mqtt_TaskHandle = NULL;
+        // Delete the queue
+        vQueueDelete(sendQueue);
+
+        mqttTaskCreated = false;
+
+        xSemaphoreGive(mqttSemaphore);
+    }
 }
 
 void MqttService::processReceivedMessage(messagePort port, DataMessage* message) {
