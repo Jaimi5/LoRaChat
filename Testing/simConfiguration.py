@@ -3,30 +3,26 @@ import json
 
 
 class SimConfiguration:
-    def __init__(self, file):
+    def __init__(self, file, name):
         self.fileName = os.path.join(file, "simConfiguration.json")
-        self.numberOfDevices = 0
+        self.Name = name
 
-        self.createConfiguration()
+    def getFileName(self):
+        return self.fileName
 
-    def createAndOpenFile(self):
-        if not os.path.exists(self.fileName):
-            # If the file doesn't exist, create it
-            with open(self.fileName, "w") as file:
-                file.write("[]")
-
-        # Read the file
+    def getName(self):
+        return self.Name
+    
+    def copyConfiguration(self, directory):
+        # Copy the file "simConfiguration.json" to the new directory
         with open(self.fileName, "r") as file:
             data = file.read()
 
         # Parse the file
         json_data = json.loads(data)
 
-        return json_data
-
-    def saveFile(self, json_data):
         # Save the file
-        with open(self.fileName, "w") as file:
+        with open(os.path.join(directory, "simConfiguration.json"), "w") as file:
             file.write(json.dumps(json_data, indent=4))
 
     def createConfiguration(self):
@@ -39,8 +35,6 @@ class SimConfiguration:
 
         # Parse the file
         json_data = json.loads(data)
-
-        print("Enter the values for the configuration:")
 
         # Ask the user for the values of the configuration. If the user doesn't enter a value, the default value will be used
         # Check if the key is a dictionary or a simple value

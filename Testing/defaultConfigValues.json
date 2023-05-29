@@ -1,9 +1,9 @@
 {
-    "Name": "Simulator",
+    "SimulationTimeoutMinutes": "45",
     "Simulator": {
-        "PacketCount": "1",
-        "PacketDelay": "120000",
-        "PacketSize": "100"
+        "PACKET_COUNT": "1",
+        "PACKET_DELAY": "120000",
+        "PACKET_SIZE": "100"
     },
     "LoRaMesher": {
         "Band": "869.900F",

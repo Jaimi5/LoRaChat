@@ -1,9 +1,9 @@
-import mqttClient
-import threading
-import updatePlatformio
 import os
 import sys
-import json
+import simulation
+import simConfiguration
+from time import sleep
+from updatePlatformio import PortsPlatformIo
 
 
 def main():
@@ -11,111 +11,95 @@ def main():
         print("Please provide the name of the directory.")
         return
 
+    # TODO: Need to check the arguments
+    noBuild = "-nb" in sys.argv
+
+    ports = "-p" in sys.argv
+
+    if ports:
+        PortsPlatformIo.printPorts()
+        return
+
     directory = sys.argv[1]
     # Use the directory_name in your code
 
-    noBuild = "-nb" in sys.argv
-
     print("Directory name:", directory)
 
-    # Create an Event object to synchronize the main script
-    # Create multiple Condition objects
-    shared_state_change = threading.Event()
+    overwrite = False
 
-    shared_state = {
-        "builded": False,  # True if the build is done
-        "deviceMonitorStarted": False,  # True if the device monitor is started
-        "allDevicesStartedSim": False,
-        "allDevicesEndedSim": False,
-        "allDevicesEndedLogs": False,
-        "error": False,
-        "error_message": "",
-    }
+    if os.path.isdir(directory):
+        print("Directory already exists")
+        overwrite = input("Do you want to overwrite it? (y/n)") == "y"
 
-    os.makedirs(directory, exist_ok=True)
+    if not overwrite:
+        os.makedirs(directory, exist_ok=True)
 
-    if not noBuild:
-        # Update the PlatformIO
-        updater = updatePlatformio.UpdatePlatformIO(
-            directory,
-            shared_state_change,
-            shared_state,
-        )
+        numberOfSimulations = int(input("How many simulations do you want to run?"))
 
-        def waitUntilBuild():
-            while not shared_state["builded"]:
-                shared_state_change.wait()
+        simConfigurations = []
 
-                if shared_state_change.is_set():
-                    shared_state_change.clear()
+        for i in range(numberOfSimulations):
+            print("Enter the values for the configuration:")
+            while True:
+                name = input("Enter name of the configuration: ")
+                if name == "":
+                    print("Name cannot be empty")
+                    continue
+                break
 
-                    if shared_state["error"]:
-                        print("Error: " + shared_state["error_message"])
-                        return
+            # Create the directory for the simulation
+            simulationFile = os.path.join(directory, name)
+            os.makedirs(simulationFile, exist_ok=True)
 
-        waitUntilBuild()
+            # Create the configuration file
+            config = simConfiguration.SimConfiguration(simulationFile, name)
+            config.createConfiguration()
 
-        def waitUntilADeviceBuilded():
-            while not shared_state["deviceMonitorStarted"]:
-                shared_state_change.wait()
+            simConfigurations.append(config)
 
-                if shared_state_change.is_set():
-                    shared_state_change.clear()
+    else:
+        # Get all the directories in the directory
+        directories = [
+            name
+            for name in os.listdir(directory)
+            if os.path.isdir(os.path.join(directory, name))
+        ]
 
-                    if shared_state["error"]:
-                        print("Error: " + shared_state["error_message"])
-                        return
+        simConfigurations = []
 
-        waitUntilADeviceBuilded()
+        for directoryName in directories:
+            simConfigurations.append(
+                simConfiguration.SimConfiguration(
+                    os.path.join(directory, directoryName), directoryName
+                )
+            )
 
-    message_thread = threading.Thread(
-        target=mqttClient.MQTT,
-        args=(
-            directory,  # file of the results
-            updatePlatformio.getNumberOfPorts(),
-            shared_state_change,
-            shared_state,
-        ),
-    )
+    for config in simConfigurations:
+        retries = 0
+        while True and retries < 3:
+            directoryName = os.path.join(directory, config.getName())
+            if retries > 0:
+                directoryName = directoryName + str(retries)
+                os.makedirs(directoryName, exist_ok=True)
+                # Copy the file "simConfiguration.json" to the new directory
+                config.copyConfiguration(directoryName)
 
-    message_thread.start()
+            sim = simulation.Simulation(
+                directoryName,
+                noBuild,
+                config.getName(),
+            )
 
-    def saveStatus():
-        json_str = json.dumps(shared_state, indent=4)
+            if sim.error():
+                print(
+                    "Error in simulation " + config.getName(),
+                    "Retrying number " + str(retries),
+                )
+                sleep(10)
+                retries += 1
+                continue
 
-        # Save the results in a file using a json format
-        with open(os.path.join(directory, "results.json"), "w") as f:
-            f.write(json_str)
-
-    try:
-        while True:
-            # Wait for the shared_state_change event to be set
-            shared_state_change.wait(5)
-
-            if shared_state_change.is_set():
-                shared_state_change.clear()
-
-                saveStatus()
-
-                if shared_state["error"]:
-                    print("Error: " + shared_state["error_message"])
-                    break
-
-                if shared_state["allDevicesEndedLogs"]:
-                    print("All devices ended logs")
-                    break
-
-    except KeyboardInterrupt:
-        print("KeyboardInterrupt")
-        message_thread.join()
-
-        try:
-            updater.killThreads()
-        except NameError:
-            pass
-
-    message_thread.join()
-    saveStatus()
+            break
 
     print("Successfully closed the program")
 

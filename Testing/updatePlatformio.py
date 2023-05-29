@@ -10,6 +10,16 @@ from colorama import Fore
 portsLora32 = {"COM12", "COM14", "COM9", "COM32", "COM31"}
 
 
+class PortsPlatformIo:
+    def printPorts():
+        ports = util.get_serial_ports()
+
+        for port in ports:
+            print(port["port"], end=",", flush=True)
+
+        print()
+
+
 class UpdatePlatformIO:
     def __init__(self, directory, shared_state_change, shared_state):
         self.shared_state_change = shared_state_change
@@ -207,7 +217,7 @@ class UpdatePlatformIO:
             if self.shared_state["deviceMonitorStarted"] == False:
                 self.shared_state["deviceMonitorStarted"] = True
                 self.shared_state_change.set()
-            
+
             # Monitor the port
             self.monitorPort(portName)
 
