@@ -195,6 +195,8 @@ class UpdatePlatformIO:
         self.processes.append(process)
 
         # Write the output to a file, but I want to read the file on the fly
+        self.ErrorOccurred = False
+        self.deletingIn = 40  # lines
 
         for line in process.stdout:
             with open(file, "a") as f:
@@ -203,9 +205,14 @@ class UpdatePlatformIO:
             if "Guru Meditation Error" in line.decode(
                 "utf-8", "ignore"
             ) or "assert failed" in line.decode("utf-8", "ignore"):
-                print("Error in port: " + portName)
-                process.kill()
-                return
+                self.ErrorOccurred = True
+
+            if self.ErrorOccurred:
+                self.deletingIn -= 1
+                if self.deletingIn == 0:
+                    print("Error in port: " + portName)
+                    process.kill()
+                    return
 
         process.wait()
 

@@ -65,42 +65,52 @@ class PacketService:
 
             if simCommand == 4:
                 # If the command is "start simulation"
-                if self.status.startedDevice(packet["data"]["addrSrc"]):
-                    # If the device is not already in the file
-                    if self.status.checkIfAllDevicesStarted():
-                        self.shared_state["allDevicesStartedSim"] = True
-                        self.shared_state_change.set()
-                else:
-                    self.shared_state["error"] = True
-                    self.shared_state["error_message"] = "Device already started"
-                    self.shared_state_change.set()
+                self.SetStatusAndCheckAll(
+                    packet,
+                    self.status.startedDevice,
+                    self.status.checkIfAllDevicesStarted,
+                    "allDevicesStartedSim",
+                    "Device already started simulation",
+                )
 
             elif simCommand == 5:
                 # If the command is "end simulation"
-                if self.status.endedSimulation(packet["data"]["addrSrc"]):
-                    if self.status.checkIfAllDevicesEndedSimulation():
-                        self.shared_state["allDevicesEndedSim"] = True
-                        self.shared_state_change.set()
-                else:
-                    self.shared_state["error"] = True
-                    self.shared_state["error_message"] = "Device already ended"
-                    self.shared_state_change.set()
+                self.SetStatusAndCheckAll(
+                    packet,
+                    self.status.endedSimulation,
+                    self.status.checkIfAllDevicesEndedSimulation,
+                    "allDevicesEndedSim",
+                    "Device already ended simulation",
+                )
 
             elif simCommand == 6:
-                # If the command is "end send simulation"
-                if self.status.endedLogsSimulation(packet["data"]["addrSrc"]):
-                    if self.status.checkIfAllDevicesEndedLogs():
-                        self.shared_state["allDevicesEndedLogs"] = True
-                        self.shared_state_change.set()
-                else:
-                    self.shared_state["error"] = True
-                    self.shared_state[
-                        "error_message"
-                    ] = "Device already ended Simulation"
-                    self.shared_state_change.set()
+                # If the command is "end send logs simulation"
+                self.SetStatusAndCheckAll(
+                    packet,
+                    self.status.endedLogsSimulation,
+                    self.status.checkIfAllDevicesEndedLogs,
+                    "allDevicesEndedLogs",
+                    "Device already ended log Simulation",
+                )
+
             elif simCommand == 2:
                 # Save the packet in the state monitor file
                 self.saveMonitor(packet["data"])
 
             elif simCommand == 3:
                 self.saveData(packet["data"])
+
+    def SetStatusAndCheckAll(
+        self, packet, endDeviceFunction, endAllDevicesFunction, state, errorName
+    ):
+        if endDeviceFunction(packet["data"]["addrSrc"]):
+            if endAllDevicesFunction():
+                self.shared_state[state] = True
+                self.shared_state[state + "Time"] = datetime.now().strftime(
+                    "%d/%m/%Y %H:%M:%S"
+                )
+                self.shared_state_change.set()
+        else:
+            self.shared_state["error"] = True
+            self.shared_state["error_message"] = errorName
+            self.shared_state_change.set()

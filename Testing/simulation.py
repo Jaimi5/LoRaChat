@@ -6,6 +6,8 @@ import updatePlatformio
 import mqttClient
 import changeConfigurationSerial
 import timeout
+from datetime import datetime
+from time import sleep
 
 
 class Simulation:
@@ -19,13 +21,21 @@ class Simulation:
         self.shared_state_change = threading.Event()
 
         self.shared_state = {
+            "startedBuilding": datetime.now().strftime(
+                "%d/%m/%Y %H:%M:%S"
+            ),  # Time when the build started
             "builded": False,  # True if the build is done
             "deviceMonitorStarted": False,  # True if the device monitor is started
-            "allDevicesStartedSim": False,
-            "allDevicesEndedSim": False,
-            "allDevicesEndedLogs": False,
-            "error": False,
-            "error_message": "",
+            "deviceMonitorStartedTime": "",  # Time when the device monitor started
+            "allDevicesStartedSim": False,  # True if all devices started the simulation
+            "allDevicesStartedSimTime": "",  # Time when all devices started the simulation
+            "allDevicesEndedSim": False,  # True if all devices ended the simulation
+            "allDevicesEndedSimTime": "",  # Time when all devices ended the simulation
+            "allDevicesEndedLogs": False,  # True if all devices ended the logs
+            "allDevicesEndedLogsTime": "",  # Time when all devices ended the logs
+            "error": False,  # True if there is an error
+            "error_time": "",  # Time when the error occurred
+            "error_message": "",  # Error message
         }
 
         # If there is a configuration file for the simulation then use it
@@ -53,6 +63,9 @@ class Simulation:
                         self.shared_state_change.clear()
 
                         if self.shared_state["error"]:
+                            self.shared_state["error_time"] = datetime.now().strftime(
+                                "%d/%m/%Y %H:%M:%S"
+                            )
                             print("Error: " + self.shared_state["error_message"])
                             return
 
@@ -65,7 +78,17 @@ class Simulation:
                     if self.shared_state_change.is_set():
                         self.shared_state_change.clear()
 
+                        if self.shared_state["deviceMonitorStarted"]:
+                            self.shared_state[
+                                "deviceMonitorStartedTime"
+                            ] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                            print("Device monitor started")
+                            break
+
                         if self.shared_state["error"]:
+                            self.shared_state["error_time"] = datetime.now().strftime(
+                                "%d/%m/%Y %H:%M:%S"
+                            )
                             print("Error: " + self.shared_state["error_message"])
                             return
 
@@ -91,10 +114,19 @@ class Simulation:
             with open(os.path.join(self.fileName, "results.json"), "w") as f:
                 f.write(json_str)
 
+        ErrorOccurred = False
+        WaitErrorOccurred = 15
+
         try:
             while True:
                 # Wait for the self.shared_state_change event to be set
                 self.shared_state_change.wait(5)
+
+                # If an error occurred wait some time to be sure that all messages are received
+                if ErrorOccurred:
+                    WaitErrorOccurred -= 1
+                    if WaitErrorOccurred == 0:
+                        break
 
                 if self.shared_state_change.is_set():
                     self.shared_state_change.clear()
@@ -103,12 +135,17 @@ class Simulation:
 
                     if self.shared_state["error"]:
                         print("Error: " + self.shared_state["error_message"])
+                        self.shared_state["error_time"] = datetime.now().strftime(
+                            "%d/%m/%Y %H:%M:%S"
+                        )
+                        ErrorOccurred = True
                         self.timeout.cancel()
-                        break
 
                     if self.shared_state["allDevicesEndedLogs"]:
                         print("All devices ended logs")
                         self.timeout.cancel()
+                        # Wait 1 minutes to be sure that all messages are received
+                        sleep(1 * 60)
                         break
 
         except KeyboardInterrupt:

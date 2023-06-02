@@ -39,7 +39,7 @@ class MQTT:
 
             self.client.loop_start()
 
-            self.client.subscribe(MQTT_TOPIC_IN)
+            self.client.subscribe(MQTT_TOPIC_IN, 2)
 
             self.client.on_message = self.on_message
         except ConnectionRefusedError:
@@ -81,6 +81,3 @@ class MQTT:
         print("disconnecting MQTT client")
         self.client.loop_stop(True)
         self.client.disconnect()
-
-    def __del__(self):
-        self.disconnect()
