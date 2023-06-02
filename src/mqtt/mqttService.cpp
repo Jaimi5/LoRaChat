@@ -27,7 +27,7 @@ void MqttService::MqttLoop(void*) {
 }
 
 bool MqttService::sendMqttMessage(MQTTQueueMessage* message) {
-    return client->publish(MQTT_TOPIC_OUT + String(message->topic), message->body);
+    return client->publish(MQTT_TOPIC_OUT + String(message->topic), message->body, true, 2);
 }
 
 bool MqttService::isDeviceConnected() {
@@ -35,49 +35,63 @@ bool MqttService::isDeviceConnected() {
 }
 
 bool MqttService::writeToMqtt(DataMessage* message) {
-    // TODO: Check for wifi connection, not mqtt connection
-    if (!isDeviceConnected()) {
-        Log.warningln(F("No Mqtt device connected"));
-        return false;
+    if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
+
+        // TODO: Check for wifi connection, not mqtt connection
+        if (!isDeviceConnected()) {
+            Log.warningln(F("No Mqtt device connected"));
+            xSemaphoreGive(mqttSemaphore);
+            return false;
+        }
+
+        String json = MessageManager::getInstance().getJSON(message);
+
+        // TODO: Need to find the correct number but this is a good start
+        uint16_t length = json.length() + 1 + sizeof(lwmqtt_message_t);
+
+        Log.verboseln(F("Message length: %d"), length);
+
+        if (length > MQTT_MAX_PACKET_SIZE) {
+            Log.errorln(F("Message too long"));
+            xSemaphoreGive(mqttSemaphore);
+            return false;
+        }
+
+        MQTTQueueMessage* mqttMessageSend = new MQTTQueueMessage();
+
+        memcpy(mqttMessageSend->body, json.c_str(), json.length() + 1);
+        mqttMessageSend->topic = message->addrSrc;
+
+        if (xQueueSend(sendQueue, &mqttMessageSend, portMAX_DELAY) != pdPASS) {
+            Log.errorln(F("Error sending to queue"));
+            delete mqttMessageSend;
+            xSemaphoreGive(mqttSemaphore);
+            return false;
+        }
+
+        xSemaphoreGive(mqttSemaphore);
+        return true;
     }
 
-    String json = MessageManager::getInstance().getJSON(message);
-
-    // TODO: Need to find the correct number but this is a good start
-    uint16_t length = json.length() + 1 + sizeof(lwmqtt_message_t);
-
-    Log.verboseln(F("Message length: %d"), length);
-
-    if (length > MQTT_MAX_PACKET_SIZE) {
-        Log.errorln(F("Message too long"));
-        return false;
-    }
-
-    MQTTQueueMessage* mqttMessageSend = new MQTTQueueMessage();
-
-    memcpy(mqttMessageSend->body, json.c_str(), json.length() + 1);
-    mqttMessageSend->topic = message->addrSrc;
-
-    if (xQueueSend(sendQueue, &mqttMessageSend, (TickType_t) 10) != pdPASS) {
-        Log.errorln(F("Error sending to queue"));
-        delete mqttMessageSend;
-        return false;
-    }
-
-    return true;
+    return false;
 }
 
 bool MqttService::writeToMqtt(String message) {
-    Log.info(F("Sending message to mqtt: %s"), message);
+    // if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
+    //     if (mqttTaskCreated) {
+    //         xSemaphoreGive(mqttSemaphore);
+    //         return;
+    //     }
+    //     Log.info(F("Sending message to mqtt: %s"), message);
 
-    if (!isDeviceConnected()) {
-        Log.warning(F("No Mqtt device connected"));
-        return false;
-    }
-    // String json = MessageManager::getInstance().getJSON(message);
-    client->publish("/hello", message);
+    //     if (!isDeviceConnected()) {
+    //         Log.warning(F("No Mqtt device connected"));
+    //         return false;
+    //     }
+    //     // String json = MessageManager::getInstance().getJSON(message);
+    //     client->publish("/hello", message);
 
-    return true;
+    return false;
 }
 
 void callback(String& topic, String& payload) {
@@ -138,9 +152,11 @@ void MqttService::initMqtt(String lclName) {
         client->begin(MQTT_SERVER, MQTT_PORT, net);
 
         // we should set the keep alive interval to a greater value than the default
-        // client->setKeepAlive(20);
+        client->setKeepAlive(20000);
 
         client->onMessage(callback);
+
+
 
         connect();
 
@@ -204,7 +220,7 @@ void MqttService::loop() {
         if (millis() - lastMillis > MQTT_STILL_CONNECTED_INTERVAL) {
             Log.traceln(F("Sending message to mqtt"));
             lastMillis = millis();
-            client->publish(MQTT_TOPIC_OUT + localName, "Since boot: " + String(millis() / 1000));
+            client->publish(MQTT_TOPIC_OUT + localName, "Since boot: " + String(millis() / 1000), true, 1);
         }
 
         xSemaphoreGive(mqttSemaphore);
@@ -220,7 +236,7 @@ void MqttService::connect() {
         return;
     }
 
-    Log.errorln(F("Wifi connected"));
+    Log.verboseln(F("Wifi connected"));
 
     Serial.print("Connecting MQTT...");
 
@@ -236,7 +252,7 @@ void MqttService::connect() {
 
     // TODO: When routing table update notification, update the subscriptions accordingly
     // TODO: Or when sending a message, add an attribute to send to an specific node
-    if (client->subscribe(MQTT_TOPIC_SUB)) {
+    if (client->subscribe(MQTT_TOPIC_SUB, 1)) {
         Log.infoln(F("Subscribed to topic %s"), MQTT_TOPIC_SUB);
     }
     else {

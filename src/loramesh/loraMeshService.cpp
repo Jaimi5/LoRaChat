@@ -154,9 +154,9 @@ bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
 
     message->addrDst = gatewayNode->networkNode.address;
 
-    sendReliable(message);
+    Log.verboseln(F("Sending message to gateway %d"), message->addrDst);
 
-    Log.verboseln(F("Message sent to gateway %d"), message->addrDst);
+    sendReliable(message);
 
     return true;
 }
@@ -171,4 +171,8 @@ void LoRaMeshService::removeGateway() {
 
 bool LoRaMeshService::hasActiveConnections() {
     return radio.hasActiveConnections();
+}
+
+void LoRaMeshService::standby() {
+    return radio.standby();
 }

@@ -47,6 +47,8 @@ public:
 
     bool hasActiveConnections();
 
+    void standby();
+
 private:
 
     LoraMesher& radio = LoraMesher::getInstance();

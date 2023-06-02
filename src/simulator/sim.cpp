@@ -80,7 +80,7 @@ void Sim::simLoop(void* pvParameters) {
     for (;;) {
         sim.sendStartSimMessage();
 
-        vTaskDelay(60000 * 2 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
+        vTaskDelay(60000 * 4 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
 
         sim.sendPacketsToServer(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
 
@@ -93,6 +93,8 @@ void Sim::simLoop(void* pvParameters) {
         // vTaskDelay(60000 * 20 / portTICK_PERIOD_MS); // Wait 30 minutes to avoid other messages to propagate
 
         sim.stop();
+
+        // LoRaMeshService::getInstance().standby();
 
         Log.verboseln(F("Simulator connecting to WiFi"));
 
@@ -133,6 +135,7 @@ void Sim::sendAllData() {
     service->statesList->setInUse();
 
     if (service->statesList->moveToStart()) {
+        Log.verboseln(F("Simulator sending data, n. %d"), service->statesList->getLength());
         do {
             LM_State* state = service->statesList->Pop();
             if (state == nullptr) {
@@ -147,7 +150,7 @@ void Sim::sendAllData() {
 
             // If wifi connected wait 1 second, else wait 40 seconds
             if (WiFi.status() == WL_CONNECTED)
-                vTaskDelay(500 / portTICK_PERIOD_MS); // Wait 1 second
+                vTaskDelay(2000 / portTICK_PERIOD_MS); // Wait 10 milliseconds
             else
                 vTaskDelay(40000 / portTICK_PERIOD_MS); // Wait 40 seconds (to avoid flooding the network
 
