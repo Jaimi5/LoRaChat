@@ -3,7 +3,9 @@
     "Simulator": {
         "PACKET_COUNT": "1",
         "PACKET_DELAY": "120000",
-        "PACKET_SIZE": "100"
+        "PACKET_SIZE": "100",
+        "UPLOAD_PAYLOAD": "0",
+        "LOG_MESHER": "0"
     },
     "LoRaMesher": {
         "Band": "869.900F",

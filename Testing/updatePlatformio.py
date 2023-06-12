@@ -229,6 +229,7 @@ class UpdatePlatformIO:
             self.monitorPort(portName)
 
     def killThreads(self):
+        print("Killing update and monitor threads")
         for process in self.processes:
             process.kill()
 
