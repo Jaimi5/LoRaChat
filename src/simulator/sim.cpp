@@ -7,19 +7,22 @@ void Sim::init() {
 }
 
 String Sim::start() {
-    if (service != nullptr) {
-        service->startSimulation();
+    if (LOG_MESHER == true) {
+        if (service != nullptr) {
+            service->startSimulation();
+        }
+        LoraMesher::getInstance().setSimulatorService(service);
     }
-    LoraMesher::getInstance().setSimulatorService(service);
     return "Sim On";
 }
 
 String Sim::stop() {
-    if (service != nullptr) {
-        service->stopSimulation();
+    if (LOG_MESHER == true) {
+        if (service != nullptr) {
+            service->stopSimulation();
+        }
+        LoraMesher::getInstance().removeSimulatorService();
     }
-    LoraMesher::getInstance().removeSimulatorService();
-
     return "Sim Off";
 }
 
@@ -87,7 +90,7 @@ void Sim::simLoop(void* pvParameters) {
         Log.verboseln(F("Simulator stopped"));
 
         while (LoRaMeshService::getInstance().hasActiveConnections()) {
-            vTaskDelay(10000 + random(0, 1000) / portTICK_PERIOD_MS); // Wait 10 second
+            vTaskDelay(PACKET_DELAY + 20000 / portTICK_PERIOD_MS); // Wait 10 second
         }
 
         // vTaskDelay(60000 * 20 / portTICK_PERIOD_MS); // Wait 30 minutes to avoid other messages to propagate
@@ -191,6 +194,7 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
     SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
     for (size_t i = 0; i < packetCount; i++) {
         simPayloadMessage->messageId = i;
+        Log.verboseln(F("Simulator sending packet %d"), i);
         MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simPayloadMessage);
 
         vTaskDelay(delayMs / portTICK_PERIOD_MS); // Wait delayMs milliseconds
@@ -215,9 +219,12 @@ SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
     simPayloadMessage->packetSize = packetSize;
 
     // Add 0, 1, 2, 3... packetSize to the payload
-    // for (size_t i = 0; i < packetSize; i++) {
-    //     simPayloadMessage->payload[i] = i;
-    // }
+    for (size_t i = 0; i < packetSize; i++) {
+        simPayloadMessage->payload[i] = i;
+        if (i % 100 == 0) {
+            vTaskDelay(1 / portTICK_PERIOD_MS); // Wait 1 milliseconds
+        }
+    }
 
     return simMessage;
 }

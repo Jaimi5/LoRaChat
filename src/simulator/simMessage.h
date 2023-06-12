@@ -8,6 +8,8 @@
 
 #include "LoraMesher.h"
 
+#include "config.h"
+
 #pragma pack(1)
 
 enum SimCommand : uint8_t {
@@ -64,7 +66,17 @@ public:
 
     void serializePayload(JsonObject& doc) {
         doc["packetSize"] = packetSize;
-        doc["payload"] = payload[0];
+
+        if (UPLOAD_PAYLOAD == true) {
+            JsonArray payloadArray = doc.createNestedArray("payload");
+
+            for (uint32_t i = 0; i < packetSize; i++) {
+                payloadArray.add(payload[i]);
+            }
+        }
+        else {
+            doc["payload"] = payload[packetSize - 1];
+        }
     }
 };
 
