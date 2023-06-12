@@ -224,6 +224,7 @@ def draw_messages_by_device(directory):
 
     ax.set_xlabel("Date")
     ax.set_ylabel("Device ID")
+    ax.set_title("Scatter plot of Messages over time")
 
     # Add the plot to the tkinter frame
     canvas = FigureCanvasTkAgg(fig, master=frame)  # A tk.DrawingArea.
@@ -244,13 +245,13 @@ def draw_loss_messages_by_device(directory):
     messages = os.path.join(directory, "messages.json")
     if not os.path.exists(messages):
         print("No messages.json file found in directory")
-        return
+        return None
 
     # Get the status.json file
     status = os.path.join(directory, "status.json")
     if not os.path.exists(status):
         print("No status.json file found in directory")
-        return
+        return None
 
     # Clear the frame
     for widget in frame.winfo_children():
@@ -274,6 +275,9 @@ def draw_loss_messages_by_device(directory):
     # Find how many devices are in the data
     status_df = pd.read_json(status)
     devices = status_df["device"].unique()
+
+    # Sort the devices
+    devices.sort()
 
     # Generate a list of colors for each device
     colors = random.choices(list(mcolors.CSS4_COLORS.keys()), k=len(devices))
@@ -302,13 +306,25 @@ def draw_loss_messages_by_device(directory):
 
     # Scatter plot with the x axis as the device ID. All the x axis should be separated the same distance and it should print the device ID
     ax.bar(packet_loss.keys(), packet_loss.values(), color=colors, width=0.5)
+
+    # Add value on top of each bar
+    for i, value in enumerate(packet_loss.keys()):
+        ax.text(
+            x=value,
+            y=packet_loss[value] + 0.2,
+            s=str(packet_loss[value]) + "%",
+            ha="center",
+            va="bottom",
+        )
+
     # ax.scatter(devices_indices, average_packet_loss_series.values, color=colors)
 
     # Replace the x-axis labels with the actual device IDs
     # plt.xticks(devices_indices, average_packet_loss_series.index)
 
     ax.set_xlabel("Device ID")
-    ax.set_ylabel("Packet Loss")
+    ax.set_ylabel("Packet Loss (%)")
+    ax.set_title("Packet Loss by Device")
 
     # Add the plot to the tkinter frame
     canvas = FigureCanvasTkAgg(fig, master=frame)  # A tk.DrawingArea.
@@ -322,6 +338,8 @@ def draw_loss_messages_by_device(directory):
         command=lambda: download_plot(canvas, directory, "messagesLost.png"),
     )
     download_button.grid(row=1, column=0, sticky="nsew")
+
+    return canvas
 
 
 # Given the plot, download the plot as a PNG file
@@ -389,15 +407,56 @@ draw_button = tk.Button(
 draw_button.grid(row=1, column=0, sticky="ew")
 
 
-def find_file():
+def find_file(function):
     filename = filedialog.askdirectory(
-        initialdir="../ZMasiveTestExcelency",
+        initialdir="./ZWeekendTesting06GOOD",
         title="Select a File",
     )
-    draw_button["command"] = lambda: find_file_json(filename)
+    draw_button["command"] = lambda: function(filename)
 
 
-find_button = tk.Button(root, text="Find File", command=find_file)
+find_button = tk.Button(
+    root, text="Find File", command=lambda: find_file(function=find_file_json)
+)
 find_button.grid(row=0, column=1, sticky="ew")
+
+
+def find_file_and_execute_function(function):
+    filename = filedialog.askdirectory(
+        initialdir="./ZWeekendTesting06GOOD",
+        title="Select a File",
+    )
+    function(filename)
+
+
+def find_all_files_and_plot_loss_messages_by_device(directory):
+    print(directory)
+    # Create a new directory to store the plots
+    plot_dir = os.path.join(directory, "plots")
+
+    if not os.path.exists(plot_dir):
+        os.makedirs(plot_dir)
+
+    # Get all the directories in the directory
+    directories = os.listdir(directory)
+
+    # Execute the function for each directory
+    for dir in directories:
+        joined_dir = os.path.join(directory, dir)
+        canvas = draw_loss_messages_by_device(joined_dir)
+        if canvas:
+            canvas.print_figure(os.path.join(plot_dir, dir + ".png"))
+
+
+button_find_file_and_plot = tk.Button(
+    root,
+    text="Select file to plot multiple loss messages for all devices",
+    command=lambda: find_file_and_execute_function(
+        function=find_all_files_and_plot_loss_messages_by_device
+    ),
+)
+
+button_find_file_and_plot.grid(row=1, column=1, sticky="ew")
+
 
 root.mainloop()
