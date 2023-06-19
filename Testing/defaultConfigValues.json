@@ -22,5 +22,6 @@
         "MAX_TIMEOUTS": "3",
         "MAX_RESEND_PACKET": "3",
         "MAX_TRY_BEFORE_SEND": "5"
-    }
+    },
+    "LoRaMesherAdjacencyGraph": []
 }
