@@ -1,18 +1,10 @@
 import tkinter as tk
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-import json
-from datetime import datetime
-import numpy as np
 import os
 import tkinter.filedialog as filedialog
-import random
-import matplotlib.colors as mcolors
 from drawLossMessagesByDevice import draw_loss_messages_by_device
 from drawMessageByDevice import draw_messages_by_device
 from drawPlotAndSummary import draw_plot_and_summary
+from drawEEDByDevice import draw_eed_by_device
 
 
 # Given a directory, find the JSON file and draw the plot and summary
@@ -97,10 +89,10 @@ def find_file_and_execute_function(function):
         initialdir="./ZWeekendTesting06GOOD",
         title="Select a File",
     )
-    function(filename)
+    function(frame, filename)
 
 
-def find_all_files_and_plot_loss_messages_by_device(directory):
+def find_all_files_and_plot_loss_messages_by_device(frame, directory):
     print(directory)
     # Create a new directory to store the plots
     plot_dir = os.path.join(directory, "plots")
@@ -128,6 +120,15 @@ button_find_file_and_plot = tk.Button(
 )
 
 button_find_file_and_plot.grid(row=1, column=1, sticky="ew")
+
+# Create a button to draw the eed by device
+button_eed_by_device = tk.Button(
+    root,
+    text="EED By Device",
+    command=lambda: find_file_and_execute_function(function=draw_eed_by_device),
+)
+
+button_eed_by_device.grid(row=2, column=0, sticky="ew")
 
 
 root.mainloop()

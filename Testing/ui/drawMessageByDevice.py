@@ -1,8 +1,6 @@
 import os
 import json
-import random
 import pandas as pd
-import matplotlib.colors as mcolors
 import tkinter as tk
 from tkinter import Frame
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg

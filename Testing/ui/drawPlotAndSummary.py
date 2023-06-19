@@ -2,7 +2,6 @@ import json
 import pandas as pd
 from tkinter import Frame
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from calculateSummaryByDevice import calculate_summary_by_device
 import tkinter as tk

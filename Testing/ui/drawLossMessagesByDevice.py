@@ -1,12 +1,8 @@
 import os
 import json
 import pandas as pd
-from datetime import datetime
-import matplotlib.colors as mcolors
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
-import tkinter.filedialog as filedialog
-import random
 import tkinter as tk
 from tkinter import Frame
 from downloadPlot import download_plot
