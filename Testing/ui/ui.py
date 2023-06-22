@@ -72,7 +72,7 @@ draw_button.grid(row=1, column=0, sticky="ew")
 
 def find_file(function):
     filename = filedialog.askdirectory(
-        initialdir="./ZWeekendTesting06GOOD",
+        initialdir="./ZLargeNumberOfPacketsNoLimitRepeatTest2",
         title="Select a File",
     )
     draw_button["command"] = lambda: function(filename)
@@ -86,7 +86,7 @@ find_button.grid(row=0, column=1, sticky="ew")
 
 def find_file_and_execute_function(function):
     filename = filedialog.askdirectory(
-        initialdir="./ZWeekendTesting06GOOD",
+        initialdir="./ZLargeNumberOfPacketsNoLimitRepeatTest2",
         title="Select a File",
     )
     function(frame, filename)

@@ -113,9 +113,6 @@ def draw_eed_by_device(frame: Frame, directory):
     # Box plot the EED data and put it on the canvas
     plot_df.boxplot(ax=ax, grid=False)
 
-    # Set the y-axis to a log scale
-    ax.set_yscale("log")
-
     # Add a title
     ax.set_title("EED by Device")
 
@@ -129,6 +126,9 @@ def draw_eed_by_device(frame: Frame, directory):
     canvas = FigureCanvasTkAgg(fig, master=frame)  # A tk.DrawingArea.
     canvas.draw()
     canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+
+    # Add the toggle button
+    addToggleLogScale(frame, canvas, ax)
 
     return
 
@@ -175,3 +175,47 @@ def draw_eed_by_device(frame: Frame, directory):
     download_button.grid(row=1, column=0, sticky="nsew")
 
     return canvas
+
+
+def addToggleLogScale(frame, canvas, ax):
+    """
+    Adds a button to the frame that toggles the y-axis between a linear and log scale
+    """
+
+    # Create a variable to hold the state of the log scale
+    log_scale = tk.BooleanVar()
+    log_scale.set(False)
+
+    # Create a button to toggle the log scale
+    log_button = tk.Button(
+        frame,
+        text="Toggle Log Scale",
+        command=lambda: toggleLogScale(log_scale, canvas, ax),
+    )
+    log_button.grid(row=2, column=0, sticky="nsew")
+
+    return
+
+
+def toggleLogScale(log_scale, canvas, ax):
+    """
+    Toggles the y-axis between a linear and log scale
+    """
+
+    # Get the current state of the log scale
+    state = log_scale.get()
+
+    # Toggle the state
+    log_scale.set(not state)
+
+    # Toggle the y-axis scale
+    if state:
+        ax.set_yscale("linear")
+    else:
+        ax.set_yscale("log")
+
+    # Redraw the canvas
+    canvas.draw()
+    canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+
+    return

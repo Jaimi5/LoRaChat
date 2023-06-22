@@ -11,6 +11,7 @@ class ChangeConfigurationSerial:
     def changeConfiguration(self):
         self.changeSimulatorApp()
         self.changeLoRaMesher()
+        self.changeAdjacencyGraph()
 
     def getTimeout(self):
         # Read the file
@@ -154,7 +155,8 @@ class ChangeConfigurationSerial:
                 adjacencyGraphInCpp = ""
 
                 if json_data["LoRaMesherAdjacencyGraph"] == []:
-                    adjacencyGraphInCpp = "\treturn true;"
+                    print("No adjacency graph found. Using default adjacency graph")
+                    adjacencyGraphInCpp = "\treturn true;\n"
 
                 else:
                     adjacencyGraphInCpp = (

@@ -19,7 +19,7 @@
         "HELLO_PACKETS_DELAY": "120",
         "DEFAULT_TIMEOUT": "HELLO_PACKETS_DELAY*5",
         "MIN_TIMEOUT": "20",
-        "MAX_TIMEOUTS": "3",
+        "MAX_TIMEOUTS": "10",
         "MAX_RESEND_PACKET": "3",
         "MAX_TRY_BEFORE_SEND": "5"
     },
