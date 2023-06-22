@@ -85,15 +85,28 @@ void Sim::simLoop(void* pvParameters) {
 
         vTaskDelay(60000 * 4 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
 
+#ifdef ONE_SENDER
+        if (LoraMesher::getInstance().getLocalAddress() == ONE_SENDER) {
+
+            while (LoraMesher::getInstance().getClosestGateway() == nullptr) {
+                vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
+            }
+            sim.sendPacketsToServer(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+        }
+        else {
+            vTaskDelay(60000 * 10 / portTICK_PERIOD_MS); // Wait 10 minutes to avoid other messages to propagate
+            vTaskDelay(PACKET_DELAY * PACKET_COUNT / portTICK_PERIOD_MS);
+        }
+#else
         sim.sendPacketsToServer(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+#endif
+
 
         Log.verboseln(F("Simulator stopped"));
 
         while (LoRaMeshService::getInstance().hasActiveConnections()) {
             vTaskDelay(PACKET_DELAY + 20000 / portTICK_PERIOD_MS); // Wait 10 second
         }
-
-        // vTaskDelay(60000 * 20 / portTICK_PERIOD_MS); // Wait 30 minutes to avoid other messages to propagate
 
         sim.stop();
 

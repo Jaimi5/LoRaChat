@@ -61,8 +61,11 @@
 #define WIFI_ADDR_CONNECTED 0x8C20
 
 
-#define PACKET_COUNT 10
+#define PACKET_COUNT 100
 #define PACKET_DELAY 120000
-#define PACKET_SIZE 100
+#define PACKET_SIZE 50
 #define UPLOAD_PAYLOAD 0
 #define LOG_MESHER 0
+
+// If defined, there only be one sender
+#define ONE_SENDER 20068
