@@ -8,6 +8,3 @@
 .vscode/ipch
 .vscode/extensions.json
 *.code-workspace
-
-# Monitor files
-monitor*
