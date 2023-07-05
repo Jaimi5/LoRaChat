@@ -5,7 +5,8 @@
         "PACKET_DELAY": "120000",
         "PACKET_SIZE": "100",
         "UPLOAD_PAYLOAD": "0",
-        "LOG_MESHER": "0"
+        "LOG_MESHER": "0",
+        "ONE_SENDER": "0"
     },
     "LoRaMesher": {
         "Band": "869.900F",
