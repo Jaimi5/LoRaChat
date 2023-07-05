@@ -12,7 +12,7 @@
 
 #pragma pack(1)
 
-enum SimCommand : uint8_t {
+enum SimCommand: uint8_t {
     StartSim = 0,
     StopSim = 1,
     Message = 2,
@@ -80,7 +80,7 @@ public:
     }
 };
 
-class SimMessage : public DataMessageGeneric {
+class SimMessage: public DataMessageGeneric {
 public:
     SimCommand simCommand;
 
