@@ -18,6 +18,7 @@ void LoRaMeshService::loopReceivedPackets() {
     while (radio.getReceivedQueueSize() > 0) {
         Log.traceln(F("LoRaPacket received"));
         Log.traceln(F("Queue receiveUserData size: %d"), radio.getReceivedQueueSize());
+        Log.traceln(F("Heap size receive: %d"), ESP.getFreeHeap());
 
         //Get the first element inside the Received User Packets FiFo
         AppPacket<LoRaMeshMessage>* packet = radio.getNextAppPacket<LoRaMeshMessage>();
@@ -33,6 +34,7 @@ void LoRaMeshService::loopReceivedPackets() {
 
         //Delete the packet when used. It is very important to call this function to release the memory of the packet.
         radio.deletePacket(packet);
+        Log.traceln(F("Heap size receive2: %d"), ESP.getFreeHeap());
     }
 }
 
@@ -137,11 +139,14 @@ String LoRaMeshService::getRoutingTable() {
 }
 
 void LoRaMeshService::sendReliable(DataMessage* message) {
+    Log.traceln(F("Heap size send: %d"), ESP.getFreeHeap());
+
     LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
 
     radio.sendReliablePacket(message->addrDst, (uint8_t*) loraMeshMessage, sizeof(LoRaMeshMessage) + message->messageSize);
 
     free(loraMeshMessage);
+    Log.traceln(F("Heap size send 2: %d"), ESP.getFreeHeap());
 }
 
 bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
@@ -171,6 +176,14 @@ void LoRaMeshService::removeGateway() {
 
 bool LoRaMeshService::hasActiveConnections() {
     return radio.hasActiveConnections();
+}
+
+bool LoRaMeshService::hasActiveSentConnections() {
+    return radio.hasActiveSentConnections();
+}
+
+bool LoRaMeshService::hasActiveReceivedConnections() {
+    return radio.hasActiveReceivedConnections();
 }
 
 void LoRaMeshService::standby() {
