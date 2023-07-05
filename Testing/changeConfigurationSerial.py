@@ -155,7 +155,6 @@ class ChangeConfigurationSerial:
                 adjacencyGraphInCpp = ""
 
                 if json_data["LoRaMesherAdjacencyGraph"] == []:
-                    print("No adjacency graph found. Using default adjacency graph")
                     adjacencyGraphInCpp = "\treturn true;\n"
 
                 else:
