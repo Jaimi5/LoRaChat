@@ -1,4 +1,5 @@
 import os
+import json
 
 
 class Timeout:
@@ -91,16 +92,6 @@ class Monitoring:
                     if "Timeout recalculated to" in nextLine:
                         recalculationTimeout = nextLine.split()[-2]
 
-                    # TODO: Only for this time
-                    try:
-                        nextLine = next(f)
-                    except:
-                        nextLine = ""
-
-                    isFirstSyncResend = False
-                    if "Adding packet to Q_SP" in nextLine:
-                        isFirstSyncResend = True
-
                     # If the connection is not in the dictionary, add it
                     if connection not in self.connections:
                         self.connections[connection] = connection
@@ -114,7 +105,7 @@ class Monitoring:
                         # Add a timeout to the connection
                         self.connections[connection].addTimeoutSent(
                             time,
-                            num + (not isFirstSyncResend),
+                            num,
                             numberOfTimeouts,
                             recalculationTimeout,
                         )
@@ -135,6 +126,7 @@ def getMonitorStatusResults(folderName):
     monitorsList = getMonitorsStatus(folderName)
     totalMessagesResend = 0
     totalSyncResend = 0
+    monitorResults = []
     for monitor in monitorsList:
         # print("Address: ", monitor.address)
         # print("Number of connections: ", len(monitor.connections))
@@ -161,6 +153,17 @@ def getMonitorStatusResults(folderName):
         totalMessagesResend += timeoutsReceived
         totalSyncResend += numOfResendsStartSequenceSend
 
+        monitorResults.append(
+            {
+                "address": monitor.address,
+                "timeoutsReceived": timeoutsReceived,
+                "timeoutsSent": timeoutsSent,
+                "maxTimeoutsReceived": maxTimeoutsReceived,
+                "maxTimeoutsSent": maxTimeoutsSent,
+                "numOfResendsStartSequenceSend": numOfResendsStartSequenceSend,
+            }
+        )
+
         # if timeoutsReceived != 0:
         #     print("Timeouts Received: ", timeoutsReceived)
 
@@ -185,13 +188,14 @@ def getMonitorStatusResults(folderName):
     # print("Total number of sync resend: ", totalSyncResend)
 
     return {
+        "monitorResults": monitorResults,
         "totalMessagesResend": totalMessagesResend,
         "totalSyncResend": totalSyncResend,
     }
 
 
 if __name__ == "__main__":
-    folderName = "ZLargeNumberOfPacketsNoLimitRepeatTest2"
+    folderName = "zFinalTestsV3"
 
     results = []
 
@@ -202,7 +206,12 @@ if __name__ == "__main__":
             if "plots" in folder:
                 continue
             path = os.path.join(path, "Monitoring")
+
+            if not os.path.exists(path):
+                continue
+
             print(path)
             results.append(getMonitorStatusResults(path))
 
-    print(results)
+    # Print as json format
+    print(json.dumps(results))
