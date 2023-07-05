@@ -85,7 +85,10 @@ void Sim::simLoop(void* pvParameters) {
 
         vTaskDelay(60000 * 4 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
 
-#ifdef ONE_SENDER
+        Log.traceln(F("Heap size start sim: %d"), ESP.getFreeHeap());
+
+
+#if ONE_SENDER != 0
         if (LoraMesher::getInstance().getLocalAddress() == ONE_SENDER) {
 
             while (LoraMesher::getInstance().getClosestGateway() == nullptr) {
@@ -109,6 +112,8 @@ void Sim::simLoop(void* pvParameters) {
         }
 
         sim.stop();
+
+        Log.traceln(F("Heap size finished sim: %d"), ESP.getFreeHeap());
 
         // LoRaMeshService::getInstance().standby();
 
@@ -211,6 +216,11 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
         MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simPayloadMessage);
 
         vTaskDelay(delayMs / portTICK_PERIOD_MS); // Wait delayMs milliseconds
+
+        // Wait until the previous packet has been sent
+        while (LoRaMeshService::getInstance().hasActiveSentConnections()) {
+            vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 additional seconds before sending the next packet
+        }
     }
 
     free(simPayloadMessage);
