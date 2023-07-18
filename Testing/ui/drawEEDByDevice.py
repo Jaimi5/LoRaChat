@@ -130,7 +130,17 @@ def draw_eed_by_device(frame: Frame, directory):
     # Add the toggle button
     addToggleLogScale(frame, canvas, ax)
 
-    return
+    # Add a button to download the plot
+    download_button = tk.Button(
+        frame,
+        text="Download Plot",
+        command=lambda: download_plot(canvas, directory, "endToEndDelay.png"),
+    )
+
+    # Add the button to the frame
+    download_button.grid(row=1, column=0, sticky="nsew")
+
+    return canvas
 
     # For the bar plot, the keys (x values) should be strings, and the values (y values) should be floats
     messages_eed = {str(k): float(v) for k, v in messages_eed.items()}
@@ -165,16 +175,6 @@ def draw_eed_by_device(frame: Frame, directory):
     canvas = FigureCanvasTkAgg(fig, master=frame)  # A tk.DrawingArea.
     canvas.draw()
     canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
-
-    # Add a button to download the plot
-    download_button = tk.Button(
-        frame,
-        text="Download Plot",
-        command=lambda: download_plot(canvas, directory, "endToEndDelay.png"),
-    )
-    download_button.grid(row=1, column=0, sticky="nsew")
-
-    return canvas
 
 
 def addToggleLogScale(frame, canvas, ax):

@@ -5,6 +5,7 @@ from drawLossMessagesByDevice import draw_loss_messages_by_device
 from drawMessageByDevice import draw_messages_by_device
 from drawPlotAndSummary import draw_plot_and_summary
 from drawEEDByDevice import draw_eed_by_device
+from drawTimeoutsByDevice import draw_timeouts_by_device
 
 
 # Given a directory, find the JSON file and draw the plot and summary
@@ -86,7 +87,7 @@ find_button.grid(row=0, column=1, sticky="ew")
 
 def find_file_and_execute_function(function):
     filename = filedialog.askdirectory(
-        initialdir="./ZLargeNumberOfPacketsNoLimitRepeatTest2",
+        initialdir="./zFinalTestsV3",
         title="Select a File",
     )
     function(frame, filename)
@@ -129,6 +130,15 @@ button_eed_by_device = tk.Button(
 )
 
 button_eed_by_device.grid(row=2, column=0, sticky="ew")
+
+# Create a button to draw the number of timeouts by device
+button_timeouts_by_device = tk.Button(
+    root,
+    text="Timeouts By Device",
+    command=lambda: find_file_and_execute_function(function=draw_timeouts_by_device),
+)
+
+button_timeouts_by_device.grid(row=2, column=1, sticky="ew")
 
 
 root.mainloop()

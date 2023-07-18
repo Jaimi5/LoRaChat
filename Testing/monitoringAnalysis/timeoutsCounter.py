@@ -58,24 +58,75 @@ class Monitoring:
                     addr = address.split(":")[-1]
                     return addr
 
+        return "0x63AC"
+
+    def get_details(self, line):
+        src = -1
+        seqId = -1
+        num = -1
+        numberOfTimeouts = -1
+        time = -1
+        try:
+            # Find the source address after the first occurrence of the word "Src" and remove the last character
+            src = line.split("Src:", 1)[1].split()[0][:-1]
+        except:
+            pass
+        try:
+            # Find the sequence ID after the first occurrence of the word "Seq"
+            seqId = line.split("Seq_Id:", 1)[1].split()[0][:-1]
+        except:
+            pass
+        try:
+            # Find the time after the first occurrence of the word "Num:"
+            num = int(line.split("Num:", 1)[1].split()[0][:-1])
+        except:
+            pass
+        try:
+            # transform the number to int
+            # Find the time after the first occurrence of the word "N.TimeOuts"
+            numberOfTimeouts = line.split("N.TimeOuts", 1)[1].split()[0]
+        except:
+            pass
+
+        try:
+            time = line.split()[0]
+        except:
+            pass
+
+        return src, seqId, num, numberOfTimeouts, time
+
     def findConnections(self):
         with open(self.fileName, "r") as f:
             for line in f:
-                if "timeout reached" in line:
-                    try:
-                        # Find the source address after the first occurrence of the word "Src" and remove the last character
-                        src = line.split("Src:", 1)[1].split()[0][:-1]
-                        # Find the sequence ID after the first occurrence of the word "Seq"
-                        seqId = line.split("Seq_Id:", 1)[1].split()[0][:-1]
-                        # Find the time after the first occurrence of the word "Num:"
-                        num = int(line.split("Num:", 1)[1].split()[0][:-1])
-                        # transform the number to int
-                        # Find the time after the first occurrence of the word "N.TimeOuts"
-                        numberOfTimeouts = line.split("N.TimeOuts", 1)[1].split()[0]
-                    except:
-                        continue
+                # When the simulator connects to the WiFi, it tells that no current connections open and
+                # if "Simulator connecting to WiFi" in line:
+                #     break
+                if "All the packets has" in line:
+                    nextLine = next(f)
+                    # Get the source address, sequence ID, number of timeouts and number of timeouts
+                    src, seqId, num, numberOfTimeouts, time = self.get_details(nextLine)
 
-                    time = line.split()[0]
+                    # Create a connection object
+                    connection = Connection(self.address, src, seqId)
+
+                    # If the connection is not in the dictionary, add it
+                    if connection not in self.connections:
+                        self.connections[connection] = connection
+
+                if "Joining packets" in line:
+                    # Get the source address, sequence ID, number of timeouts and number of timeouts
+                    src, seqId, num, numberOfTimeouts, time = self.get_details(line)
+
+                    # Create a connection object
+                    connection = Connection(src, self.address, seqId)
+
+                    # If the connection is not in the dictionary, add it
+                    if connection not in self.connections:
+                        self.connections[connection] = connection
+
+                if "timeout reached" in line:
+                    # Get the source address, sequence ID, number of timeouts and number of timeouts
+                    src, seqId, num, numberOfTimeouts, time = self.get_details(line)
 
                     if "Waiting Received Queue" in line:
                         source = src
@@ -122,7 +173,7 @@ def getMonitorsStatus(folderName):
     return monitorsList
 
 
-def getMonitorStatusResults(folderName):
+def get_monitor_status(folderName):
     monitorsList = getMonitorsStatus(folderName)
     totalMessagesResend = 0
     totalSyncResend = 0
@@ -137,6 +188,8 @@ def getMonitorStatusResults(folderName):
         maxTimeoutsSent = 0
 
         numOfResendsStartSequenceSend = 0
+
+        numberOfConnections = len(monitor.connections)
 
         for connection in monitor.connections:
             timeoutsReceived += len(connection.timeoutsReceived)
@@ -161,6 +214,7 @@ def getMonitorStatusResults(folderName):
                 "maxTimeoutsReceived": maxTimeoutsReceived,
                 "maxTimeoutsSent": maxTimeoutsSent,
                 "numOfResendsStartSequenceSend": numOfResendsStartSequenceSend,
+                "numberOfConnections": numberOfConnections,
             }
         )
 
@@ -211,7 +265,7 @@ if __name__ == "__main__":
                 continue
 
             print(path)
-            results.append(getMonitorStatusResults(path))
+            results.append(get_monitor_status(path))
 
     # Print as json format
     print(json.dumps(results))
