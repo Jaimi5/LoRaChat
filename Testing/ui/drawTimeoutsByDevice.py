@@ -67,6 +67,8 @@ def draw_timeouts_by_device(frame: Frame, directory):
     ax.set_ylabel("Count")
     ax.set_title("Timeouts and Max Timeouts")
 
+    ax.rcParams.update({"font.size": 14})
+
     # Calculate the maximum height of the bars
     max_height = df[
         [

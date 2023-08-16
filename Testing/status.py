@@ -9,6 +9,13 @@ class Status:
         self.fileName = os.path.join(file, "status.json")
         self.numberOfPorts = numberOfPorts
 
+        self.createNewFile()
+
+    def createNewFile(self):
+        # Create the file
+        with open(self.fileName, "w") as file:
+            file.write("[]")
+
     def createAndOpenFile(self):
         if not os.path.exists(self.fileName):
             # If the file doesn't exist, create it

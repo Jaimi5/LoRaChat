@@ -6,6 +6,7 @@ from drawMessageByDevice import draw_messages_by_device
 from drawPlotAndSummary import draw_plot_and_summary
 from drawEEDByDevice import draw_eed_by_device
 from drawTimeoutsByDevice import draw_timeouts_by_device
+from drawTimeoutsByExperiments import draw_timeouts_by_experiments
 
 
 # Given a directory, find the JSON file and draw the plot and summary
@@ -139,6 +140,17 @@ button_timeouts_by_device = tk.Button(
 )
 
 button_timeouts_by_device.grid(row=2, column=1, sticky="ew")
+
+# Create a button to draw the number of timeouts by experiments
+button_timeouts_by_experiments = tk.Button(
+    root,
+    text="Timeouts By Experiments",
+    command=lambda: find_file_and_execute_function(
+        function=draw_timeouts_by_experiments
+    ),
+)
+
+button_timeouts_by_experiments.grid(row=3, column=0, sticky="ew")
 
 
 root.mainloop()
