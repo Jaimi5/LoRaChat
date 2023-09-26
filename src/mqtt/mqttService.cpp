@@ -267,6 +267,8 @@ void MqttService::disconnect() {
             return;
         }
 
+        Log.infoln(F("Disconnecting mqtt"));
+
         client->disconnect();
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);
