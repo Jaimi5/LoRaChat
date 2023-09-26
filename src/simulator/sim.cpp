@@ -108,7 +108,7 @@ void Sim::simLoop(void* pvParameters) {
         Log.verboseln(F("Simulator stopped"));
 
         while (LoRaMeshService::getInstance().hasActiveConnections()) {
-            vTaskDelay(PACKET_DELAY + 20000 / portTICK_PERIOD_MS); // Wait 10 second
+            vTaskDelay(PACKET_DELAY * 3 / portTICK_PERIOD_MS); // Wait 10 second
         }
 
         sim.stop();
