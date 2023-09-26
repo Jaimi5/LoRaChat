@@ -56,8 +56,8 @@ String WiFiServerService::addPassword(String password) {
 
 String WiFiServerService::saveWiFiData() {
     ConfigService& configService = ConfigService::getInstance();
-    configService.setConfig("WiFiSSid", ssid);
-    configService.setConfig("WiFiPsw", password);
+    configService.setConfig("WiFiSSid", this->ssid);
+    configService.setConfig("WiFiPsw", this->password);
 
     return F("WiFi data saved");
 }
@@ -76,7 +76,7 @@ String WiFiServerService::resetWiFiData() {
 bool WiFiServerService::isWifiConnected() {
     if (WiFi.status() == WL_CONNECTED) {
         // Check if the current connection matches the provided SSID and password
-        if (WiFi.SSID() == ssid && WiFi.psk() == password) {
+        if (WiFi.SSID() == this->ssid && WiFi.psk() == this->password) {
             return true;
         }
     }
@@ -89,7 +89,7 @@ String WiFiServerService::connectWiFi() {
 
     // Wait for the WiFi semaphore
     if (xSemaphoreTake(wifiSemaphore, portMAX_DELAY) == pdTRUE) {
-        if (ssid == DEFAULT_WIFI_SSID || password == DEFAULT_WIFI_PASSWORD) {
+        if (this->ssid == DEFAULT_WIFI_SSID || this->password == DEFAULT_WIFI_PASSWORD) {
             xSemaphoreGive(wifiSemaphore);
             return F("WiFi not configured");
         }
@@ -101,9 +101,9 @@ String WiFiServerService::connectWiFi() {
             return F("WiFi already connected");
         }
 
-        Log.verbose(F("Trying to connect to WiFi network %s with pwd: %s!"), ssid.c_str(), password.c_str());
+        Log.verbose(F("Trying to connect to WiFi network %s with pwd: %s!"), this->ssid.c_str(), this->password.c_str());
 
-        WiFi.begin(ssid.c_str(), password.c_str());
+        WiFi.begin(this->ssid.c_str(), this->password.c_str());
         int i = 0;
         while (i < MAX_CONNECTION_TRY) {
             vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -132,8 +132,15 @@ String WiFiServerService::connectWiFi() {
 }
 
 String WiFiServerService::disconnectWiFi() {
+    while (xSemaphoreTake(wifiSemaphore, portMAX_DELAY) != pdTRUE) {
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
+
+    Log.verboseln(F("Disconnecting from WiFi"));
     WiFi.disconnect();
     LoRaMeshService::getInstance().removeGateway();
+
+    xSemaphoreGive(wifiSemaphore);
 
     return F("WiFi disconnected");
 }
@@ -159,13 +166,13 @@ bool WiFiServerService::restartWiFiData() {
         return false;
 #endif
 
-    ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
-    password = configService.getConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
+    this->ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
+    this->password = configService.getConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
 
     //TODO: Remove this when we have a way to set the default wifi data
-    if (ssid == DEFAULT_WIFI_SSID && password == DEFAULT_WIFI_PASSWORD) {
-        ssid = WIFI_SSID;
-        password = WIFI_PASSWORD;
+    if (this->ssid == DEFAULT_WIFI_SSID && this->password == DEFAULT_WIFI_PASSWORD) {
+        this->ssid = WIFI_SSID;
+        this->password = WIFI_PASSWORD;
     }
 
     return true;
