@@ -18,7 +18,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from Testing.monitoringAnalysis.timeoutsCounter import get_monitor_status
 
 
-def draw_timeouts_by_experiments(frame: Frame, directory):
+def draw_overhead_by_experiments(frame: Frame, directory):
     # Clear the frame
     for widget in frame.winfo_children():
         widget.destroy()
@@ -64,20 +64,68 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
         # Get the Payload size
         payload_size = int(config["Simulator"]["PACKET_SIZE"])
 
+        # Get max packet size with data
+        max_packet_size_data = max_packet_size
+        if (payload_size + 11) < max_packet_size:
+            max_packet_size_data = payload_size + 11
+
         # Get the number of data packets, by dividing the total messages by the payload size round up
         total_data_packets = total_messages * math.ceil(payload_size / max_packet_size)
 
+        total_packets = total_data_packets * 2 + total_messages * 2
+
+        print("Experiment: ", name)
+        print("Total Packets: ", total_packets)
+
         data = get_monitor_status(path)
+
+        control_overhead = total_packets * 11
+
+        ctrl_overhead_sync = data["totalSyncResend"] * 11
+
+        ctrl_overhead_data = data["totalMessagesResend"] * 11
+
+        total_control_overhead = (
+            control_overhead + ctrl_overhead_sync + ctrl_overhead_data
+        )
+
+        total_data = total_control_overhead + (payload_size * total_messages)
+
+        percentage_overhead = round((total_control_overhead / total_data) * 100, 2)
+
+        total_packets_lost = data["totalSyncResend"] + data["totalMessagesResend"]
+
+        percentage_packets_lost = round((total_packets_lost / total_packets) * 100, 2)
+
+        theoretical_percentage_overhead = round(
+            (control_overhead / (control_overhead + (payload_size * total_messages)))
+            * 100,
+            2,
+        )
+
+        print("Total Packets Lost: ", total_packets_lost)
+        print("Percentage Packets Lost: ", percentage_packets_lost)
+        print("Control Overhead Sync: ", ctrl_overhead_sync)
+        print("Control Overhead Data: ", ctrl_overhead_data)
+        print("Total Control Overhead: ", total_control_overhead)
+        print("Total Data: ", total_data)
+        print("Percentage Overhead: ", percentage_overhead)
+        print("Theoretical Percentage Overhead: ", theoretical_percentage_overhead)
+        print()
 
         # Add to the list of experiment directories
         experiment_directories.append(
             {
                 "Name": name,
                 "Id": i,
-                "Sync Resend": data["totalSyncResend"],
-                "Lost Messages": data["totalMessagesResend"],
-                "Total Messages": total_messages,
-                "Total Data Packets": total_data_packets,
+                "Control Overhead Sync": ctrl_overhead_sync,
+                "Control Overhead Data": ctrl_overhead_data,
+                "Total Control Overhead Data No overhead": total_control_overhead,
+                "Total Control Overhead Data overhead": total_control_overhead,
+                "Total Data": total_data,
+                "Percentage Overhead": percentage_overhead,
+                "Percentage Packets Lost": percentage_packets_lost,
+                "Theoretical Percentage Overhead": theoretical_percentage_overhead,
             }
         )
 
@@ -90,16 +138,16 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
     fig = Figure(figsize=(10, 5), dpi=100)
     ax = fig.add_subplot(111)
 
+    # Set the plot to font size 14
     plt.rc("font", size=14)
 
     # # Plot the bar chart
     # x_labels = df["address"]
     df[
         [
-            "Sync Resend",
-            "Lost Messages",
-            "Total Messages",
-            "Total Data Packets",
+            "Theoretical Percentage Overhead",
+            "Percentage Overhead",
+            "Percentage Packets Lost",
         ]
     ].plot(kind="bar", ax=ax, width=0.7)
 
@@ -108,16 +156,12 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
 
     # Add labels and title
     ax.set_xlabel("Experiment", fontsize=14)
-    ax.set_ylabel("Count", fontsize=14)
-    ax.set_title("Experiment Message Statistics Overview")
+    ax.set_title("Experiment Control Overhead Analysis")
 
     # Calculate the maximum height of the bars
     max_height = df[
         [
-            "Sync Resend",
-            "Lost Messages",
-            "Total Messages",
-            "Total Data Packets",
+            "Percentage Overhead",
         ]
     ].values.max()
 
@@ -134,12 +178,15 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
         else:
             va = "center"  # Place the annotation at the center of the bar
         ax.annotate(
-            str(height),
+            str(height) + "%",
             (p.get_x() + p.get_width() / 2.0, height + spacing),
             ha="center",
             va=va,
             size=10,
         )
+
+    # Add the legend with size 10
+    ax.legend(prop={"size": 10})
 
     # Plot the figure
     canvas = FigureCanvasTkAgg(fig, master=frame)
@@ -150,6 +197,6 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
     download_button = tk.Button(
         frame,
         text="Download Plot",
-        command=lambda: download_plot(canvas, directory, "TimeoutsByExperiments.png"),
+        command=lambda: download_plot(canvas, directory, "OverheadByExperiments.png"),
     )
     download_button.pack(side=tk.BOTTOM)

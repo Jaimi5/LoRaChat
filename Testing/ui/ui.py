@@ -7,6 +7,9 @@ from drawPlotAndSummary import draw_plot_and_summary
 from drawEEDByDevice import draw_eed_by_device
 from drawTimeoutsByDevice import draw_timeouts_by_device
 from drawTimeoutsByExperiments import draw_timeouts_by_experiments
+from drawRTTByDevices import draw_rtt_by_devices
+from drawRTTByExperiments import draw_rtt_by_experiments
+from drawOverheadByExperiments import draw_overhead_by_experiments
 
 
 # Given a directory, find the JSON file and draw the plot and summary
@@ -151,6 +154,35 @@ button_timeouts_by_experiments = tk.Button(
 )
 
 button_timeouts_by_experiments.grid(row=3, column=0, sticky="ew")
+
+# Create a button to draw the RTT by devices
+button_rtt_by_devices = tk.Button(
+    root,
+    text="RTT By Devices",
+    command=lambda: find_file_and_execute_function(function=draw_rtt_by_devices),
+)
+
+button_rtt_by_devices.grid(row=3, column=1, sticky="ew")
+
+# Create a button to draw the RTT by experiments
+button_rtt_by_experiments = tk.Button(
+    root,
+    text="RTT By Experiments",
+    command=lambda: find_file_and_execute_function(function=draw_rtt_by_experiments),
+)
+
+button_rtt_by_experiments.grid(row=4, column=0, sticky="ew")
+
+# Create a button to draw the Control Overhead by experiments
+button_overhead_by_experiments = tk.Button(
+    root,
+    text="Control Overhead By Experiments",
+    command=lambda: find_file_and_execute_function(
+        function=draw_overhead_by_experiments
+    ),
+)
+
+button_overhead_by_experiments.grid(row=4, column=1, sticky="ew")
 
 
 root.mainloop()
