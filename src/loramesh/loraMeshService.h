@@ -39,9 +39,15 @@ public:
 
     bool sendClosestGateway(DataMessage* message);
 
-    void setGateway();
+    static inline void setGateway() {
+        Log.verboseln(F("Setting gateway"));
+        LoraMesher::getInstance().addGatewayRole();
+    }
 
-    void removeGateway();
+    static inline void removeGateway() {
+        Log.verboseln(F("Removing gateway"));
+        LoraMesher::getInstance().removeGatewayRole();
+    }
 
     LoRaMeshCommandService* loraMesherCommandService = new LoRaMeshCommandService();
 

@@ -166,19 +166,6 @@ bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
     return true;
 }
 
-void LoRaMeshService::setGateway() {
-#ifdef SIMULATION_ENABLED
-    if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED)
-        return;
-#endif
-
-    radio.addGatewayRole();
-}
-
-void LoRaMeshService::removeGateway() {
-    radio.removeGatewayRole();
-}
-
 bool LoRaMeshService::hasActiveConnections() {
     return radio.hasActiveConnections();
 }
