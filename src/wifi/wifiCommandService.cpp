@@ -17,10 +17,10 @@ WiFiCommandService::WiFiCommandService() {
         return WiFiServerService::getInstance().saveWiFiData();
     }));
 
-    addCommand(Command("/connectWiFi", "Connect WiFi", WiFiMessageType::connectWiFi, 1,
-        [this](String args) {
-        return WiFiServerService::getInstance().connectWiFi();
-    }));
+    // addCommand(Command("/connectWiFi", "Connect WiFi", WiFiMessageType::connectWiFi, 1,
+    //     [this](String args) {
+    //     return WiFiServerService::getInstance().connectWiFi();
+    // }));
 
     addCommand(Command("/getIP", "Get IP of the device", WiFiMessageType::getIP, 1,
         [this](String args) {

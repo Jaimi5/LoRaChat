@@ -1,9 +1,23 @@
 #include "mqttService.h"
 
-/**
- * @brief Create a Bluetooth Task
- *
- */
+void MqttService::initMqtt(String lclName) {
+    Log.verboseln(F("Initializing mqtt"));
+
+    mqtt_service_init(lclName.c_str());
+
+    sendQueue = xQueueCreate(10, sizeof(MQTTQueueMessage*));
+
+    receiveQueue = xQueueCreate(10, sizeof(MQTTQueueMessageV2*));
+
+    createMqttTask();
+
+    Log.verboseln(F("Mqtt initialized"));
+}
+
+
+static esp_mqtt_client_handle_t client;
+bool mqtt_connected = false;
+
 void MqttService::createMqttTask() {
     int res = xTaskCreate(
         MqttLoop,
@@ -21,80 +35,99 @@ void MqttService::MqttLoop(void*) {
     MqttService& mqttService = MqttService::getInstance();
 
     for (;;) {
-        mqttService.loop();
+        mqttService.processMQTTMessage();
         vTaskDelay(20 / portTICK_PERIOD_MS);
     }
 }
 
-bool MqttService::sendMqttMessage(MQTTQueueMessage* message) {
-    return client->publish(MQTT_TOPIC_OUT + String(message->topic), message->body, true, 2);
+void MqttService::processMQTTMessage() {
+    if (xQueueReceive(receiveQueue, &mqttMessageReceiveV2, 0) == pdTRUE) {
+        // TODO: Process message
+        Log.traceln(F("Message received from mqtt queue"));
+        Log.traceln(F("Topic: %s"), mqttMessageReceiveV2->topic.c_str());
+
+        processReceivedMessageFromMQTT(mqttMessageReceiveV2->topic, mqttMessageReceiveV2->body);
+
+        delete mqttMessageReceiveV2;
+    }
+}
+
+bool MqttService::sendMqttMessage(MQTTQueueMessageV2* message) {
+    mqtt_service_send(message->topic.c_str(), message->body.c_str(), message->body.length());
+
+    return true;
+}
+
+void MqttService::connect() {
+    if (!WiFiServerService::getInstance().connectWiFi()) {
+        Log.warningln(F("No WiFi connection"));
+        return;
+    }
+
+    if (MqttService::getInstance().isDeviceConnected())
+        return;
+
+    esp_mqtt_client_start(client);
+
+    Log.verbose(F("Waiting for MQTT connection to start"));
+
+    while (!MqttService::getInstance().isDeviceConnected()) {
+        Log.verbose(F("."));
+        vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
+    }
+
+}
+
+void MqttService::disconnect() {
+    if (!MqttService::getInstance().isDeviceConnected())
+        return;
+
+    esp_mqtt_client_stop(client);
 }
 
 bool MqttService::isDeviceConnected() {
-    return client->connected() && mqttTaskCreated;
+    return mqtt_connected;
 }
 
 bool MqttService::writeToMqtt(DataMessage* message) {
-    if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
 
-        // TODO: Check for wifi connection, not mqtt connection
-        if (!isDeviceConnected()) {
-            Log.warningln(F("No Mqtt device connected"));
-            xSemaphoreGive(mqttSemaphore);
-            return false;
-        }
 
-        String json = MessageManager::getInstance().getJSON(message);
-
-        // TODO: Need to find the correct number but this is a good start
-        uint16_t length = json.length() + 1 + sizeof(lwmqtt_message_t);
-
-        Log.verboseln(F("Message length: %d"), length);
-
-        if (length > MQTT_MAX_PACKET_SIZE) {
-            Log.errorln(F("Message too long"));
-            xSemaphoreGive(mqttSemaphore);
-            return false;
-        }
-
-        MQTTQueueMessage* mqttMessageSend = new MQTTQueueMessage();
-
-        memcpy(mqttMessageSend->body, json.c_str(), json.length() + 1);
-        mqttMessageSend->topic = message->addrSrc;
-
-        if (xQueueSend(sendQueue, &mqttMessageSend, portMAX_DELAY) != pdPASS) {
-            Log.errorln(F("Error sending to queue"));
-            delete mqttMessageSend;
-            xSemaphoreGive(mqttSemaphore);
-            return false;
-        }
-
-        xSemaphoreGive(mqttSemaphore);
-        return true;
+    if (!isDeviceConnected()) {
+        Log.warningln(F("No Mqtt device connected"));
+        return false;
     }
 
-    return false;
+    String json = MessageManager::getInstance().getJSON(message);
+
+    // TODO: Need to find the correct number but this is a good start
+    uint16_t length = json.length() + 1 + sizeof(lwmqtt_message_t);
+
+    Log.verboseln(F("Message length: %d"), length);
+
+    if (length > MQTT_MAX_PACKET_SIZE) {
+        Log.errorln(F("Message too long"));
+        return false;
+    }
+
+    MQTTQueueMessageV2* mqttMessageSend = new MQTTQueueMessageV2();
+
+    mqttMessageSend->body = json;
+    mqttMessageSend->topic = String(MQTT_TOPIC_OUT) + String(message->addrSrc);
+
+    Log.verboseln(F("Sending message to MQTT, topic %s"), mqttMessageSend->topic.c_str());
+
+    sendMqttMessage(mqttMessageSend);
+
+    delete mqttMessageSend;
+
+    return true;
 }
 
 bool MqttService::writeToMqtt(String message) {
-    // if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
-    //     if (mqttTaskCreated) {
-    //         xSemaphoreGive(mqttSemaphore);
-    //         return;
-    //     }
-    //     Log.info(F("Sending message to mqtt: %s"), message);
-
-    //     if (!isDeviceConnected()) {
-    //         Log.warning(F("No Mqtt device connected"));
-    //         return false;
-    //     }
-    //     // String json = MessageManager::getInstance().getJSON(message);
-    //     client->publish("/hello", message);
-
     return false;
 }
 
-void callback(String& topic, String& payload) {
+void MqttService::processReceivedMessageFromMQTT(String& topic, String& payload) {
 
     Log.infoln(F("Message arrived on topic: %s"), topic.c_str());
     DataMessage* message = MessageManager::getInstance().getDataMessage(payload);
@@ -122,169 +155,101 @@ void callback(String& topic, String& payload) {
     delete message;
 }
 
-void MqttService::initMqtt(String lclName) {
-    if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
-        if (mqttTaskCreated) {
-            xSemaphoreGive(mqttSemaphore);
-            return;
-        }
-
-        sendQueue = xQueueCreate(MQTT_MAX_QUEUE_SIZE, sizeof(MQTTQueueMessage*));
-
-        if (sendQueue == NULL) {
-            Log.errorln(F("Error creating queue"));
-        }
-
-        localName = lclName;
-
-        Log.verboseln(F("DeviceID: %s"), lclName);
-
-        Log.infoln(F("Free ram before starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
-        // do not verify tls certificate
-        // check the following example for methods to verify the server:
-        // https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFiClientSecure/examples/WiFiClientSecure/WiFiClientSecure.ino
-        // net.setInsecure();
-
-
-        // Note: Local domain names (e.g. "Computer.local" on OSX) are not supported
-        // by Arduino. You need to set the IP address directly.
-        client->begin(MQTT_SERVER, MQTT_PORT, net);
-
-        // we should set the keep alive interval to a greater value than the default
-        client->setKeepAlive(20000);
-
-        client->onMessage(callback);
-
-
-
-        connect();
-
-        createMqttTask();
-
-        Log.infoln(F("Free ram after starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-
-        mqttTaskCreated = true;
-
-        xSemaphoreGive(mqttSemaphore);
-    }
-
-}
-
-void MqttService::loop() {
-    if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
-        if (!mqttTaskCreated) {
-            xSemaphoreGive(mqttSemaphore);
-            return;
-        }
-
-
-        client->loop();
-
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-
-        if (!client->connected()) {
-            connect();
-        }
-
-        if (!client->connected()) {
-            wifiRetries++;
-            // TODO: This should be different, try reconnect every x minutes if wifi available?
-            if (wifiRetries > MAX_CONNECTION_TRY) {
-                Log.errorln(F("Removing mqtt service"));
-                xSemaphoreGive(mqttSemaphore);
-                disconnect();
-                return;
-            }
-            xSemaphoreGive(mqttSemaphore);
-            return;
-        }
-
-        wifiRetries = 0;
-
-        if (xQueueReceive(sendQueue, &mqttMessageReceive, 0) == pdTRUE) {
-            Log.traceln(F("Sending message to mqtt queue"));
-            if (sendMqttMessage(mqttMessageReceive)) {
-                Log.traceln(F("Queue message sent"));
-                delete mqttMessageReceive;
-            }
-            else {
-                if (xQueueSendToFront(sendQueue, &mqttMessageReceive, (TickType_t) 10) != pdPASS) {
-                    delete mqttMessageReceive;
-                    Log.errorln(F("Error sending message to mqtt"));
-                }
-            }
-        }
-
-        // publish a message roughly every second.
-        if (millis() - lastMillis > MQTT_STILL_CONNECTED_INTERVAL) {
-            Log.traceln(F("Sending message to mqtt"));
-            lastMillis = millis();
-            client->publish(MQTT_TOPIC_OUT + localName, "Since boot: " + String(millis() / 1000), true, 1);
-        }
-
-        xSemaphoreGive(mqttSemaphore);
-    }
-}
-
-void MqttService::connect() {
-
-    Serial.print("checking wifi...");
-    WiFiServerService::getInstance().connectWiFi();
-    if (WiFi.status() != WL_CONNECTED) {
-        Log.infoln(F("Wifi not connected"));
-        return;
-    }
-
-    Log.verboseln(F("Wifi connected"));
-
-    Serial.print("Connecting MQTT...");
-
-    // TODO: Add username and password
-    int retries = 0;
-    while (!client->connect(localName.c_str(), MQTT_USERNAME, MQTT_PASSWORD) && retries < 5) {
-        Serial.print(".");
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        retries++;
-    }
-
-    Serial.println("\nconnected!");
-
-    // TODO: When routing table update notification, update the subscriptions accordingly
-    // TODO: Or when sending a message, add an attribute to send to an specific node
-    if (client->subscribe(MQTT_TOPIC_SUB, 1)) {
-        Log.infoln(F("Subscribed to topic %s"), MQTT_TOPIC_SUB);
-    }
-    else {
-        Log.errorln(F("Error subscribing to topic %s"), MQTT_TOPIC_SUB);
-    }
-}
-
-void MqttService::disconnect() {
-    if (xSemaphoreTake(mqttSemaphore, portMAX_DELAY) == pdTRUE) {
-        if (!mqttTaskCreated) {
-            xSemaphoreGive(mqttSemaphore);
-            return;
-        }
-
-        Log.infoln(F("Disconnecting mqtt"));
-
-        client->disconnect();
-
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-
-        vTaskDelete(mqtt_TaskHandle);
-        mqtt_TaskHandle = NULL;
-        // Delete the queue
-        vQueueDelete(sendQueue);
-
-        mqttTaskCreated = false;
-
-        xSemaphoreGive(mqttSemaphore);
-    }
-}
-
 void MqttService::processReceivedMessage(messagePort port, DataMessage* message) {
     // TODO: Add some checks?
     writeToMqtt(message);
+}
+
+static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data) {
+    // Log.verboseln("Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
+    esp_mqtt_event_handle_t event = static_cast<esp_mqtt_event_handle_t>(event_data);
+
+    switch ((esp_mqtt_event_id_t) event_id) {
+        case MQTT_EVENT_CONNECTED:
+            {
+                mqtt_connected = true;
+                // Log.verboseln("MQTT_EVENT_CONNECTED");
+                esp_mqtt_client_subscribe(client, MQTT_TOPIC_SUB, 2);
+                // MqttService& mqttService = MqttService::getInstance();
+                // mqttService.mqtt_service_subscribe(MQTT_TOPIC_SUB);
+            }
+            break;
+        case MQTT_EVENT_DISCONNECTED:
+            mqtt_connected = false;
+            // Log.verboseln("MQTT_EVENT_DISCONNECTED");
+            break;
+        case MQTT_EVENT_SUBSCRIBED:
+            // Log.verboseln("MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+            break;
+        case MQTT_EVENT_UNSUBSCRIBED:
+            // Log.verboseln("MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+            break;
+        case MQTT_EVENT_PUBLISHED:
+            // Log.verboseln("MQTT_EVENT_PUBLISHED, msg_id=%d, topic=%s", event->msg_id);
+            break;
+        case MQTT_EVENT_DATA:
+            {
+                // Log.verboseln("MQTT_EVENT_DATA");
+                MqttService& mqttService = MqttService::getInstance();
+                mqttService.process_message(event->topic, event->data);
+            }
+            break;
+        case MQTT_EVENT_ERROR:
+            // Log.verboseln("MQTT_EVENT_ERROR");
+            // if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+            //     Log.verboseln("Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+            // }
+            break;
+        default:
+            // Log.verboseln("Other event id:%d", event->event_id);
+            break;
+    }
+}
+
+void MqttService::mqtt_app_start(const char* client_id) {
+    String uri = "mqtt://" + String(MQTT_SERVER) + ":" + String(MQTT_PORT);
+
+    Log.verboseln("MQTT URI: %s", uri.c_str());
+
+    esp_mqtt_client_config_t mqtt_cfg = {0};  // initialize all fields to zero
+
+    mqtt_cfg.uri = uri.c_str();
+    mqtt_cfg.client_id = client_id;
+
+    client = esp_mqtt_client_init(&mqtt_cfg);
+    /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
+    esp_mqtt_client_register_event(client, esp_mqtt_event_id_t::MQTT_EVENT_ANY, mqtt_event_handler, NULL);
+
+
+    ESP_ERROR_CHECK(esp_mqtt_client_start(client));
+}
+
+void MqttService::mqtt_service_init(const char* client_id) {
+    mqtt_app_start(client_id);
+}
+
+void MqttService::mqtt_service_subscribe(const char* topic) {
+    esp_mqtt_client_subscribe(client, topic, 2);
+    Log.verboseln("Subscribed to topic %s", topic);
+}
+
+void MqttService::mqtt_service_send(const char* topic, const char* data, int len) {
+    int msg_id;
+    msg_id = esp_mqtt_client_publish(client, topic, data, len, 2, 0);
+    Log.verboseln("sent publish successful, msg_id %d", msg_id);
+}
+
+void MqttService::process_message(const char* topic, const char* payload) {
+    String topicStr = String(topic);
+    String payloadStr = String(payload);
+
+    MQTTQueueMessageV2* mqttMessageReceive = new MQTTQueueMessageV2();
+    mqttMessageReceive->topic = topicStr;
+    mqttMessageReceive->body = payloadStr;
+
+    if (xQueueSend(receiveQueue, &mqttMessageReceive, portMAX_DELAY) != pdPASS) {
+        // Log.errorln(F("Error sending to queue"));
+        delete mqttMessageReceive;
+        return;
+    }
 }

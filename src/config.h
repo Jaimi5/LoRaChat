@@ -10,7 +10,7 @@
 #define WIFI_PASSWORD "85392c7e38"
 
 // MQTT configuration
-#define MQTT_SERVER "192.168.1.11"
+#define MQTT_SERVER "192.168.1.117"
 #define MQTT_PORT 1883
 #define MQTT_USERNAME "admin"
 #define MQTT_PASSWORD "public"
@@ -31,7 +31,7 @@
 #define ONE_WIRE_BUS 2
 
 // Led configuration
-// #define LED_ENABLED
+#define LED_ENABLED
 #define LED LED_BUILTIN //4
 #define LED_ON      LOW
 #define LED_OFF     HIGH
@@ -58,14 +58,14 @@
 // Simulation Configuration
 #define SIMULATION_ENABLED
 // The address of the device that will connect at the beginning of the simulation
-#define WIFI_ADDR_CONNECTED 0x8C20
+#define WIFI_ADDR_CONNECTED 0x5880
 
 
-#define PACKET_COUNT 100
-#define PACKET_DELAY 120000
-#define PACKET_SIZE 50
+#define PACKET_COUNT 1000000
+#define PACKET_DELAY 45000
+#define PACKET_SIZE 250
 #define UPLOAD_PAYLOAD 0
 #define LOG_MESHER 0
 
 // If defined, there only be one sender
-#define ONE_SENDER 20068
+#define ONE_SENDER 0

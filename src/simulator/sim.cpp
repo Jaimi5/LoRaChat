@@ -83,7 +83,7 @@ void Sim::simLoop(void* pvParameters) {
     for (;;) {
         sim.sendStartSimMessage();
 
-        vTaskDelay(60000 * 4 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
+        // vTaskDelay(60000 * 4 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
 
         Log.traceln(F("Heap size start sim: %d"), ESP.getFreeHeap());
 
@@ -124,18 +124,9 @@ void Sim::simLoop(void* pvParameters) {
 
         WiFiServerService::getInstance().connectWiFi();
 
-        int maxTries = 10;
-        while (WiFi.status() != WL_CONNECTED && maxTries > 0) {
-            Log.verboseln(F("Simulator WiFi not connected"));
-            vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
-            maxTries--;
-            WiFiServerService::getInstance().connectWiFi();
-        }
-
-        MqttService::getInstance().initMqtt(String(LoraMesher::getInstance().getLocalAddress()));
+        MqttService::getInstance().connect();
 
         vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 5 minutes to propagate through the network
-
 
         sim.sendAllData();
 
@@ -273,9 +264,9 @@ void Sim::sendStartSimMessage() {
 
     WiFiServerService::getInstance().connectWiFi();
 
-    MqttService::getInstance().initMqtt(String(LoraMesher::getInstance().getLocalAddress()));
+    MqttService::getInstance().connect();
 
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
+    Log.verboseln(F("Simulator MQTT connected"));
 
     Log.verboseln(F("Simulator sending start message"));
 

@@ -19,10 +19,32 @@
 
 #include "helpers/helper.h"
 
+#include <stdio.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+#include "esp_wifi.h"
+#include "esp_system.h"
+#include "esp_event.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "freertos/queue.h"
+
+#include "lwip/sockets.h"
+#include "lwip/dns.h"
+#include "lwip/netdb.h"
+
+#include "esp_log.h"
+#include "mqtt_client.h"
+
+#include "config.h"
+
 // TODO: Check for wake from sleep mode.
 // TODO: Check for max characters in a message to avoid buffer overflow.
 
-class MqttService : public MessageService {
+class MqttService: public MessageService {
 public:
     /**
      * @brief Construct a new BluetoothService object
@@ -46,24 +68,22 @@ public:
     bool writeToMqtt(DataMessage* message);
     bool writeToMqtt(String message);
 
-    // WiFiClientSecure net;
-    WiFiClient net;
-
-    MQTTClient* client = new MQTTClient(MQTT_MAX_PACKET_SIZE);
-
     MqttCommandService* mqttCommandService = new MqttCommandService();
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
+    void inline process_message(const char* topic, const char* payload);
+
+    void processReceivedMessageFromMQTT(String& topic, String& payload);
+
+    void mqtt_service_subscribe(const char* topic);
+
 private:
-    MqttService() : MessageService(appPort::MQTTApp, String("MQTT")) {
+    MqttService(): MessageService(appPort::MQTTApp, String("MQTT")) {
         commandService = mqttCommandService;
-        mqttSemaphore = xSemaphoreCreateBinary();
-        xSemaphoreGive(mqttSemaphore);
     };
 
     void createMqttTask();
-    unsigned long lastMillis = 0;
 
     static void MqttLoop(void*);
 
@@ -72,18 +92,27 @@ private:
     String localName = "";
 
     struct MQTTQueueMessage {
-        uint16_t topic;
+        const char* topic;
         char body[MQTT_MAX_PACKET_SIZE];
     };
 
     QueueHandle_t sendQueue;
     MQTTQueueMessage* mqttMessageReceive;
 
-    uint8_t wifiRetries = 0;
+    struct MQTTQueueMessageV2 {
+        String topic;
+        String body;
+    };
+    QueueHandle_t receiveQueue;
+    MQTTQueueMessageV2* mqttMessageReceiveV2;
 
-    bool sendMqttMessage(MQTTQueueMessage* message);
+    bool sendMqttMessage(MQTTQueueMessageV2* message);
 
-    SemaphoreHandle_t mqttSemaphore = NULL;
 
-    bool mqttTaskCreated = false;
+    void processMQTTMessage();
+
+    void mqtt_service_init(const char* client_id);
+    void mqtt_app_start(const char* client_id);
+    void mqtt_service_send(const char* topic, const char* data, int len);
+
 };

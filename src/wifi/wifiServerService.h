@@ -54,7 +54,7 @@ public:
 
     String resetWiFiData();
 
-    String connectWiFi();
+    bool connectWiFi();
 
     String disconnectWiFi();
 
@@ -65,6 +65,8 @@ public:
     String getPassword();
 
     void responseCommand(WiFiClient client, String header);
+
+    bool isWifiConnected();
 
 private:
 
@@ -77,7 +79,6 @@ private:
 
     bool restartWiFiData();
 
-    bool isWifiConnected();
 
     SemaphoreHandle_t wifiSemaphore = NULL;
 };
