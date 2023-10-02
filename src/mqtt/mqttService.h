@@ -2,13 +2,6 @@
 
 #include <Arduino.h>
 
-#include <WiFiClientSecure.h>
-//#include <WiFiClient.h>
-
-#include <MQTT.h>
-
-#include <ArduinoLog.h>
-
 #include "wifi/wifiServerService.h"
 
 #include "mqttCommandService.h"
@@ -57,9 +50,7 @@ public:
 
     void initMqtt(String localName);
 
-    void loop();
-
-    void connect();
+    bool connect();
 
     void disconnect();
 
@@ -90,14 +81,6 @@ private:
     TaskHandle_t mqtt_TaskHandle = NULL;
 
     String localName = "";
-
-    struct MQTTQueueMessage {
-        const char* topic;
-        char body[MQTT_MAX_PACKET_SIZE];
-    };
-
-    QueueHandle_t sendQueue;
-    MQTTQueueMessage* mqttMessageReceive;
 
     struct MQTTQueueMessageV2 {
         String topic;

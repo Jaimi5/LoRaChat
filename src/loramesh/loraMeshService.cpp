@@ -1,5 +1,7 @@
 #include "loraMeshService.h"
 
+static const char* LMS_TAG = "LoRaMeshService";
+
 void LoRaMeshService::initLoraMesherService() {
     //Initialize LoRaMesher
     radio.begin(SX1276_MOD);
@@ -10,15 +12,15 @@ void LoRaMeshService::initLoraMesherService() {
     //Start LoRaMesher
     radio.start();
 
-    Log.verboseln("LoraMesher initialized");
+    ESP_LOGV(LMS_TAG, "LoraMesher initialized");
 }
 
 void LoRaMeshService::loopReceivedPackets() {
     //Iterate through all the packets inside the Received User Packets FiFo
     while (radio.getReceivedQueueSize() > 0) {
-        Log.traceln(F("LoRaPacket received"));
-        Log.traceln(F("Queue receiveUserData size: %d"), radio.getReceivedQueueSize());
-        Log.traceln(F("Heap size receive: %d"), ESP.getFreeHeap());
+        ESP_LOGV(LMS_TAG, "LoRaPacket received");
+        ESP_LOGV(LMS_TAG, "Queue receiveUserData size: %d", radio.getReceivedQueueSize());
+        ESP_LOGV(LMS_TAG, "Heap size receive: %d", ESP.getFreeHeap());
 
         //Get the first element inside the Received User Packets FiFo
         AppPacket<LoRaMeshMessage>* packet = radio.getNextAppPacket<LoRaMeshMessage>();
@@ -34,7 +36,7 @@ void LoRaMeshService::loopReceivedPackets() {
 
         //Delete the packet when used. It is very important to call this function to release the memory of the packet.
         radio.deletePacket(packet);
-        Log.traceln(F("Heap size receive2: %d"), ESP.getFreeHeap());
+        ESP_LOGV(LMS_TAG, "Heap size receive2: %d", ESP.getFreeHeap());
     }
 }
 
@@ -64,7 +66,7 @@ void LoRaMeshService::createReceiveMessages() {
         2,
         &receiveLoRaMessage_Handle);
     if (res != pdPASS) {
-        Log.errorln(F("Receive App Task creation gave error: %d"), res);
+        ESP_LOGE(LMS_TAG, "Receive App Task creation gave error: %d", res);
     }
 
     radio.setReceiveAppDataTaskHandle(receiveLoRaMessage_Handle);
@@ -139,27 +141,27 @@ String LoRaMeshService::getRoutingTable() {
 }
 
 void LoRaMeshService::sendReliable(DataMessage* message) {
-    Log.traceln(F("Heap size send: %d"), ESP.getFreeHeap());
+    ESP_LOGV(LMS_TAG, "Heap size send: %d", ESP.getFreeHeap());
 
     LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
 
     radio.sendReliablePacket(message->addrDst, (uint8_t*) loraMeshMessage, sizeof(LoRaMeshMessage) + message->messageSize);
 
     free(loraMeshMessage);
-    Log.traceln(F("Heap size send 2: %d"), ESP.getFreeHeap());
+    ESP_LOGV(LMS_TAG, "Heap size send 2: %d", ESP.getFreeHeap());
 }
 
 bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
     RouteNode* gatewayNode = radio.getClosestGateway();
 
     if (!gatewayNode) {
-        Log.errorln(F("No gateway found"));
+        ESP_LOGE(LMS_TAG, "No gateway found");
         return false;
     }
 
     message->addrDst = gatewayNode->networkNode.address;
 
-    Log.verboseln(F("Sending message to gateway %d"), message->addrDst);
+    ESP_LOGI(LMS_TAG, "Sending message to gateway %X", message->addrDst);
 
     sendReliable(message);
 

@@ -6,8 +6,6 @@
 
 #include <DallasTemperature.h>
 
-#include <ArduinoLog.h>
-
 #include "sensor/sensor.h"
 
 #include "temperatureCommandService.h"

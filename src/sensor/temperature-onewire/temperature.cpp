@@ -1,5 +1,8 @@
 #include "temperature.h"
 
+static const char* TAG = "Temperature";
+
+
 void Temperature::init() {
     oneWire = OneWire(ONE_WIRE_BUS);
     sensors = DallasTemperature(&oneWire);
@@ -8,7 +11,7 @@ void Temperature::init() {
 
     createTemperatureTask();
 
-    Log.noticeln(F("Temperature initialized"));
+    ESP_LOGI(TAG, "Temperature initialized");
 
     start();
 }
@@ -17,13 +20,13 @@ void Temperature::start() {
     running = true;
     xTaskNotifyGive(temperature_TaskHandle);
 
-    Log.noticeln(F("Temperature task started"));
+    ESP_LOGI(TAG, "Temperature task started");
 }
 
 void Temperature::pause() {
     running = false;
 
-    Log.noticeln(F("Temperature task paused"));
+    ESP_LOGI(TAG, "Temperature task paused");
 }
 
 float Temperature::readValue() {
@@ -70,7 +73,7 @@ void Temperature::createTemperatureTask() {
         2,
         &temperature_TaskHandle);
     if (res != pdPASS) {
-        Log.errorln(F("Temperature task handle error: %d"), res);
+        ESP_LOGE(TAG, "Temperature task handle error: %d", res);
     }
 }
 
@@ -86,10 +89,10 @@ void Temperature::temperatureLoop(void*) {
             float value = temperature.readValue();
 
             if (value != DEVICE_DISCONNECTED_C) {
-                Log.noticeln(F("Temperature: %f"), value);
+                ESP_LOGI(TAG, "Temperature: %f", value);
             }
             else {
-                Log.errorln(F("Temperature reading error"));
+                ESP_LOGE(TAG, "Temperature reading error");
             }
 
             temperature.sendTemperature(value);

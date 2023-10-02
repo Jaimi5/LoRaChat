@@ -2,9 +2,6 @@
 
 #include <Arduino.h>
 
-
-#include <ArduinoLog.h>
-
 #include "sensor.h"
 
 #include "message/messageService.h"

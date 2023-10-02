@@ -2,11 +2,11 @@
 
 #include <Arduino.h>
 
-#include <ArduinoLog.h>
-
 #include "dataMessage.h"
 
 #include "commands/commandService.h"
+
+static const char* MS_TAG = "MessageService";
 
 class MessageService {
 public:
@@ -17,11 +17,11 @@ public:
     };
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message) {
-        Log.error("processReceivedMessage not implemented for service %s" CR, serviceName);
+        ESP_LOGE(MS_TAG, "processReceivedMessage not implemented for service %s", serviceName);
     };
 
     virtual String getJSON(DataMessage* message) {
-        Log.error("getJSON not implemented for service %s" CR, serviceName);
+        ESP_LOGE(MS_TAG, "getJSON not implemented for service %s", serviceName);
         return "";
     };
 
@@ -38,12 +38,12 @@ public:
     String toString() { return "Id: " + String(serviceId) + " - " + serviceName; }
 
     virtual DataMessage* getDataMessage(JsonObject data) {
-        Log.error("getDataMessage not implemented for service %s" CR, serviceName);
+        ESP_LOGE(MS_TAG, "getDataMessage not implemented for service %s", serviceName);
         return nullptr;
     };
 
     virtual DataMessage* getDataMessage(JsonObject data, DataMessage* message) {
-        Log.error("getDataMessage not implemented for service %s" CR, serviceName);
+        ESP_LOGE(MS_TAG, "getDataMessage not implemented for service %s", serviceName);
         return nullptr;
     };
 };

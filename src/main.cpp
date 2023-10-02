@@ -1,10 +1,21 @@
 #include <Arduino.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_system.h"
+#include "esp_event.h"
+#include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_http_client.h"
+#include "esp_https_ota.h"
+#include "string.h"
+#include "esp32-hal-log.h"
+
+#include "nvs.h"
+#include "nvs_flash.h"
+
 // Configuration
 #include "config.h"
-
-// Log
-#include "ArduinoLog.h"
 
 // Helpers
 #include "helpers/helper.h"
@@ -26,6 +37,8 @@
 
 // Led
 #include "led/led.h"
+
+static const char* TAG = "Main";
 
 #ifdef BLUETOOTH_ENABLED
 // Bluetooth
@@ -104,33 +117,33 @@ MessageManager& manager = MessageManager::getInstance();
 
 void initManager() {
     manager.init();
-    Log.verboseln("Manager initialized");
+    ESP_LOGI(TAG, "Manager initialized");
 
     manager.addMessageService(&loraMeshService);
-    Log.verboseln("LoRaMesher service added to manager");
+    ESP_LOGI(TAG, "LoRaMesher service added to manager");
 
     manager.addMessageService(&wiFiService);
-    Log.verboseln("WiFi service added to manager");
+    ESP_LOGI(TAG, "WiFi service added to manager");
 
     manager.addMessageService(&mqttService);
-    Log.verboseln("Mqtt service added to manager");
+    ESP_LOGI(TAG, "Mqtt service added to manager");
 
 #ifdef LED_ENABLED
     manager.addMessageService(&led);
-    Log.verboseln("Led service added to manager");
+    ESP_LOGI(TAG, "Led service added to manager");
 #endif
 
 #ifdef BLUETOOTH_ENABLED
     manager.addMessageService(&bluetoothService);
-    Log.verboseln("Bluetooth service added to manager");
+    ESP_LOGI(TAG, "Bluetooth service added to manager");
 #endif
 
 #ifdef SIMULATION_ENABLED
     manager.addMessageService(&simulator);
-    Log.verboseln("Simulator service added to manager");
+    ESP_LOGI(TAG, "Simulator service added to manager");
 #endif
 
-    Serial.println(manager.getAvailableCommands());
+    ESP_LOGI(TAG, "%s", manager.getAvailableCommands().c_str());
 }
 
 #pragma endregion
@@ -173,7 +186,7 @@ void createUpdateDisplay() {
         2,
         &display_TaskHandle);
     if (res != pdPASS) {
-        Log.errorln(F("Display Task creation gave error: %d"), res);
+        ESP_LOGE(TAG, "Display Task creation gave error: %d", res);
     }
 }
 
@@ -188,25 +201,21 @@ void setup() {
     // Initialize Serial Monitor
     Serial.begin(115200);
 
+    // Set log level
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
+
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);
-
-    // Initialize Log
-    Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
     // Initialize Display
     initDisplay();
 
-    Log.infoln(F("Free ram before starting Manager %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free ram before starting Manager %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
     // Initialize Manager
     initManager();
 
-    Log.infoln(F("Free ram before starting LoRaMesher %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    // Initialize LoRaMesh
-    initLoRaMesher();
-
-    Log.infoln(F("Free ram before starting WiFi %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free ram before starting WiFi %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
     // Initialize WiFi
     initWiFi();
@@ -215,29 +224,36 @@ void setup() {
 
 #ifdef BLUETOOTH_ENABLED
 
-    Log.infoln(F("Free ram before starting BLE %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free ram before starting BLE %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     initBluetooth();
 
 #endif
 
-    Log.infoln(F("Free ram before starting mqtt %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free ram before starting mqtt %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
     // Initialize Mqtt
     initMqtt();
 
-    Log.infoln(F("Free ram before starting Display %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free ram before starting Display %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
 #ifdef LED_ENABLED
     // Initialize Led
     initLed();
 #endif
 
-    Log.infoln(F("Free ram before starting Simulator %d"), heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    ESP_LOGI(TAG, "Free ram before starting Simulator %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
 #ifdef SIMULATION_ENABLED
     // Initialize Simulator
     initSimulator();
 #endif
+
+    vTaskDelay(60000 / portTICK_PERIOD_MS);
+
+    ESP_LOGI(TAG, "Free ram before starting LoRaMesher %d", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+
+    // Initialize LoRaMesh
+    initLoRaMesher();
 
     // Blink 2 times to show that the device is ready
     Helper::ledBlink(2, 100);

@@ -2,8 +2,6 @@
 
 #include <Arduino.h>
 
-#include <ArduinoLog.h>
-
 #include <vector>
 
 #include "dataMessage.h"

@@ -2,8 +2,6 @@
 
 #include <Arduino.h>
 
-#include <ArduinoLog.h>
-
 #include "wifi/wifiServerService.h"
 
 #include "mqtt/mqttService.h"
@@ -22,7 +20,7 @@
 
 // #include "sensor/dht22/dht22.h"
 
-class Sim : public MessageService {
+class Sim: public MessageService {
 public:
     /**
      * @brief Construct a new GPSService object
@@ -52,7 +50,7 @@ public:
     void sendPacketsToServer(size_t packetCount, size_t packetSize, size_t delayMs);
 
 private:
-    Sim() : MessageService(SimApp, "Sim") {
+    Sim(): MessageService(SimApp, "Sim") {
         commandService = simCommandService;
     };
 

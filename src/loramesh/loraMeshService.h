@@ -4,8 +4,6 @@
 
 #include "LoraMesher.h"
 
-#include "ArduinoLog.h"
-
 #include "loraMeshMessage.h"
 
 #include "message/messageManager.h"
@@ -40,12 +38,10 @@ public:
     bool sendClosestGateway(DataMessage* message);
 
     static inline void setGateway() {
-        Log.verboseln(F("Setting gateway"));
         LoraMesher::getInstance().addGatewayRole();
     }
 
     static inline void removeGateway() {
-        Log.verboseln(F("Removing gateway"));
         LoraMesher::getInstance().removeGatewayRole();
     }
 

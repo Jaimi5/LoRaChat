@@ -2,8 +2,6 @@
 
 #include <Arduino.h>
 
-#include <ArduinoLog.h>
-
 #include "message/dataMessage.h"
 
 #pragma pack(1)

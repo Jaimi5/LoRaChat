@@ -1,17 +1,6 @@
 #pragma once
 
-#include <Arduino.h>
-
-#include <ArduinoLog.h>
-
-#include "config.h"
-
 #include "LoraMesher.h"
-
-#include "helpers/helper.h"
-
-// Load Wi-Fi library
-#include <WiFi.h>
 
 #include "wifiCommandService.h"
 
@@ -21,8 +10,24 @@
 
 #include "message/messageService.h"
 
+#include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "esp_system.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_log.h"
+#include "nvs_flash.h"
+
+#include "lwip/err.h"
+#include "lwip/sys.h"
+
+#include "config.h"
+
 #define DEFAULT_WIFI_SSID "DEFAULT_SSID"
 #define DEFAULT_WIFI_PASSWORD "DEFAULT_PASSWORD"
+
 
 class WiFiServerService: public MessageService {
 public:
@@ -38,13 +43,12 @@ public:
 
     void initWiFi();
 
-    WiFiCommandService* wiFiCommandService = new WiFiCommandService();
+    bool connectWiFi();
 
-    virtual void processReceivedMessage(messagePort port, DataMessage* message);
+    bool disconnectWiFi();
 
-    void sendMessage(DataMessage* message);
+    bool isConnected();
 
-    bool connectAndSend(DataMessage* message);
 
     String addSSID(String ssid);
 
@@ -54,9 +58,6 @@ public:
 
     String resetWiFiData();
 
-    bool connectWiFi();
-
-    String disconnectWiFi();
 
     String getIP();
 
@@ -64,9 +65,13 @@ public:
 
     String getPassword();
 
-    void responseCommand(WiFiClient client, String header);
 
-    bool isWifiConnected();
+    WiFiCommandService* wiFiCommandService = new WiFiCommandService();
+
+    virtual void processReceivedMessage(messagePort port, DataMessage* message);
+
+    void sendMessage(DataMessage* message);
+
 
 private:
 
@@ -77,8 +82,17 @@ private:
     String ssid = DEFAULT_WIFI_SSID;
     String password = DEFAULT_WIFI_PASSWORD;
 
+    void wifi_init_sta();
+
     bool restartWiFiData();
 
+    bool checkIfWiFiCredentialsAreSet();
 
-    SemaphoreHandle_t wifiSemaphore = NULL;
+    TaskHandle_t wifi_TaskHandle = NULL;
+
+    void createWiFiTask();
+
+    static void wifi_task(void*);
+
+    bool connected = false;
 };

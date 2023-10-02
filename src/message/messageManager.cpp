@@ -1,5 +1,7 @@
 #include "messageManager.h"
 
+static const char* MANAGER_TAG = "MANAGER";
+
 void MessageManager::init() {
 }
 
@@ -22,7 +24,7 @@ String MessageManager::getAvailableCommands() {
     String commands = "";
 
     for (auto service : services) {
-        commands += service->toString() + CR;
+        commands += service->toString() + "\n";
         commands += service->commandService->publicCommands();
     }
 
@@ -78,7 +80,7 @@ String MessageManager::getJSON(DataMessage* message) {
         }
     }
 
-    Log.errorln("Service Not Found");
+    ESP_LOGE(MANAGER_TAG, "Service Not Found");
 
     return "{\"Empty\":\"true\"}";
 }
@@ -89,7 +91,7 @@ DataMessage* MessageManager::getDataMessage(String json) {
     DeserializationError error = deserializeJson(doc, json);
 
     if (error) {
-        Log.errorln(F("deserializeJson() failed: %s"), error.c_str());
+        ESP_LOGE(MANAGER_TAG, "deserializeJson() failed: %s", error.c_str());
         return nullptr;
     }
 
@@ -103,7 +105,7 @@ DataMessage* MessageManager::getDataMessage(String json) {
         }
     }
 
-    Log.errorln("Service Not Found");
+    ESP_LOGE(MANAGER_TAG, "Service Not Found");
 
     return nullptr;
 }
@@ -120,7 +122,7 @@ String MessageManager::printDataMessageHeader(String title, DataMessage* message
     String json;
     serializeJson(doc, json);
 
-    Log.verboseln(json.c_str());
+    ESP_LOGI(MANAGER_TAG, "%s", json.c_str());
 
     return json;
 }
@@ -131,7 +133,7 @@ void MessageManager::processReceivedMessage(messagePort port, DataMessage* messa
     // TODO: Add a list to track the messages already received to avoid loops and duplicates
 
     if (message->addrDst != 0 && message->addrDst != LoRaMeshService::getInstance().getLocalAddress()) {
-        Log.verboseln(F("Message not for me"));
+        ESP_LOGI(MANAGER_TAG, "Message not for me");
         if (port == MqttPort) {
             sendMessage(LoRaMeshPort, message);
         }
@@ -172,7 +174,7 @@ void MessageManager::sendMessageLoRaMesher(DataMessage* message) {
 void MessageManager::sendMessageMqtt(DataMessage* message) {
     MqttService& mqtt = MqttService::getInstance();
     if (mqtt.writeToMqtt(message)) {
-        Log.verboseln(F("Message sent to MQTT"));
+        ESP_LOGI(MANAGER_TAG, "Message sent to MQTT");
         return;
     }
 
@@ -182,18 +184,18 @@ void MessageManager::sendMessageMqtt(DataMessage* message) {
 
 void MessageManager::sendMessageWiFi(DataMessage* message) {
     WiFiServerService& wifi = WiFiServerService::getInstance();
-    if (wifi.connectAndSend(message)) {
-        Log.verboseln(F("Message sent to WiFi"));
-        return;
-    }
+    // if (wifi.processReceivedMessage(message) {
+    //     ESP_LOGI(MANAGER_TAG,"Message sent to WiFi");
+    //     return;
+    // }
 
-    if (WiFi.status() == WL_CONNECTED) {
-        Log.errorln(F("Error sending message to WiFi"));
+    if (wifi.isConnected()) {
+        ESP_LOGE(MANAGER_TAG, "Error sending message to WiFi");
         //TODO: Retry adding it into a queue and send it later or send to closest gateway 
         return;
     }
     else
-        Log.errorln(F("WiFi not connected"));
+        ESP_LOGE(MANAGER_TAG, "WiFi not connected");
 
     LoRaMeshService& mesher = LoRaMeshService::getInstance();
     mesher.sendClosestGateway(message);

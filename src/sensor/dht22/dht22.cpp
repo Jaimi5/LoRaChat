@@ -1,5 +1,7 @@
 #include "dht22.h"
 
+static const char* DHT_TAG = "Dht22";
+
 void Dht22::init() {
     oneWire = OneWire(ONE_WIRE_BUS);
     sensors = DallasTemperature(&oneWire);
@@ -8,7 +10,7 @@ void Dht22::init() {
 
     createDht22Task();
 
-    Log.noticeln(F("Dht22 initialized"));
+    ESP_LOGI(DHT_TAG, "Dht22 initialized");
 
     start();
 }
@@ -17,13 +19,13 @@ void Dht22::start() {
     running = true;
     xTaskNotifyGive(dht22_TaskHandle);
 
-    Log.noticeln(F("Dht22 task started"));
+    ESP_LOGI(DHT_TAG, "Dht22 task started");
 }
 
 void Dht22::pause() {
     running = false;
 
-    Log.noticeln(F("Dht22 task paused"));
+    ESP_LOGI(DHT_TAG, "Dht22 task paused");
 }
 
 float Dht22::readValue() {
@@ -47,7 +49,7 @@ float Dht22::readValueWait(uint8_t retries) {
 }
 
 String Dht22::getJSON(DataMessage* message) {
-    Dht22Message* temperatureMessage = (Dht22Message*)message;
+    Dht22Message* temperatureMessage = (Dht22Message*) message;
 
     DynamicJsonDocument doc(1024);
 
@@ -66,11 +68,11 @@ void Dht22::createDht22Task() {
         dht22Loop,
         "Dht22 Task",
         4096,
-        (void*)1,
+        (void*) 1,
         2,
         &dht22_TaskHandle);
     if (res != pdPASS) {
-        Log.errorln(F("Dht22 task handle error: %d"), res);
+        ESP_LOGE(DHT_TAG, "Dht22 task handle error: %d", res);
     }
 }
 
@@ -88,10 +90,10 @@ void Dht22::dht22Loop(void*) {
             float pressionReading = temperature.readValue();
 
             if (temperatureReading != DEVICE_DISCONNECTED_C) {
-                Log.noticeln(F("Dht22: %f"), temperatureReading);
+                ESP_LOGI(DHT_TAG, "Dht22: %f", temperatureReading);
             }
             else {
-                Log.errorln(F("Dht22 reading error"));
+                ESP_LOGE(DHT_TAG, "Dht22 reading error");
             }
 
             temperature.sendDht22Readings(temperatureReading, humidityReading, pressionReading);
@@ -104,7 +106,7 @@ void Dht22::dht22Loop(void*) {
 
 void Dht22::sendDht22Readings(float temperature, float humidity, float pression) {
     Dht22Message* message = getDht22ReadingsForSend(temperature, humidity, pression);
-    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*)message);
+    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) message);
     delete message;
 }
 

@@ -1,18 +1,20 @@
 #include "led.h"
 
+static const char* LED_TAG = "Led";
+
 void Led::init() {
     pinMode(LED, OUTPUT);
 }
 
 String Led::ledOn() {
     digitalWrite(LED, LED_ON);
-    Log.verboseln(F("Led On"));
+    ESP_LOGI(LED_TAG, "Led On");
     return "Led On";
 }
 
 String Led::ledOff() {
     digitalWrite(LED, LED_OFF);
-    Log.verboseln(F("Led Off"));
+    ESP_LOGI(LED_TAG, "Led Off");
     return "Led Off";
 }
 

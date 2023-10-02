@@ -5,8 +5,6 @@
 //Bluetooth
 #include <ArduinoBLE.h>
 
-#include <ArduinoLog.h>
-
 #include "bluetoothCommandService.h"
 
 #include "message/messageService.h"

@@ -1,5 +1,7 @@
 #include "sim.h"
 
+static const char* SIM_TAG = "Sim";
+
 void Sim::init() {
     service = new SimulatorService();
     createSimTask();
@@ -29,7 +31,7 @@ String Sim::stop() {
 String Sim::getJSON(DataMessage* message) {
     SimMessage* simMessage = (SimMessage*) message;
 
-    DynamicJsonDocument doc(1024);
+    StaticJsonDocument<2048> doc;
 
     JsonObject data = doc.createNestedObject("data");
 
@@ -77,15 +79,15 @@ void Sim::createSimTask() {
 }
 
 void Sim::simLoop(void* pvParameters) {
-    Log.verboseln(F("Simulator started"));
+    ESP_LOGV(SIM_TAG, "Simulator started");
     Sim sim = Sim::getInstance();
 
     for (;;) {
         sim.sendStartSimMessage();
 
-        // vTaskDelay(60000 * 4 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
+        vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
 
-        Log.traceln(F("Heap size start sim: %d"), ESP.getFreeHeap());
+        ESP_LOGV(SIM_TAG, "Heap size start sim: %d", ESP.getFreeHeap());
 
 
 #if ONE_SENDER != 0
@@ -105,7 +107,7 @@ void Sim::simLoop(void* pvParameters) {
 #endif
 
 
-        Log.verboseln(F("Simulator stopped"));
+        ESP_LOGV(SIM_TAG, "Simulator stopped");
 
         while (LoRaMeshService::getInstance().hasActiveConnections()) {
             vTaskDelay(PACKET_DELAY * 3 / portTICK_PERIOD_MS); // Wait 10 second
@@ -113,11 +115,11 @@ void Sim::simLoop(void* pvParameters) {
 
         sim.stop();
 
-        Log.traceln(F("Heap size finished sim: %d"), ESP.getFreeHeap());
+        ESP_LOGV(SIM_TAG, "Heap size finished sim: %d", ESP.getFreeHeap());
 
         // LoRaMeshService::getInstance().standby();
 
-        Log.verboseln(F("Simulator connecting to WiFi"));
+        ESP_LOGV(SIM_TAG, "Simulator connecting to WiFi");
 
         WiFiServerService::getInstance().addSSID(WIFI_SSID);
         WiFiServerService::getInstance().addPassword(WIFI_PASSWORD);
@@ -136,7 +138,7 @@ void Sim::simLoop(void* pvParameters) {
 
 void Sim::sendAllData() {
 
-    Log.verboseln(F("Simulator sending data"));
+    ESP_LOGV(SIM_TAG, "Simulator sending data");
 
     SimMessage* simMessage = createSimMessage(SimCommand::EndedSimulation);
 
@@ -147,7 +149,7 @@ void Sim::sendAllData() {
     service->statesList->setInUse();
 
     if (service->statesList->moveToStart()) {
-        Log.verboseln(F("Simulator sending data, n. %d"), service->statesList->getLength());
+        ESP_LOGV(SIM_TAG, "Simulator sending data, n. %d", service->statesList->getLength());
         do {
             LM_State* state = service->statesList->Pop();
             if (state == nullptr) {
@@ -171,7 +173,7 @@ void Sim::sendAllData() {
 
     service->statesList->releaseInUse();
 
-    Log.verboseln(F("Simulator Finished sending data"));
+    ESP_LOGV(SIM_TAG, "Simulator Finished sending data");
 
     simMessage = createSimMessage(SimCommand::EndedSimulationStatus);
 
@@ -203,15 +205,17 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
     SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
     for (size_t i = 0; i < packetCount; i++) {
         simPayloadMessage->messageId = i;
-        Log.verboseln(F("Simulator sending packet %d"), i);
+        ESP_LOGV(SIM_TAG, "Simulator sending packet %d", i);
         MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simPayloadMessage);
 
         vTaskDelay(delayMs / portTICK_PERIOD_MS); // Wait delayMs milliseconds
 
         // Wait until the previous packet has been sent
-        while (LoRaMeshService::getInstance().hasActiveSentConnections()) {
-            vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 additional seconds before sending the next packet
-        }
+        // while (LoRaMeshService::getInstance().hasActiveSentConnections()) {
+        //     vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 additional seconds before sending the next packet
+        // }
+
+        ESP_LOGV(SIM_TAG, "FREE HEAP: %d", ESP.getFreeHeap());
     }
 
     free(simPayloadMessage);
@@ -264,11 +268,13 @@ void Sim::sendStartSimMessage() {
 
     WiFiServerService::getInstance().connectWiFi();
 
+    vTaskDelay(30000 / portTICK_PERIOD_MS); // Wait 30 second
+
     MqttService::getInstance().connect();
 
-    Log.verboseln(F("Simulator MQTT connected"));
+    ESP_LOGV(SIM_TAG, "Simulator MQTT connected");
 
-    Log.verboseln(F("Simulator sending start message"));
+    ESP_LOGV(SIM_TAG, "Simulator sending start message");
 
     SimMessage* simMessage = createSimMessage(SimCommand::StartingSimulation);
 
@@ -276,7 +282,7 @@ void Sim::sendStartSimMessage() {
 
     delete simMessage;
 
-    vTaskDelay(30000 / portTICK_PERIOD_MS); // Wait 1 second
+    vTaskDelay(30000 / portTICK_PERIOD_MS); // Wait 30 second
 
     // Delete WiFi and MQTT
     if (LoraMesher::getInstance().getLocalAddress() == WIFI_ADDR_CONNECTED)

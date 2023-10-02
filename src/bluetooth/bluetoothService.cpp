@@ -1,5 +1,7 @@
 #include "bluetoothService.h"
 
+static const char* BLE_TAG = "BluetoothService";
+
 /**
  * @brief Create a Bluetooth Task
  *
@@ -9,11 +11,11 @@ void BluetoothService::createBluetoothTask() {
         BluetoothLoop,
         "Bluetooth Task",
         4096,
-        (void*)1,
+        (void*) 1,
         2,
         &bluetooth_TaskHandle);
     if (res != pdPASS) {
-        Log.errorln(F("Bluetooth task handle error: %d"), res);
+        ESP_LOGE(BLE_TAG, "Bluetooth task handle error: %d", res);
     }
 }
 
@@ -30,10 +32,10 @@ bool BluetoothService::isDeviceConnected() {
 }
 
 bool BluetoothService::writeToBluetooth(String message) {
-    Serial.println("Sending message to bluetooth: " + message);
+    ESP_LOGV(BLE_TAG, "Sending message to bluetooth: %s", message);
 
     if (!isDeviceConnected()) {
-        Serial.println("No bluetooth device connected");
+        ESP_LOGV(BLE_TAG, "No bluetooth device connected");
         return false;
     }
 
@@ -42,19 +44,19 @@ bool BluetoothService::writeToBluetooth(String message) {
 
 void blePeripheralConnectHandler(BLEDevice central) {
     // central connected event handler
-    Serial.print("Connected event, central: ");
-    Serial.println(central.address());
+    ESP_LOGV(BLE_TAG, "Connected event, central: ");
+    ESP_LOGV(BLE_TAG, "%s", central.address());
 }
 
 void blePeripheralDisconnectHandler(BLEDevice central) {
     // central disconnected event handler
-    Serial.print("Disconnected event, central: ");
-    Serial.println(central.address());
+    ESP_LOGV(BLE_TAG, "Disconnected event, central: ");
+    ESP_LOGV(BLE_TAG, "%s", central.address());
 }
 
 void wifiNameCharacteristicWritten(BLEDevice central, BLECharacteristic characteristic) {
     // central wrote new value to characteristic, update LED
-    Serial.print("Characteristic event, written: ");
+    ESP_LOGV(BLE_TAG, "Characteristic event, written: ");
 
 
     // yes, get the value, characteristic is 1 byte so use byte value
@@ -63,7 +65,7 @@ void wifiNameCharacteristicWritten(BLEDevice central, BLECharacteristic characte
     characteristic.readValue(value, 30);
 
 
-    Serial.println(value);
+    ESP_LOGV(BLE_TAG, "%s", value);
 
     WiFiServerService& wiFiService = WiFiServerService::getInstance();
 
@@ -76,7 +78,7 @@ void wifiNameCharacteristicWritten(BLEDevice central, BLECharacteristic characte
 
 void wifiPwdCharacteristicWritten(BLEDevice central, BLECharacteristic characteristic) {
     // central wrote new value to characteristic, update LED
-    Serial.print("Characteristic event, written: ");
+    ESP_LOGV(BLE_TAG, "Characteristic event, written: ");
 
 
     // yes, get the value
@@ -85,7 +87,7 @@ void wifiPwdCharacteristicWritten(BLEDevice central, BLECharacteristic character
     characteristic.readValue(value, 30);
 
 
-    Serial.println(value);
+    ESP_LOGV(BLE_TAG, "%s", value);
 
     WiFiServerService& wiFiService = WiFiServerService::getInstance();
 
@@ -103,7 +105,7 @@ void BluetoothService::initBluetooth(String lclName) {
 
     // begin initialization
     if (!BLE.begin()) {
-        Log.errorln(F("starting Bluetooth® Low Energy module failed!"));
+        ESP_LOGE(BLE_TAG, "starting Bluetooth® Low Energy module failed!");
 
         while (1);
     }
@@ -140,7 +142,7 @@ void BluetoothService::initBluetooth(String lclName) {
     // start advertising
     BLE.advertise();
 
-    Log.infoln(F("Bluetooth® device active, waiting for connections..."));
+    ESP_LOGI(BLE_TAG, "Bluetooth® device active, waiting for connections...");
 
     localName = lclName;
 
@@ -157,12 +159,12 @@ void BluetoothService::loop() {
 }
 
 void BluetoothService::processReceivedMessage(messagePort port, DataMessage* message) {
-    BluetoothMessage* bluetoothMessage = (BluetoothMessage*)message;
+    BluetoothMessage* bluetoothMessage = (BluetoothMessage*) message;
     switch (bluetoothMessage->type) {
-    case BluetoothMessageType::bluetoothMessage:
-        writeToBluetooth(Helper::uint8ArrayToString(bluetoothMessage->message, bluetoothMessage->getPayloadSize()));
-        break;
-    default:
-        break;
+        case BluetoothMessageType::bluetoothMessage:
+            writeToBluetooth(Helper::uint8ArrayToString(bluetoothMessage->message, bluetoothMessage->getPayloadSize()));
+            break;
+        default:
+            break;
     }
 }
