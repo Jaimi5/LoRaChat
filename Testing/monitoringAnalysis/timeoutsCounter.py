@@ -140,6 +140,7 @@ class Monitoring:
 
                     # Get recalculation timeout
                     nextLine = next(f)
+                    recalculationTimeout = -1
                     if "Timeout recalculated to" in nextLine:
                         recalculationTimeout = nextLine.split()[-2]
 
