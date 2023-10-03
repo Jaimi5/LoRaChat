@@ -199,7 +199,7 @@ class UpdatePlatformIO:
         self.deletingIn = 40  # lines
 
         for line in process.stdout:
-            with open(file, "a") as f:
+            with open(file, "a", encoding="utf-8") as f:
                 f.write(line.decode("utf-8", "ignore"))
 
             if "Guru Meditation Error" in line.decode(
