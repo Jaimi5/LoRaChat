@@ -10,6 +10,7 @@ from drawTimeoutsByExperiments import draw_timeouts_by_experiments
 from drawRTTByDevices import draw_rtt_by_devices
 from drawRTTByExperiments import draw_rtt_by_experiments
 from drawOverheadByExperiments import draw_overhead_by_experiments
+from Testing.ui.drawFreeHeapByDevices import draw_free_heap_by_devices
 
 
 # Given a directory, find the JSON file and draw the plot and summary
@@ -184,5 +185,13 @@ button_overhead_by_experiments = tk.Button(
 
 button_overhead_by_experiments.grid(row=4, column=1, sticky="ew")
 
+# Create a button to draw the Free Heap by devices
+button_free_heap_by_device = tk.Button(
+    root,
+    text="Free Heap By Device",
+    command=lambda: find_file_and_execute_function(function=draw_free_heap_by_devices),
+)
+
+button_free_heap_by_device.grid(row=5, column=0, sticky="ew")
 
 root.mainloop()
