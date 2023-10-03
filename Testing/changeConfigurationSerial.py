@@ -58,10 +58,15 @@ class ChangeConfigurationSerial:
         json_data = json.loads(data)
 
         for environment in self.environments:
-            # Find the LoRaMesher src file given the environment.
+            srcFile = os.path.join(os.path.dirname(__file__))
+
+            pathName = os.path.dirname(__file__)
+            if pathName.find("Testing") != -1:
+                # Find the LoRaMesher src file given the environment.
+                srcFile = os.path.dirname(__file__).replace("Testing", "")
+
             srcFile = os.path.join(
-                os.path.dirname(__file__),
-                "..",
+                srcFile,
                 ".pio",
                 "libdeps",
                 environment,
