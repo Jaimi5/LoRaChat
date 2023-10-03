@@ -32,7 +32,7 @@ void LoRaMeshService::loopReceivedPackets() {
         MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, message);
 
         //Delete the message
-        free(message);
+        vPortFree(message);
 
         //Delete the packet when used. It is very important to call this function to release the memory of the packet.
         radio.deletePacket(packet);
@@ -73,7 +73,7 @@ void LoRaMeshService::createReceiveMessages() {
 }
 
 LoRaMeshMessage* LoRaMeshService::createLoRaMeshMessage(DataMessage* message) {
-    LoRaMeshMessage* loraMeshMessage = (LoRaMeshMessage*) malloc(sizeof(LoRaMeshMessage) + message->messageSize);
+    LoRaMeshMessage* loraMeshMessage = (LoRaMeshMessage*) pvPortMalloc(sizeof(LoRaMeshMessage) + message->messageSize);
 
     if (loraMeshMessage) {
         loraMeshMessage->appPortDst = message->appPortDst;
@@ -89,7 +89,7 @@ DataMessage* LoRaMeshService::createDataMessage(AppPacket<LoRaMeshMessage>* appP
     uint32_t dataMessageSize = appPacket->payloadSize + sizeof(DataMessage) - sizeof(LoRaMeshMessage);
     uint32_t messageSize = dataMessageSize - sizeof(DataMessage);
 
-    DataMessage* dataMessage = (DataMessage*) malloc(dataMessageSize);
+    DataMessage* dataMessage = (DataMessage*) pvPortMalloc(dataMessageSize);
 
     if (dataMessage) {
         LoRaMeshMessage* message = appPacket->payload;
@@ -147,7 +147,7 @@ void LoRaMeshService::sendReliable(DataMessage* message) {
 
     radio.sendReliablePacket(message->addrDst, (uint8_t*) loraMeshMessage, sizeof(LoRaMeshMessage) + message->messageSize);
 
-    free(loraMeshMessage);
+    vPortFree(loraMeshMessage);
     ESP_LOGV(LMS_TAG, "Heap size send 2: %d", ESP.getFreeHeap());
 }
 

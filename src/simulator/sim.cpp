@@ -160,7 +160,7 @@ void Sim::sendAllData() {
 
             MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simMessage);
             delete state;
-            free(simMessage);
+            vPortFree(simMessage);
 
             // If wifi connected wait 1 second, else wait 40 seconds
             if (WiFi.status() == WL_CONNECTED)
@@ -185,7 +185,7 @@ void Sim::sendAllData() {
 SimMessage* Sim::createSimMessage(LM_State* state) {
     uint32_t messageSize = sizeof(SimMessage) + sizeof(SimMessageState);
 
-    SimMessage* simMessage = (SimMessage*) malloc(messageSize);
+    SimMessage* simMessage = (SimMessage*) pvPortMalloc(messageSize);
 
     simMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
     simMessage->simCommand = SimCommand::Message;
@@ -218,13 +218,13 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
         ESP_LOGV(SIM_TAG, "FREE HEAP: %d", ESP.getFreeHeap());
     }
 
-    free(simPayloadMessage);
+    vPortFree(simPayloadMessage);
 }
 
 SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
     uint32_t messageSize = sizeof(SimMessage) + sizeof(SimPayloadMessage) + packetSize;
 
-    SimMessage* simMessage = (SimMessage*) malloc(messageSize);
+    SimMessage* simMessage = (SimMessage*) pvPortMalloc(messageSize);
     simMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
 
     simMessage->simCommand = SimCommand::Payload;
