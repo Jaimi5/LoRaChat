@@ -47,6 +47,8 @@ class MQTT:
             self.shared_state["error_message"] = "MQTT broker is not running"
             self.shared_state_change.set()
 
+        print("MQTT client started")
+
     def on_message(self, client, userdata, message):
         date = datetime.now()
 

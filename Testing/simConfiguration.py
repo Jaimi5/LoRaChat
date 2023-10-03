@@ -71,10 +71,14 @@ class SimConfiguration:
             input("How many nodes do you want to add to the adjacency graph?: ")
         )
 
+        print("Enter the values for the adjacency graph, integer or hex values with (0x)")
+
         # Ask the user the id of the nodes
         nodes = []
         for i in range(numberOfNodes):
             nodes.append(input("Node " + str(i) + " id: "))
+
+        print("Enter the distance between the nodes, 1 if they are neighbors, empty if they are not neighbors")
 
         # Ask the user the adjacency matrix
         adjacencyMatrix = []
