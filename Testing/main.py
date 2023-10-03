@@ -2,6 +2,7 @@ import os
 import sys
 import simulation
 import simConfiguration
+import shutil
 from time import sleep
 from updatePlatformio import PortsPlatformIo
 
@@ -68,6 +69,14 @@ def main():
         simConfigurations = []
 
         for directoryName in directories:
+            # For each directory, delete all the files but simConfiguration.json
+            for file in os.listdir(os.path.join(directory, directoryName)):
+                dir_file = os.path.join(directory, directoryName, file)
+                if os.path.isdir(dir_file):
+                    shutil.rmtree(dir_file)
+                elif file != "simConfiguration.json":
+                    os.remove(dir_file)
+
             simConfigurations.append(
                 simConfiguration.SimConfiguration(
                     os.path.join(directory, directoryName), directoryName
