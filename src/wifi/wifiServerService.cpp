@@ -52,16 +52,16 @@ void WiFiServerService::wifi_task(void*) {
             pdFALSE,
             portMAX_DELAY);
 
-        ESP_LOGI(TAG, "Bit received: %d", bits);
+        ESP_LOGV(TAG, "Bit received: %d", bits);
 
         /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
          * happened. */
-        if (bits & WIFI_CONNECTED_BIT == WIFI_CONNECTED_BIT) {
+        if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
             LoRaMeshService.setGateway();
             wiFiServerService.connected = true;
             ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid, wiFiServerService.password);
         }
-        else if (bits & WIFI_FAIL_BIT == WIFI_FAIL_BIT) {
+        else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
             wiFiServerService.connected = false;
             LoRaMeshService.removeGateway();
             ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", wiFiServerService.ssid, wiFiServerService.password);
@@ -179,7 +179,24 @@ String WiFiServerService::resetWiFiData() {
 }
 
 bool WiFiServerService::isConnected() {
-    return connected;
+    wifi_ap_record_t ap_info;
+    esp_err_t ret = esp_wifi_sta_get_ap_info(&ap_info);
+    if (ret == ESP_OK) {
+        // Connected to an AP
+        ESP_LOGV(TAG, "Connected to AP with SSID: %s\n", ap_info.ssid);
+        return true;
+    }
+    else if (ret == ESP_ERR_WIFI_CONN) {
+        // Not connected to an AP
+        ESP_LOGV(TAG, "Not connected to an AP\n");
+        return false;
+    }
+    else {
+        // Other error
+        ESP_LOGV(TAG, "Failed to get AP info: %s\n", esp_err_to_name(ret));
+    }
+
+    return false;
 }
 
 bool WiFiServerService::connectWiFi() {

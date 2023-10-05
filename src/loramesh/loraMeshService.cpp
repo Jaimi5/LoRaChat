@@ -3,8 +3,12 @@
 static const char* LMS_TAG = "LoRaMeshService";
 
 void LoRaMeshService::initLoraMesherService() {
+    // Set the LoRaMesher config
+    LoraMesher::LoraMesherConfig config = LoraMesher::LoraMesherConfig();
+    config.module = LoraMesher::LoraModules::SX1276_MOD;
+
     //Initialize LoRaMesher
-    radio.begin(SX1276_MOD);
+    radio.begin(config);
 
     //Create the receive task and add it to the LoRaMesher
     createReceiveMessages();

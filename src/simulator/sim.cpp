@@ -211,9 +211,10 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
         vTaskDelay(delayMs / portTICK_PERIOD_MS); // Wait delayMs milliseconds
 
         // Wait until the previous packet has been sent
-        // while (LoRaMeshService::getInstance().hasActiveSentConnections()) {
-        //     vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 additional seconds before sending the next packet
-        // }
+        while (LoRaMeshService::getInstance().queueWaitingSendPacketsLength() > 3) {
+            ESP_LOGV(SIM_TAG, "Simulator waiting for packet to be sent");
+            vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 additional seconds before sending the next packet
+        }
 
         ESP_LOGV(SIM_TAG, "FREE HEAP: %d", ESP.getFreeHeap());
     }

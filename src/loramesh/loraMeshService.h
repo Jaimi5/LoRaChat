@@ -53,6 +53,10 @@ public:
 
     bool hasActiveReceivedConnections();
 
+    size_t queueWaitingSendPacketsLength() {
+        return radio.queueWaitingSendPacketsLength();
+    }
+
     void standby();
 
 private:
