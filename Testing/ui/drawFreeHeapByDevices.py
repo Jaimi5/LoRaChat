@@ -1,14 +1,11 @@
 import os
-import json
-import pandas as pd
-import math
 import matplotlib.pyplot as plt
 import tkinter as tk
 from tkinter import Frame
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from downloadPlot import download_plot
-from deviceColors import get_color_by_devices
+import matplotlib.collections
 
 # TODO: WTF is this? Python...
 import sys
@@ -19,11 +16,17 @@ from Testing.monitoringAnalysis.getFreeHeapByDevice import (
     get_free_heap_values,
 )
 
+ax = None
+canvas = None
+
 
 def draw_free_heap_by_devices(frame: Frame, directory):
     # Clear the frame
     for widget in frame.winfo_children():
         widget.destroy()
+
+    global ax
+    global canvas
 
     # Create the figure and subplot
     fig = Figure(figsize=(10, 5), dpi=100)
@@ -50,18 +53,12 @@ def draw_free_heap_by_devices(frame: Frame, directory):
             filePath = os.path.join(path, file)
             data = get_free_heap_values(filePath)
 
-            # ax.plot(
-            #     data,
-            #     linestyle="--",
-            #     alpha=0.7,
-            #     label=file,
-            # )
-
             ax.scatter(
                 range(len(data)),
                 data,
                 alpha=0.7,
                 label=file,
+                picker=True,  # Enable pick events on the scatter plot
             )
 
     # Add labels and title
@@ -77,6 +74,9 @@ def draw_free_heap_by_devices(frame: Frame, directory):
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
+    # Connect the on_pick function to the 'pick_event'
+    canvas.mpl_connect("pick_event", on_pick)
+
     # Add a button to download the plot
     download_button = tk.Button(
         frame,
@@ -84,3 +84,39 @@ def draw_free_heap_by_devices(frame: Frame, directory):
         command=lambda: download_plot(canvas, directory, "RTTByDevice.png"),
     )
     download_button.pack(side=tk.BOTTOM)
+
+
+annotations = []
+
+
+def on_pick(event):
+    # Check if the event is a pick event and if it's from a scatter plot
+    if isinstance(event.artist, matplotlib.collections.PathCollection):
+        ind = event.ind[0]  # Get the index of the point clicked
+        point = event.artist.get_offsets()[ind]  # Get the x, y values of the point
+        # print(f"Value: {point[1]}")  # Print the y-value to the console
+
+        global ax
+        global canvas
+        global annotations
+
+        # Annotate the point on the plot
+        annotation = ax.annotate(
+            f"({point[0]:.2f}, {point[1]:.2f})",
+            (point[0], point[1]),
+            textcoords="offset points",
+            xytext=(0, 10),
+            ha="center",
+        )
+
+        annotations.append(annotation)
+
+        # If some annotation in the list overlaps with the new annotation then remove it
+        for a in annotations:
+            if a != annotation:
+                if annotation.get_window_extent().overlaps(a.get_window_extent()):
+                    a.remove()
+                    annotations.remove(a)
+
+        # Redraw the canvas to show the annotation
+        canvas.draw()

@@ -7,7 +7,7 @@ import colorama
 from colorama import Fore
 
 # PlatfromIO configuration
-portsLora32 = {"COM12", "COM14", "COM9", "COM32", "COM31"}
+portsLora32 = {"COM12", "COM14", "COM32"}
 
 
 class PortsPlatformIo:
