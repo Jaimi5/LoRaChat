@@ -6,10 +6,22 @@ import shutil
 from time import sleep
 from updatePlatformio import PortsPlatformIo
 
+# TODO: Add in the defaultConfigValues the environments to use and their respective ports
+# TODO: Add the environments to the simulation to change the configuration files
+# TODO: Only build the projects that the environment is in the list of environments to use
+
 
 def main():
     if len(sys.argv) < 2:
         print("Please provide the name of the directory.")
+        return
+
+    if "-h" in sys.argv:
+        print("Usage: python main.py [directory_name] [-nb] [-p]")
+        print("directory_name: name of the directory to create")
+        print("-nb: no build, don't build the project")
+        print("-p: print the ports")
+        print("For more information, please read the README.md file")
         return
 
     # TODO: Need to check the arguments

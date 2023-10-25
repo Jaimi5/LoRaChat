@@ -9,9 +9,12 @@ class ChangeConfigurationSerial:
         self.environments = environments
 
     def changeConfiguration(self):
-        self.changeSimulatorApp()
-        self.changeLoRaMesher()
-        self.changeAdjacencyGraph()
+        try:
+            self.changeSimulatorApp()
+            self.changeLoRaMesher()
+            self.changeAdjacencyGraph()
+        except Exception as e:
+            print("Error changing configuration: " + str(e))
 
     def getTimeout(self):
         # Read the file
@@ -33,6 +36,11 @@ class ChangeConfigurationSerial:
 
         # Find the src file. We are in /Testing, and we want to go to ../src
         srcFile = os.path.join(os.path.dirname(__file__), "..", "src", "config.h")
+
+        # Check if the file exists
+        if not os.path.isfile(srcFile):
+            print("File not found: " + srcFile)
+            return
 
         with open(srcFile, "r") as file:
             srcData = file.read()
@@ -75,17 +83,30 @@ class ChangeConfigurationSerial:
                 "BuildOptions.h",
             )
 
+            # Check if the file exists
+            if not os.path.isfile(srcFile):
+                print("File not found: " + srcFile)
+                continue
+
+            print(srcFile)
+
             with open(srcFile, "r") as file:
                 srcData = file.read()
+
+
+            found_keys = []
 
             # Find the line where the LoRaMesher is defined and change it
             for line in srcData.splitlines():
                 for key in json_data["LoRaMesher"]:
+                    if key in found_keys:
+                        continue
                     if line.find("#define " + key) != -1:
                         srcData = srcData.replace(
                             line,
                             "#define " + key + " " + str(json_data["LoRaMesher"][key]),
                         )
+                        found_keys.append(key)
 
             # Save the file
             with open(srcFile, "w") as file:
@@ -111,6 +132,11 @@ class ChangeConfigurationSerial:
                 "src",
                 "BuildOptions.h",
             )
+
+            # Check if the file exists
+            if not os.path.isfile(srcFile):
+                print("File not found: " + srcFile)
+                return
 
             with open(srcFile, "r") as file:
                 srcData = file.read()
@@ -138,6 +164,11 @@ class ChangeConfigurationSerial:
                 "src",
                 "LoraMesher.cpp",
             )
+
+            # Check if the file exists
+            if not os.path.isfile(srcFile):
+                print("File not found: " + srcFile)
+                continue
 
             with open(srcFile, "r") as file:
                 srcData = file.readlines()

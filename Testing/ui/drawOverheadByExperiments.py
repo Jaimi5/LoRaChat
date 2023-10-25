@@ -123,9 +123,9 @@ def draw_overhead_by_experiments(frame: Frame, directory):
                 "Total Control Overhead Data No overhead": total_control_overhead,
                 "Total Control Overhead Data overhead": total_control_overhead,
                 "Total Data": total_data,
-                "Percentage Overhead": percentage_overhead,
-                "Percentage Packets Lost": percentage_packets_lost,
-                "Theoretical Percentage Overhead": theoretical_percentage_overhead,
+                "Experimental Overhead": percentage_overhead,
+                "Packets Lost": percentage_packets_lost,
+                "Theoretical Overhead": theoretical_percentage_overhead,
             }
         )
 
@@ -145,9 +145,9 @@ def draw_overhead_by_experiments(frame: Frame, directory):
     # x_labels = df["address"]
     df[
         [
-            "Theoretical Percentage Overhead",
-            "Percentage Overhead",
-            "Percentage Packets Lost",
+            "Theoretical Overhead",
+            "Experimental Overhead",
+            "Packets Lost",
         ]
     ].plot(kind="bar", ax=ax, width=0.7)
 
@@ -155,13 +155,14 @@ def draw_overhead_by_experiments(frame: Frame, directory):
     ax.set_xticklabels(df["Id"], rotation=0)
 
     # Add labels and title
-    ax.set_xlabel("Experiment", fontsize=14)
-    ax.set_title("Experiment Control Overhead Analysis")
+    ax.set_xlabel("Experiment", fontsize=18)
+    ax.set_ylabel("Percentage (%)", fontsize=18)
+    ax.set_title("Experiment Control Overhead Analysis", fontsize=18)
 
     # Calculate the maximum height of the bars
     max_height = df[
         [
-            "Percentage Overhead",
+            "Experimental Overhead",
         ]
     ].values.max()
 
@@ -185,8 +186,11 @@ def draw_overhead_by_experiments(frame: Frame, directory):
             size=10,
         )
 
-    # Add the legend with size 10
-    ax.legend(prop={"size": 10})
+    # Add the legend with size 14, upper left corner and a little lower
+    ax.legend(
+        fontsize=14,
+        loc=(0.60, 0.65),
+    )
 
     # Plot the figure
     canvas = FigureCanvasTkAgg(fig, master=frame)

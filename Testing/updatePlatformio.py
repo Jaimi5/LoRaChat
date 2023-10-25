@@ -7,7 +7,11 @@ import colorama
 from colorama import Fore
 
 # PlatfromIO configuration
-portsLora32 = {"COM12", "COM14", "COM32"}
+envPort = {
+    "COM12": "ttgo-lora32-v1",
+    "COM14": "ttgo-lora32-v1",
+    "COM32": "ttgo-lora32-v1",
+}
 
 
 class PortsPlatformIo:
@@ -55,13 +59,42 @@ class UpdatePlatformIO:
         self.spawnThreads()
 
     def build(self):
-        file = os.path.join(self.file, "build.txt")
+        print(Fore.LIGHTGREEN_EX + "Building" + Fore.RESET, end="", flush=True)
 
-        print("Building..", end="", flush=True)
+        # Get the unique environments
+        environments = set(envPort.values())
 
-        # Start the build
+        buildThreads = []
+
+        # Build the environments
+        for env in environments:
+            file = os.path.join(self.file, "build" + env + ".txt")
+
+            buildThread = threading.Thread(
+                target=self.buildEnv,
+                args=(
+                    env,
+                    file,
+                ),
+            )
+
+            buildThread.start()
+            buildThreads.append(buildThread)
+
+        # Wait for all the threads to finish
+        for buildThread in buildThreads:
+            buildThread.join()
+
+        # Print
+        print(Fore.GREEN + "Successfully builded" + Fore.RESET)
+
+        return True
+
+    def buildEnv(self, env, fileName):
+        print("Start building env: " + env)
+
         process = subprocess.Popen(
-            ["pio", "run"],
+            ["pio", "run", "-e", env],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -73,11 +106,11 @@ class UpdatePlatformIO:
         # Check if one of the lines contains an error
         for line in process.stdout:
             decoded = line.decode("utf-8", "ignore")
-            with open(file, "a") as f:
+            with open(fileName, "a") as f:
                 f.write(decoded)
 
             if "[FAILED]" in decoded or "error occurred" in decoded:
-                print("Error in build")
+                print(Fore.RED + "Build failed" + Fore.RESET)
                 self.shared_state["error"] = True
                 self.shared_state["error_message"] = "Build failed"
                 self.shared_state_change.set()
@@ -85,7 +118,7 @@ class UpdatePlatformIO:
                 return False
 
             if i == 0:
-                print(".", end="", flush=True)
+                print(Fore.LIGHTGREEN_EX + "." + Fore.RESET, end="", flush=True)
                 i = 8
 
             i -= 1
@@ -98,17 +131,12 @@ class UpdatePlatformIO:
         # Remove the process from the list
         self.processes.remove(process)
 
-        # Print
-        print("Successfully build")
-
-        return True
-
     def spawnThreads(self):
         # Get all the serial ports
         ports = util.get_serial_ports()
 
         if len(ports) == 0:
-            print("No serial ports found")
+            print(Fore.RED + "No serial ports found" + Fore.RESET)
             self.shared_state["error"] = True
             self.shared_state["error_message"] = "No serial ports found"
             self.shared_state_change.set()
@@ -116,21 +144,26 @@ class UpdatePlatformIO:
 
         # Upload to all the serial ports
         for port in ports:
-            # Choose the environment
-            env = "ttgo-t-beam"
-            if port["port"] in portsLora32:
-                env = "ttgo-lora32-v1"
+            if port["port"] not in envPort:
+                print(
+                    Fore.YELLOW
+                    + "Port "
+                    + port["port"]
+                    + " not in the dictionary"
+                    + Fore.RESET
+                )
+                continue
 
             # Spawn a thread for each port
             x = threading.Thread(
                 target=self.uploadAndMonitor,
-                args=(env, port["port"]),
+                args=(envPort[port["port"]], port["port"]),
             )
 
             x.start()
 
     def uploadToPort(self, env, portName):
-        print("Start uploading to port: " + portName)
+        print("Start uploading to port: " + portName + ", env: " + env)
         process = subprocess.Popen(
             ["pio", "run", "-e", env, "--target", "upload", "--upload-port", portName],
             stdout=subprocess.PIPE,
@@ -167,7 +200,8 @@ class UpdatePlatformIO:
         # Remove the process from the list
         self.processes.remove(process)
 
-        print("Successfully update port: " + portName)
+        # Print
+        print(Fore.GREEN + "Successfully uploaded to port: " + portName + Fore.RESET)
 
         return True
 
@@ -210,7 +244,7 @@ class UpdatePlatformIO:
             if self.ErrorOccurred:
                 self.deletingIn -= 1
                 if self.deletingIn == 0:
-                    print("Error in port: " + portName)
+                    print(Fore.RED + "Error in port: " + portName + Fore.RESET)
                     process.kill()
                     return
 

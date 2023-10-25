@@ -2,6 +2,7 @@ import status
 import os
 import json
 from datetime import datetime
+from colorama import Fore
 
 
 class PacketService:
@@ -56,11 +57,7 @@ class PacketService:
 
     def processPacket(self, packet):
         # Check if "appPortSrc" key exists in the JSON data
-        if (
-            "data" in packet
-            and "appPortSrc" in packet["data"]
-            and "simCommand" in packet["data"]
-        ):
+        if "data" in packet and "simCommand" in packet["data"]:
             simCommand = packet["data"]["simCommand"]
 
             if simCommand == 4:
@@ -71,6 +68,7 @@ class PacketService:
                     self.status.checkIfAllDevicesStarted,
                     "allDevicesStartedSim",
                     "Device already started simulation",
+                    "All devices started simulation",
                 )
 
             elif simCommand == 5:
@@ -81,6 +79,7 @@ class PacketService:
                     self.status.checkIfAllDevicesEndedSimulation,
                     "allDevicesEndedSim",
                     "Device already ended simulation",
+                    "All devices ended simulation",
                 )
 
             elif simCommand == 6:
@@ -91,6 +90,7 @@ class PacketService:
                     self.status.checkIfAllDevicesEndedLogs,
                     "allDevicesEndedLogs",
                     "Device already ended log Simulation",
+                    "All devices ended log Simulation",
                 )
 
             elif simCommand == 2:
@@ -101,16 +101,24 @@ class PacketService:
                 self.saveData(packet["data"])
 
     def SetStatusAndCheckAll(
-        self, packet, endDeviceFunction, endAllDevicesFunction, state, errorName
+        self,
+        packet,
+        endDeviceFunction,
+        endAllDevicesFunction,
+        state,
+        errorName,
+        successName,
     ):
         if endDeviceFunction(packet["data"]["addrSrc"]):
             if endAllDevicesFunction():
+                print(Fore.GREEN + successName + Fore.RESET)
                 self.shared_state[state] = True
                 self.shared_state[state + "Time"] = datetime.now().strftime(
                     "%d/%m/%Y %H:%M:%S"
                 )
                 self.shared_state_change.set()
         else:
+            print(Fore.RED + errorName + Fore.RESET)
             self.shared_state["error"] = True
             self.shared_state["error_message"] = errorName
             self.shared_state_change.set()

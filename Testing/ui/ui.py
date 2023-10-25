@@ -13,6 +13,9 @@ from drawOverheadByExperiments import draw_overhead_by_experiments
 from Testing.ui.drawFreeHeapByDevices import draw_free_heap_by_devices
 
 
+initialDirectory = "./"
+
+
 # Given a directory, find the JSON file and draw the plot and summary
 def find_file_json(directory):
     # Clear the frame
@@ -78,7 +81,7 @@ draw_button.grid(row=1, column=0, sticky="ew")
 
 def find_file(function):
     filename = filedialog.askdirectory(
-        initialdir="./ZLargeNumberOfPacketsNoLimitRepeatTest2",
+        initialdir=initialDirectory,
         title="Select a File",
     )
     draw_button["command"] = lambda: function(filename)
@@ -92,7 +95,7 @@ find_button.grid(row=0, column=1, sticky="ew")
 
 def find_file_and_execute_function(function):
     filename = filedialog.askdirectory(
-        initialdir="./zFinalTestsV3",
+        initialdir=initialDirectory,
         title="Select a File",
     )
     function(frame, filename)

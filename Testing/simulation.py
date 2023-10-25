@@ -42,7 +42,8 @@ class Simulation:
         self.configFile = os.path.join(self.fileName, "simConfiguration.json")
         if os.path.isfile(self.configFile):
             simConfig = changeConfigurationSerial.ChangeConfigurationSerial(
-                self.configFile, ["ttgo-t-beam", "ttgo-lora32-v1"]
+                self.configFile,
+                ["ttgo-t-beam", "ttgo-lora32-v1", "esp-wrover-kitNAYAD_V1R2"],
             )
             simConfig.changeConfiguration()
             print("Configuration changed", self.Name)
@@ -111,7 +112,7 @@ class Simulation:
             json_str = json.dumps(self.shared_state, indent=4)
 
             # Save the results in a file using a json format
-            with open(os.path.join(self.fileName, "results.json"), "w") as f:
+            with open(os.path.join(self.fileName, "summary.json"), "w") as f:
                 f.write(json_str)
 
         ErrorOccurred = False

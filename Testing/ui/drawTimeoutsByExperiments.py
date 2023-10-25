@@ -67,6 +67,8 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
         # Get the number of data packets, by dividing the total messages by the payload size round up
         total_data_packets = total_messages * math.ceil(payload_size / max_packet_size)
 
+        total_number_packets = total_data_packets * 2 + total_messages * 2
+
         data = get_monitor_status(path)
 
         # Add to the list of experiment directories
@@ -74,10 +76,14 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
             {
                 "Name": name,
                 "Id": i,
-                "Sync Resend": data["totalSyncResend"],
-                "Lost Messages": data["totalMessagesResend"],
-                "Total Messages": total_messages,
-                "Total Data Packets": total_data_packets,
+                "SYNC_P to Send": total_messages,
+                "SYNC_P Resend": data["totalSyncResend"],
+                "SYNC_P lost (%)": data["totalSyncResend"] / total_messages * 100,
+                "XL_DATA_P to Send": total_data_packets,
+                "XL_DATA_P Resend": data["totalMessagesResend"],
+                "XL_DATA_P lost (%)": data["totalMessagesResend"]
+                / total_data_packets
+                * 100,
             }
         )
 
@@ -96,10 +102,10 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
     # x_labels = df["address"]
     df[
         [
-            "Sync Resend",
-            "Lost Messages",
-            "Total Messages",
-            "Total Data Packets",
+            "SYNC_P to Send",
+            "SYNC_P Resend",
+            "XL_DATA_P to Send",
+            "XL_DATA_P Resend",
         ]
     ].plot(kind="bar", ax=ax, width=0.7)
 
@@ -107,17 +113,17 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
     ax.set_xticklabels(df["Id"], rotation=0)
 
     # Add labels and title
-    ax.set_xlabel("Experiment", fontsize=14)
-    ax.set_ylabel("Count", fontsize=14)
-    ax.set_title("Experiment Message Statistics Overview")
+    ax.set_xlabel("Experiment", fontsize=18)
+    ax.set_ylabel("Count", fontsize=18)
+    ax.set_title("Experiment Packet Statistics Overview", fontsize=18)
 
     # Calculate the maximum height of the bars
     max_height = df[
         [
-            "Sync Resend",
-            "Lost Messages",
-            "Total Messages",
-            "Total Data Packets",
+            "SYNC_P to Send",
+            "SYNC_P Resend",
+            "XL_DATA_P to Send",
+            "XL_DATA_P Resend",
         ]
     ].values.max()
 
@@ -133,8 +139,10 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
             va = "bottom"  # Place the annotation below the bar
         else:
             va = "center"  # Place the annotation at the center of the bar
+
+        # Add the annotation with a maximum of 2 decimal places, add decimal places if needed
         ax.annotate(
-            str(height),
+            str(height) if height.is_integer() else f"{height:.2f}",
             (p.get_x() + p.get_width() / 2.0, height + spacing),
             ha="center",
             va=va,
