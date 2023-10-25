@@ -285,6 +285,10 @@ void Sim::sendStartSimMessage() {
 
     vTaskDelay(30000 / portTICK_PERIOD_MS); // Wait 30 second
 
+#if WIFI_ADDR_CONNECTED == 0
+    return;
+#endif
+
     // Delete WiFi and MQTT
     if (LoraMesher::getInstance().getLocalAddress() == WIFI_ADDR_CONNECTED)
         return;

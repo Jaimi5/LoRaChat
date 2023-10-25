@@ -182,6 +182,8 @@ This project is still in development. It is not ready for production. We are sti
 
 Additionally, if you use the TTGO T-Beam be aware that the WiFi antenna should be mounted correctly for the WiFi connect all the times. (It just happened to me to spend a lot of time trying to figure out why the WiFi was not working.)
 
+The ttgo-lora32-v1 display does not work correctly, it will be fixed in the future.
+
 # ICDCS 2022 Demonstration
 
 ![ICDCS demonstration](images/ICDCS2022.png)

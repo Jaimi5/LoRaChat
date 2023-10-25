@@ -14,6 +14,8 @@ static const char* TAG = "WiFi";
 static int s_retry_num = 0;
 
 void WiFiServerService::initWiFi() {
+    initialized = true;
+
     wifi_init_sta();
 
     if (restartWiFiData())
@@ -179,27 +181,33 @@ String WiFiServerService::resetWiFiData() {
 }
 
 bool WiFiServerService::isConnected() {
+    if (!initialized)
+        return false;
+
     wifi_ap_record_t ap_info;
     esp_err_t ret = esp_wifi_sta_get_ap_info(&ap_info);
     if (ret == ESP_OK) {
         // Connected to an AP
-        ESP_LOGV(TAG, "Connected to AP with SSID: %s\n", ap_info.ssid);
+        // ESP_LOGV(TAG, "Connected to AP with SSID: %s", ap_info.ssid);
         return true;
     }
     else if (ret == ESP_ERR_WIFI_CONN) {
         // Not connected to an AP
-        ESP_LOGV(TAG, "Not connected to an AP\n");
+        // ESP_LOGV(TAG, "Not connected to an AP");
         return false;
     }
     else {
         // Other error
-        ESP_LOGV(TAG, "Failed to get AP info: %s\n", esp_err_to_name(ret));
+        ESP_LOGV(TAG, "Failed to get AP info: %s", esp_err_to_name(ret));
     }
 
     return false;
 }
 
 bool WiFiServerService::connectWiFi() {
+    if (!initialized)
+        return false;
+
     if (isConnected())
         return true;
 
@@ -227,6 +235,9 @@ bool WiFiServerService::connectWiFi() {
 }
 
 bool WiFiServerService::disconnectWiFi() {
+    if (!initialized)
+        return true;
+
     esp_wifi_stop();
 
     ESP_LOGI(TAG, "Disconnecting from WiFi");
@@ -238,6 +249,8 @@ bool WiFiServerService::disconnectWiFi() {
 }
 
 String WiFiServerService::getIP() {
+    if (!initialized)
+        return F("No IP");
     //TODO: Check if this is the correct way to get the IP
 
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -269,13 +282,6 @@ String WiFiServerService::getPassword() {
 
 bool WiFiServerService::restartWiFiData() {
     ConfigService& configService = ConfigService::getInstance();
-
-    // #ifdef SIMULATION_ENABLED
-    //     if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED)
-    //         return false;
-    // #endif
-
-    // TODO: CHANGE THIS TO THE CORRECT DEFAULT VALUES
 
     this->ssid = WIFI_SSID;
     this->password = WIFI_PASSWORD;

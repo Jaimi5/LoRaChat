@@ -2,10 +2,34 @@
 
 static const char* LMS_TAG = "LoRaMeshService";
 
+#if defined(NAYAD_V1) || defined(NAYAD_V1R2)
+SPIClass newSPI(HSPI);
+#endif
+
 void LoRaMeshService::initLoraMesherService() {
-    // Set the LoRaMesher config
+#ifdef LORA_ENABLED
     LoraMesher::LoraMesherConfig config = LoraMesher::LoraMesherConfig();
+
+    config.loraCs = LORA_CS;
+    config.loraRst = LORA_RST;
+    config.loraIrq = LORA_IRQ;
+    config.loraIo1 = LORA_IO1;
+
+    ESP_LOGV(LMS_TAG, "LoraMesher config: CS: %d, RST: %d, IRQ: %d, IO1: %d", config.loraCs, config.loraRst, config.loraIrq, config.loraIo1);
+
+#ifdef LORA_MODULE_SX1276
     config.module = LoraMesher::LoraModules::SX1276_MOD;
+#elif defined(LORA_MODULE_SX1262)
+    config.module = LoraMesher::LoraModules::SX1262_MOD;
+#endif
+
+#if defined(NAYAD_V1) || defined(NAYAD_V1R2)
+    newSPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
+    config.spi = &newSPI;
+#endif
+
+    ESP_LOGV(LMS_TAG, "LoraMesher config: Module: %d", config.module);
+    ESP_LOGV(LMS_TAG, "LoraMesher config: LORA_SCK: %d, LORA_MISO: %d, LORA_MOSI: %d, LORA_CS: %d", LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
 
     //Initialize LoRaMesher
     radio.begin(config);
@@ -17,6 +41,8 @@ void LoRaMeshService::initLoraMesherService() {
     radio.start();
 
     ESP_LOGV(LMS_TAG, "LoraMesher initialized");
+#endif
+
 }
 
 void LoRaMeshService::loopReceivedPackets() {
@@ -186,4 +212,10 @@ bool LoRaMeshService::hasActiveReceivedConnections() {
 
 void LoRaMeshService::standby() {
     return radio.standby();
+}
+
+bool LoRaMeshService::hasGateway() {
+    RouteNode* gatewayNode = radio.getClosestGateway();
+
+    return gatewayNode != nullptr;
 }

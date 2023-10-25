@@ -95,4 +95,6 @@ private:
     static void wifi_task(void*);
 
     bool connected = false;
+
+    bool initialized = false;
 };

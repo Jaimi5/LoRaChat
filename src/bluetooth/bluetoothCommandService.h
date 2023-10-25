@@ -6,6 +6,9 @@
 
 #include "bluetoothMessage.h"
 
+//Bluetooth
+#include <BluetoothSerial.h>
+
 class BluetoothCommandService: public CommandService {
 public:
 

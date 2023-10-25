@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 //Bluetooth
-#include <ArduinoBLE.h>
+#include <BluetoothSerial.h>
 
 #include "bluetoothCommandService.h"
 
@@ -12,6 +12,9 @@
 #include "message/messageManager.h"
 
 #include "helpers/helper.h"
+
+//TODO: Check for wake from sleep mode.
+//TODO: Check for max characters in a message to avoid buffer overflow.
 
 class BluetoothService: public MessageService {
 public:
@@ -32,23 +35,21 @@ public:
 
     bool writeToBluetooth(String message);
 
+    BluetoothSerial* SerialBT = new BluetoothSerial();
+
     BluetoothCommandService* bluetoothCommandService = new BluetoothCommandService();
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
+
+    bool hasClient = false;
+
+    void disconnect();
 
 private:
 
     BluetoothService(): MessageService(appPort::BluetoothApp, String("Bluetooth")) {
         commandService = bluetoothCommandService;
     };
-
-    BLEService configService = BLEService("0d38784b-07a0-4642-9f14-a460a538104b"); // create service
-
-    // create switch characteristic and allow remote device to read and write
-    BLECharacteristic wifiNameCharacteristic = BLECharacteristic("85b96737-8b13-4d84-8d42-3d98bba40f07", BLERead | BLEWrite, "VeryLongPasswordToStayFresh");
-
-    BLECharacteristic wifiPwdCharacteristic = BLECharacteristic("6e118941-a653-4ecb-98e1-b4710d216a1a", BLERead | BLEWrite, "VeryLongPasswordToStayFresh");
-
 
     void createBluetoothTask();
 

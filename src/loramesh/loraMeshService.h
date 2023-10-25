@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include "config.h"
+
 #include "LoraMesher.h"
 
 #include "loraMeshMessage.h"
@@ -11,6 +13,7 @@
 #include "message/messageService.h"
 
 #include "loraMeshCommandService.h"
+
 
 class LoRaMeshService: public MessageService {
 
@@ -58,6 +61,14 @@ public:
     }
 
     void standby();
+
+    /**
+     * @brief If the device Routing table contains a gateway
+     *
+     * @return true
+     * @return false
+     */
+    bool hasGateway();
 
 private:
 

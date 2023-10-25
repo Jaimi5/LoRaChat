@@ -22,14 +22,14 @@ enum appPort: uint8_t {
     BluetoothApp = 2,
     WiFiApp = 3,
     GPSApp = 4,
-    SOSApp = 5,
+    WalletApp = 5,
     CommandApp = 6,
     LoRaMesherApp = 7,
     MQTTApp = 8,
-    TemperatureSensorApp = 9,
-    LedApp = 10,
-    Dht22SensorApp = 11,
-    SimApp = 12
+    SimApp = 12,
+    LedApp = 13,
+    SensorApp = 14,
+    MetadataApp = 15,
 };
 
 class DataMessageGeneric {
@@ -48,8 +48,8 @@ public:
     }
 
     void serialize(JsonObject& doc) {
-        doc["appPortDst"] = appPortDst;
-        doc["appPortSrc"] = appPortSrc;
+        // doc["appPortDst"] = appPortDst;
+        // doc["appPortSrc"] = appPortSrc;
         doc["messageId"] = messageId;
         doc["addrSrc"] = addrSrc;
         doc["addrDst"] = addrDst;

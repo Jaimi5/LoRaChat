@@ -10,7 +10,7 @@ void BluetoothService::createBluetoothTask() {
     int res = xTaskCreate(
         BluetoothLoop,
         "Bluetooth Task",
-        4096,
+        2048,
         (void*) 1,
         2,
         &bluetooth_TaskHandle);
@@ -28,134 +28,61 @@ void BluetoothService::BluetoothLoop(void*) {
 }
 
 bool BluetoothService::isDeviceConnected() {
-    return BLE.connected();
+    return SerialBT->hasClient();
 }
 
 bool BluetoothService::writeToBluetooth(String message) {
-    ESP_LOGV(BLE_TAG, "Sending message to bluetooth: %s", message);
+    ESP_LOGV(BLE_TAG, "Sending message to bluetooth: %s", message.c_str());
 
     if (!isDeviceConnected()) {
         ESP_LOGV(BLE_TAG, "No bluetooth device connected");
         return false;
     }
 
+    SerialBT->println(message);
+
     return true;
 }
 
-void blePeripheralConnectHandler(BLEDevice central) {
-    // central connected event handler
-    ESP_LOGV(BLE_TAG, "Connected event, central: ");
-    ESP_LOGV(BLE_TAG, "%s", central.address());
-}
-
-void blePeripheralDisconnectHandler(BLEDevice central) {
-    // central disconnected event handler
-    ESP_LOGV(BLE_TAG, "Disconnected event, central: ");
-    ESP_LOGV(BLE_TAG, "%s", central.address());
-}
-
-void wifiNameCharacteristicWritten(BLEDevice central, BLECharacteristic characteristic) {
-    // central wrote new value to characteristic, update LED
-    ESP_LOGV(BLE_TAG, "Characteristic event, written: ");
-
-
-    // yes, get the value, characteristic is 1 byte so use byte value
-    char value[30];
-
-    characteristic.readValue(value, 30);
-
-
-    ESP_LOGV(BLE_TAG, "%s", value);
-
-    WiFiServerService& wiFiService = WiFiServerService::getInstance();
-
-    wiFiService.addSSID(value);
-
-    wiFiService.saveWiFiData();
-    //TODO: here we need to save the new wifi name to the flash memory
-
-}
-
-void wifiPwdCharacteristicWritten(BLEDevice central, BLECharacteristic characteristic) {
-    // central wrote new value to characteristic, update LED
-    ESP_LOGV(BLE_TAG, "Characteristic event, written: ");
-
-
-    // yes, get the value
-    char value[30];
-
-    characteristic.readValue(value, 30);
-
-
-    ESP_LOGV(BLE_TAG, "%s", value);
-
-    WiFiServerService& wiFiService = WiFiServerService::getInstance();
-
-    wiFiService.addPassword(value);
-
-
-    wiFiService.saveWiFiData();
-
-
-    //TODO: here we need to save the new wifi pwd to the flash memory
-
+void callback(esp_spp_cb_event_t event, esp_spp_cb_param_t* param) {
+    BluetoothService& instance = BluetoothService::getInstance();
+    if (event == ESP_SPP_SRV_OPEN_EVT && instance.SerialBT->hasClient()) {
+        ESP_LOGV(BLE_TAG, "Bluetooth Connected");
+        instance.hasClient = true;
+        String help = MessageManager::getInstance().getAvailableCommands();
+        Serial.println(help);
+        instance.writeToBluetooth(help);
+    }
+    else if (event == ESP_SPP_CLOSE_EVT && !instance.SerialBT->hasClient()) {
+        ESP_LOGV(BLE_TAG, "Bluetooth Disconnected");
+        // TODO: Bluetooth and WiFi should not be used at the same time
+    }
 }
 
 void BluetoothService::initBluetooth(String lclName) {
+    if (SerialBT->register_callback(callback) == ESP_OK)
+        ESP_LOGV(BLE_TAG, "Bluetooth callback registered");
+    else
+        ESP_LOGE(BLE_TAG, "Bluetooth callback not registered");
 
-    // begin initialization
-    if (!BLE.begin()) {
-        ESP_LOGE(BLE_TAG, "starting Bluetooth® Low Energy module failed!");
-
-        while (1);
-    }
-
-    // set the local name peripheral advertises
-    BLE.setLocalName(lclName.c_str());
-    // set the UUID for the service this peripheral advertises:
-    BLE.setAdvertisedService(configService);
-
-    // add the characteristics to the service
-    configService.addCharacteristic(wifiNameCharacteristic);
-    configService.addCharacteristic(wifiPwdCharacteristic);
-
-    // add the service
-    BLE.addService(configService);
-
-    // set the initial value for the characeristic: TODO: here we need to take thename of the currently saved wifi
-
-    WiFiServerService& wiFiService = WiFiServerService::getInstance();
-
-    wifiNameCharacteristic.writeValue(wiFiService.getSSID().c_str());
-
-    wifiPwdCharacteristic.writeValue(wiFiService.getPassword().c_str());
-
-
-    // assign event handlers for connected, disconnected to peripheral
-    BLE.setEventHandler(BLEConnected, blePeripheralConnectHandler);
-    BLE.setEventHandler(BLEDisconnected, blePeripheralDisconnectHandler);
-
-    // assign event handlers for characteristic
-    wifiNameCharacteristic.setEventHandler(BLEWritten, wifiNameCharacteristicWritten);
-    wifiPwdCharacteristic.setEventHandler(BLEWritten, wifiPwdCharacteristicWritten);
-
-    // start advertising
-    BLE.advertise();
-
-    ESP_LOGI(BLE_TAG, "Bluetooth® device active, waiting for connections...");
+    if (!SerialBT->begin(lclName))
+        ESP_LOGE(BLE_TAG, "BT init error");
 
     localName = lclName;
 
+    ESP_LOGV(BLE_TAG, "DeviceID: %s", lclName.c_str());
     createBluetoothTask();
 }
 
-uint32_t state = 0;
-String chatName = "";
-uint16_t chatAddr = 0;
-
 void BluetoothService::loop() {
-    // poll for Bluetooth® Low Energy events
-    BLE.poll();
+    while (SerialBT->available()) {
+        String message = SerialBT->readStringUntil('\n');
+        message.remove(message.length() - 1, 1);
+        Serial.println(message);
+        String executedProgram = MessageManager::getInstance().executeCommand(message);
+        Serial.println(executedProgram);
+        writeToBluetooth(executedProgram);
+    }
 }
 
 void BluetoothService::processReceivedMessage(messagePort port, DataMessage* message) {
@@ -167,4 +94,14 @@ void BluetoothService::processReceivedMessage(messagePort port, DataMessage* mes
         default:
             break;
     }
+}
+
+void BluetoothService::disconnect() {
+    ESP_LOGE(BLE_TAG, "Bluetooth task deleted");
+    // Disconnect all the bluetooth connections to no affect the wifi
+    SerialBT->end();
+    SerialBT->disconnect();
+
+    delete SerialBT;
+    vTaskDelete(bluetooth_TaskHandle);
 }

@@ -22,7 +22,7 @@ void MqttService::createMqttTask() {
     int res = xTaskCreate(
         MqttLoop,
         "Mqtt Task",
-        8196,
+        4096,
         (void*) 1,
         2,
         &mqtt_TaskHandle);

@@ -1,6 +1,7 @@
 #include "commandService.h"
 
-static const char* CMS_TAG = "BluetoothService";
+static const char* CMD_TAG = "CommandService";
+
 
 CommandService::CommandService() {
     addCommand(Command("/help", "Print help", 0, 0, [this](String args) { return this->helpCommand(); }));
@@ -8,7 +9,7 @@ CommandService::CommandService() {
 }
 
 String CommandService::executeCommand(String args) {
-    ESP_LOGV(CMS_TAG, "Executing command: %s", args);
+    ESP_LOGV(CMD_TAG, "Executing command: %s", args.c_str());
     if (args.length() == 0) {
         return helpCommand();
     }
@@ -20,7 +21,7 @@ String CommandService::executeCommand(String args) {
 
     for (uint8_t i = 0; i < commandsCount; i++) {
         if (command.equalsIgnoreCase(commands[i].getCommand())) {
-            ESP_LOGV(CMS_TAG, "Executing command: %s", commands[i].getCommand());
+            ESP_LOGV(CMD_TAG, "Executing command: %s", commands[i].getCommand().c_str());
             currentCommand = &commands[i];
             return commands[i].execute(commandArgs);
         }

@@ -10,8 +10,6 @@
 
 #include "message/messageManager.h"
 
-#include "helpers/helper.h"
-
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>

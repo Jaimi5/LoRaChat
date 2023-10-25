@@ -17,11 +17,11 @@ public:
     };
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message) {
-        ESP_LOGE(MS_TAG, "processReceivedMessage not implemented for service %s", serviceName);
+        ESP_LOGE(MS_TAG, "processReceivedMessage not implemented for service %s", serviceName.c_str());
     };
 
     virtual String getJSON(DataMessage* message) {
-        ESP_LOGE(MS_TAG, "getJSON not implemented for service %s", serviceName);
+        ESP_LOGE(MS_TAG, "getJSON not implemented for service %s", serviceName.c_str());
         return "";
     };
 
@@ -38,12 +38,12 @@ public:
     String toString() { return "Id: " + String(serviceId) + " - " + serviceName; }
 
     virtual DataMessage* getDataMessage(JsonObject data) {
-        ESP_LOGE(MS_TAG, "getDataMessage not implemented for service %s", serviceName);
+        ESP_LOGE(MS_TAG, "getDataMessage not implemented for service %s", serviceName.c_str());
         return nullptr;
     };
 
     virtual DataMessage* getDataMessage(JsonObject data, DataMessage* message) {
-        ESP_LOGE(MS_TAG, "getDataMessage not implemented for service %s", serviceName);
+        ESP_LOGE(MS_TAG, "getDataMessage not implemented for service %s", serviceName.c_str());
         return nullptr;
     };
 };
