@@ -93,7 +93,7 @@ void LoRaMeshService::createReceiveMessages() {
     int res = xTaskCreate(
         processReceivedPackets,
         "Receive App Task",
-        4096,
+        5000,
         (void*) 1,
         2,
         &receiveLoRaMessage_Handle);

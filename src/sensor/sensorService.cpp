@@ -111,7 +111,7 @@ void SensorService::createSendingTask() {
     BaseType_t res = xTaskCreatePinnedToCore(
         sendingLoop, /* Function to implement the task */
         "SendingTask", /* Name of the task */
-        2024,  /* Stack size in words */
+        6000,  /* Stack size in words */
         NULL,  /* Task input parameter */
         1,  /* Priority of the task */
         &sending_TaskHandle,  /* Task handle. */
