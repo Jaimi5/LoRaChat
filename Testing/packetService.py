@@ -99,6 +99,8 @@ class PacketService:
 
             elif simCommand == 3:
                 self.saveData(packet["data"])
+        elif "data" in packet:
+            self.saveData(packet["data"])
 
     def SetStatusAndCheckAll(
         self,
