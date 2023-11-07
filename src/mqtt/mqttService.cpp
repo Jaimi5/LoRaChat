@@ -5,6 +5,8 @@ static const char* MQTT_TAG = "MQTT";
 void MqttService::initMqtt(String lclName) {
     ESP_LOGI(MQTT_TAG, "Initializing mqtt");
 
+    localName = lclName;
+
     mqtt_service_init(lclName.c_str());
 
     receiveQueue = xQueueCreate(10, sizeof(MQTTQueueMessageV2*));
@@ -35,8 +37,6 @@ void MqttService::MqttLoop(void*) {
     MqttService& mqttService = MqttService::getInstance();
 
     for (;;) {
-        ESP_LOGV(MQTT_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
-
         mqttService.processMQTTMessage();
         vTaskDelay(20 / portTICK_PERIOD_MS);
     }
@@ -165,10 +165,8 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED:
             {
                 mqtt_connected = true;
-                // ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
-                esp_mqtt_client_subscribe(client, MQTT_TOPIC_SUB, 2);
-                // MqttService& mqttService = MqttService::getInstance();
-                // mqttService.mqtt_service_subscribe(MQTT_TOPIC_SUB);
+                String topic = String(MQTT_TOPIC_SUB) + MqttService::getInstance().localName;
+                esp_mqtt_client_subscribe(client, topic.c_str(), 2);
             }
             break;
         case MQTT_EVENT_DISCONNECTED:

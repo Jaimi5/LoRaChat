@@ -66,6 +66,8 @@ public:
     void processReceivedMessageFromMQTT(String& topic, String& payload);
 
     void mqtt_service_subscribe(const char* topic);
+    
+    String localName = "";
 
 private:
     MqttService(): MessageService(appPort::MQTTApp, String("MQTT")) {
@@ -77,8 +79,6 @@ private:
     static void MqttLoop(void*);
 
     TaskHandle_t mqtt_TaskHandle = NULL;
-
-    String localName = "";
 
     struct MQTTQueueMessageV2 {
         String topic;
