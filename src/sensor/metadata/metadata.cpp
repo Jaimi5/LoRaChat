@@ -62,6 +62,8 @@ void Metadata::metadataLoop(void* pvParameters) {
         if (!metadata.running)
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         else {
+            ESP_LOGV(METADATA_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+
             metadata.createAndSendMetadata();
             vTaskDelay(METADATA_UPDATE_DELAY / portTICK_PERIOD_MS);
             ESP_LOGD(METADATA_TAG, "Free heap: %d", esp_get_free_heap_size());

@@ -54,7 +54,7 @@ void WiFiServerService::wifi_task(void*) {
             pdFALSE,
             portMAX_DELAY);
 
-        ESP_LOGV(TAG, "Bit received: %d", bits);
+        ESP_LOGV(TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
 
         /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
          * happened. */

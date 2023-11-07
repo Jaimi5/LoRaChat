@@ -76,6 +76,8 @@ void LoRaMeshService::loopReceivedPackets() {
  */
 void processReceivedPackets(void*) {
     for (;;) {
+        ESP_LOGV(LMS_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+
         /* Wait for the notification of processReceivedPackets and enter blocking */
         ulTaskNotifyTake(pdPASS, portMAX_DELAY);
         LoRaMeshService::getInstance().loopReceivedPackets();

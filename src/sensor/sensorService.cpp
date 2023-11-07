@@ -129,6 +129,7 @@ void SensorService::createSendingTask() {
 
 void SensorService::sendingLoop(void* parameter) {
     SensorService& sensorService = SensorService::getInstance();
+    UBaseType_t uxHighWaterMark;
 
     while (true) {
         if (!sensorService.running) {
@@ -136,6 +137,9 @@ void SensorService::sendingLoop(void* parameter) {
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         }
         else {
+            uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
+            ESP_LOGD(SENSOR_TAG, "Stack space unused after entering the task: %d", uxHighWaterMark);
+
             sensorService.createAndSendMessage();
 
             vTaskDelay(SENSOR_SENDING_EVERY / portTICK_PERIOD_MS);

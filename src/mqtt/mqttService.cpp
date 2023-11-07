@@ -35,6 +35,8 @@ void MqttService::MqttLoop(void*) {
     MqttService& mqttService = MqttService::getInstance();
 
     for (;;) {
+        ESP_LOGV(MQTT_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+
         mqttService.processMQTTMessage();
         vTaskDelay(20 / portTICK_PERIOD_MS);
     }
