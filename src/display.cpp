@@ -118,17 +118,16 @@ void Display::changeLine(String text, int pos, int& x, int& minX, int size, bool
 
 void Display::initDisplay() {
     //reset OLED display via software for ESP32LORA
-    if (DISPLAY_RST != -1) {
-        pinMode(DISPLAY_RST, OUTPUT);
-        digitalWrite(DISPLAY_RST, LOW);
-        delay(20);
-        digitalWrite(DISPLAY_RST, HIGH);
-    }
-
-#if (DISPLAY_SDA != I2C_SDA)
-    Wire.begin((int) DISPLAY_SDA, (int) DISPLAY_SCL);
+#if DISPLAY_RST != -1
+    pinMode(DISPLAY_RST, OUTPUT);
+    digitalWrite(DISPLAY_RST, LOW);
+    delay(20);
+    digitalWrite(DISPLAY_RST, HIGH);
 #endif
-    // Wire1.begin((int) DISPLAY_SDA, (int) DISPLAY_SCL);
+
+#if DISPLAY_SDA != I2C_SDA
+    Wire1.begin((int) DISPLAY_SDA, (int) DISPLAY_SCL);
+#endif
 
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C, false, false)) {

@@ -28,7 +28,11 @@ public:
     void printLine(String str, int& x, int y, int size, int minX, bool move);
 
 private:
+#if DISPLAY_RST != -1
+    Adafruit_SSD1306 display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire1, DISPLAY_RST);
+#else
     Adafruit_SSD1306 display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT);
+#endif
     TaskHandle_t Display_TaskHandle = NULL;
 
     void changeLine(String str, int pos, int& x, int& minX, int size, bool& move);
