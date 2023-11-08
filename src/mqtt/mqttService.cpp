@@ -37,14 +37,15 @@ void MqttService::MqttLoop(void*) {
     MqttService& mqttService = MqttService::getInstance();
 
     for (;;) {
+        ESP_LOGV(MQTT_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+
         mqttService.processMQTTMessage();
         vTaskDelay(20 / portTICK_PERIOD_MS);
     }
 }
 
 void MqttService::processMQTTMessage() {
-    if (xQueueReceive(receiveQueue, &mqttMessageReceiveV2, 0) == pdTRUE) {
-        // TODO: Process message
+    if (xQueueReceive(receiveQueue, &mqttMessageReceiveV2, portMAX_DELAY) == pdTRUE) {
         ESP_LOGV(MQTT_TAG, "Message received from mqtt queue");
         ESP_LOGV(MQTT_TAG, "Topic: %s", mqttMessageReceiveV2->topic.c_str());
 
