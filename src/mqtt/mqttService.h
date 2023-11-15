@@ -46,7 +46,7 @@ public:
         return instance;
     }
 
-    void initMqtt(String localName);
+    void initMqtt(String localName, String mqtt_server, uint mqtt_port, String mqtt_username, String mqtt_password);
 
     bool connect();
 
@@ -70,6 +70,11 @@ public:
     String localName = "";
 
 private:
+    String mqtt_server;
+    uint mqtt_port;
+    String mqtt_username;
+    String mqtt_password;
+
     MqttService(): MessageService(appPort::MQTTApp, String("MQTT")) {
         commandService = mqttCommandService;
     };

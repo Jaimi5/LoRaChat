@@ -88,7 +88,7 @@ void initSensors() {
 WiFiServerService& wiFiService = WiFiServerService::getInstance();
 
 void initWiFi() {
-    wiFiService.initWiFi();
+    wiFiService.initWiFi("WiFi SSID", "WiFi Password");
 }
 
 #pragma endregion
@@ -111,7 +111,7 @@ void initLoRaMesher() {
 MqttService& mqttService = MqttService::getInstance();
 
 void initMQTT() {
-    mqttService.initMqtt(String(loraMeshService.getLocalAddress()));
+    mqttService.initMqtt(String(loraMeshService.getLocalAddress()), "192.168.1.26", 1883, "admin", "public");
 }
 
 #pragma endregion

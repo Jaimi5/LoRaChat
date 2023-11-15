@@ -1,0 +1,46 @@
+{
+  "name": "LoRaChat",
+  "version": "1.0.1",
+  "description": "",
+  "keywords": "",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/NilLlisterri/LoRaChat.git"
+  },
+  "authors":
+  [
+    {
+      "name": "John Smith",
+      "email": "me@john-smith.com",
+      "url": "https://www.john-smith/contact"
+    },
+    {
+      "name": "Andrew Smith",
+      "email": "me@andrew-smith.com",
+      "url": "https://www.andrew-smith/contact",
+      "maintainer": true
+    }
+  ],
+  "license": "MIT",
+  "homepage": "",
+  "dependencies": {
+    "Vector": "1.2.2",
+    "SPI": "*",
+    "WiFi": "2.0.0",
+    "Wire": "*",
+    "Preferences": "*",
+    "mikalhart/TinyGPSPlus": "1.0.3",
+    "lewisxhe/AXP202X_Library": "1.1.3",
+    "plerup/espsoftwareserial": "8.1.0",
+    "external-repo": "https://github.com/LoRaMesher/LoRaMesher#main",
+    "adafruit/Adafruit SSD1306": "^2.5.6",
+    "adafruit/Adafruit GFX Library": "^1.11.3",
+    "paulstoffregen/OneWire": "2.3.7",
+    "adafruit/Adafruit BusIO": "^1.11.1",
+    "bblanchon/ArduinoJson": "6.21.3",
+    "BluetoothSerial": "*"
+  },
+  "frameworks": "*",
+  "platforms": "*"
+}

@@ -13,7 +13,10 @@ static const char* TAG = "WiFi";
 
 static int s_retry_num = 0;
 
-void WiFiServerService::initWiFi() {
+void WiFiServerService::initWiFi(String wifi_ssid, String wifi_password) {
+    this->ssid = wifi_ssid;
+    this->password = wifi_password;
+
     initialized = true;
 
     wifi_init_sta();
@@ -283,8 +286,8 @@ String WiFiServerService::getPassword() {
 bool WiFiServerService::restartWiFiData() {
     ConfigService& configService = ConfigService::getInstance();
 
-    this->ssid = WIFI_SSID;
-    this->password = WIFI_PASSWORD;
+    // this->ssid = WIFI_SSID;
+    // this->password = WIFI_PASSWORD;
 
     // this->ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
     // this->password = configService.getConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);

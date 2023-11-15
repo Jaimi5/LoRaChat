@@ -41,7 +41,7 @@ public:
         return instance;
     }
 
-    void initWiFi();
+    void initWiFi(String wifi_ssid, String wifi_password);
 
     bool connectWiFi();
 
