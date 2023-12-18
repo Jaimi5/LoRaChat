@@ -43,6 +43,10 @@ public:
 
     uint32_t messageSize; //Message Size of the payload no include header
 
+    virtual ~DataMessageGeneric() {
+        
+    }
+
     uint32_t getDataMessageSize() {
         return sizeof(DataMessageGeneric) + messageSize;
     }

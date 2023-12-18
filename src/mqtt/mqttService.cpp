@@ -237,7 +237,11 @@ void MqttService::mqtt_service_subscribe(const char* topic) {
 void MqttService::mqtt_service_send(const char* topic, const char* data, int len) {
     int msg_id;
     msg_id = esp_mqtt_client_publish(client, topic, data, len, 2, 0);
-    ESP_LOGI(MQTT_TAG, "sent publish successful, msg_id %d", msg_id);
+    if (msg_id > 0) {
+        ESP_LOGI(MQTT_TAG, "sent publish successful, msg_id %d", msg_id);
+    } else {
+        ESP_LOGE(MQTT_TAG, "ESP MQTT client publish failed, error code: %d", msg_id);
+    }
 }
 
 void MqttService::process_message(const char* topic, const char* payload) {

@@ -72,4 +72,8 @@ class LC {
         void printCommands() {
             Serial.println(manager.getAvailableCommands());
         }
+
+        String getClients() {
+            return loraMeshService.getRoutingTable();
+        }
 };
