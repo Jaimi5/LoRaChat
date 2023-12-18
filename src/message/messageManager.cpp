@@ -168,7 +168,7 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
 
 void MessageManager::sendMessageLoRaMesher(DataMessage* message) {
     LoRaMeshService& mesher = LoRaMeshService::getInstance();
-    mesher.sendReliable(message);
+    mesher.send(message);
 }
 
 void MessageManager::sendMessageMqtt(DataMessage* message) {

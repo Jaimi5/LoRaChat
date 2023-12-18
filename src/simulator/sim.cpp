@@ -85,7 +85,7 @@ void Sim::simLoop(void* pvParameters) {
     for (;;) {
         sim.sendStartSimMessage();
 
-        vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
+        vTaskDelay(HELLO_PACKETS_DELAY * 15 * 1000 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
 
         ESP_LOGV(SIM_TAG, "Heap size start sim: %d", ESP.getFreeHeap());
 
@@ -110,7 +110,8 @@ void Sim::simLoop(void* pvParameters) {
         ESP_LOGV(SIM_TAG, "Simulator stopped");
 
         while (LoRaMeshService::getInstance().hasActiveConnections()) {
-            vTaskDelay(PACKET_DELAY * 3 / portTICK_PERIOD_MS); // Wait 10 second
+            ESP_LOGV(SIM_TAG, "Simulator waiting for connections to be closed");
+            vTaskDelay(PACKET_DELAY * 1.5 / portTICK_PERIOD_MS); // Wait PACKET_DELAY * 1.5 milliseconds
         }
 
         sim.stop();

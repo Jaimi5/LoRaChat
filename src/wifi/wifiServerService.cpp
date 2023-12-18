@@ -216,6 +216,12 @@ bool WiFiServerService::connectWiFi() {
         return false;
     }
 
+#if (!defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
+    // If WIFI_ADDR_CONNECTED is not 0, we are in simulation mode and we want to initialize only if the local address is WIFI_ADDR_CONNECTED
+    if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED)
+        return false;
+#endif
+
     ESP_LOGI(TAG, "Connecting to %s...", ssid);
 
     wifi_config_t wifi_config = {0};  // initialize all fields to zero

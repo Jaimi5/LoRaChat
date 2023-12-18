@@ -26,12 +26,16 @@ def extract_rtt_values_final_pattern(filename):
     rtt_values_file1,
     srtt_values_file1,
     rttvar_values_file1,
-) = extract_rtt_values_final_pattern("monitor_112825_COM31.txt")
+) = extract_rtt_values_final_pattern(
+    "Logs\RTTTwoDevicesMonitorAndPlot\monitor_112825_COM31.txt"
+)
 (
     rtt_values_file2,
     srtt_values_file2,
     rttvar_values_file2,
-) = extract_rtt_values_final_pattern("monitor_112826_COM10.txt")
+) = extract_rtt_values_final_pattern(
+    "Logs\RTTTwoDevicesMonitorAndPlot\monitor_112826_COM10.txt"
+)
 
 # Plotting the RTT, SRTT, and RTTVAR values
 plt.figure(figsize=(18, 10))
@@ -100,8 +104,8 @@ plt.axhline(
 
 # Change the size of the letters
 plt.title("RTT of two devices", fontsize=40)
-plt.xlabel("RTT Updates", fontsize=40)
-plt.ylabel("RTT (ms)", fontsize=40)
+plt.xlabel("RTT [#]", fontsize=40)
+plt.ylabel("RTT [ms]", fontsize=40)
 plt.xticks(fontsize=20)
 plt.yticks(fontsize=20)
 plt.legend(fontsize=20)

@@ -172,12 +172,16 @@ String LoRaMeshService::getRoutingTable() {
     return routingTable;
 }
 
-void LoRaMeshService::sendReliable(DataMessage* message) {
+void LoRaMeshService::send(DataMessage* message) {
     ESP_LOGV(LMS_TAG, "Heap size send: %d", ESP.getFreeHeap());
 
     LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
 
+#if SEND_RELIABLE == 0
+    radio.createPacketAndSend(message->addrDst, (uint8_t*) loraMeshMessage, sizeof(LoRaMeshMessage) + message->messageSize);
+#else
     radio.sendReliablePacket(message->addrDst, (uint8_t*) loraMeshMessage, sizeof(LoRaMeshMessage) + message->messageSize);
+#endif
 
     vPortFree(loraMeshMessage);
     ESP_LOGV(LMS_TAG, "Heap size send 2: %d", ESP.getFreeHeap());
@@ -195,7 +199,7 @@ bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
 
     ESP_LOGI(LMS_TAG, "Sending message to gateway %X", message->addrDst);
 
-    sendReliable(message);
+    send(message);
 
     return true;
 }

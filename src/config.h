@@ -11,6 +11,8 @@
 #define DISPLAY_ENABLED
 #define BATTERY_ENABLED
 #define LED_ENABLED
+#define SENSORS_ENABLED
+#define METADATA_ENABLED
 // #define SIMULATION_ENABLED
 // #define BLUETOOTH_ENABLED
 #else
@@ -18,8 +20,8 @@
 #define LED_ENABLED
 #define LORA_ENABLED
 // #define NO_SENSOR_DATA // If the sensors are not connected
-// #define SIMULATION_ENABLED
-#define BLUETOOTH_ENABLED
+#define SIMULATION_ENABLED
+// #define BLUETOOTH_ENABLED
 #endif
 
 // Configuration
@@ -106,13 +108,10 @@
 // Sensors Configuration
 #define STORED_SENSOR_DATA 10
     //- Temperature Configuration
-#define SENSORS_ENABLED
 #define SOIL_SENSOR_PIN 12
 #define SENSOR_SENDING_EVERY 60000 //ms
     //- Metadata Configuration
-#define METADATA_ENABLED
 #define METADATA_UPDATE_DELAY 300000 //ms
-
 
 
 // Battery configuration
@@ -244,3 +243,6 @@
 
 // If defined, there only be one sender
 #define ONE_SENDER 0
+
+// If defined 0 the packets will be sent unreliably
+#define SEND_RELIABLE 1

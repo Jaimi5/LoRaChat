@@ -76,9 +76,9 @@ for it, (ps) in enumerate(payload_size):
         fontdict={"size": 14, "weight": "bold"},
     )
 
-plt.xlabel("MAX_PACKET_SIZE (Bytes)")
-plt.ylabel("Control Overhead (%)")
-plt.title("Control Overhead as a Function of MAX_PACKET_SIZE")
+plt.xlabel("MAX_PACKET_SIZE [Bytes]", fontsize=18)
+plt.ylabel("Control Overhead [%]", fontsize=18)
+plt.title("Control Overhead as a Function of MAX_PACKET_SIZE", fontsize=18)
 plt.legend()
 plt.grid(True)
 plt.show()

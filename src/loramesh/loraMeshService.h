@@ -36,7 +36,7 @@ public:
 
     String getRoutingTable();
 
-    void sendReliable(DataMessage* message);
+    void send(DataMessage* message);
 
     bool sendClosestGateway(DataMessage* message);
 
