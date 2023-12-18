@@ -5,13 +5,24 @@ import subprocess
 import time
 import colorama
 from colorama import Fore
+from error import set_error
 
 # PlatfromIO configuration
 envPort = {
     "COM12": "ttgo-lora32-v1",
     "COM14": "ttgo-lora32-v1",
     "COM32": "ttgo-lora32-v1",
+    "COM4": "ttgo-lora32-v1",
+    "COM5": "ttgo-lora32-v1",
+    "COM6": "ttgo-lora32-v1",
+    "COM3": "ttgo-t-beam",
+    "COM7": "ttgo-t-beam",
+    "COM9": "ttgo-t-beam",
+    "COM11": "ttgo-t-beam",
 }
+
+TIMEOUT_BUILD = 60 * 10
+TIMEOUT_MONITOR = 60 * 5
 
 
 class PortsPlatformIo:
@@ -30,6 +41,8 @@ class UpdatePlatformIO:
 
         self.shared_state = shared_state
 
+        self.shared_state["uploadedPorts"] = []
+
         # Get all the serial ports
         ports = util.get_serial_ports()
 
@@ -38,8 +51,13 @@ class UpdatePlatformIO:
 
         print()
 
+        # Add a Timer to reset the building if it takes too long
+        self.timer = threading.Timer(TIMEOUT_BUILD, self.buildAndUploadTimeout)
+
         # Generate an empty list of processes
         self.processes = []
+
+        self.timers = {}
 
         self.file = os.path.join(directory, "Monitoring")
 
@@ -47,13 +65,20 @@ class UpdatePlatformIO:
 
         # Start the build
         if not self.build():
-            shared_state["error"] = True
-            shared_state["error_message"] = "Build failed"
-            shared_state_change.set()
+            set_error(
+                self.shared_state,
+                self.shared_state_change,
+                "Error when building the project",
+            )
             return
 
         shared_state["builded"] = True
         shared_state_change.set()
+
+        # Create a new folder for the build
+        self.buildFile = os.path.join(self.file, "build")
+
+        os.makedirs(self.buildFile, exist_ok=True)
 
         # Spawn a thread for each port
         self.spawnThreads()
@@ -110,11 +135,12 @@ class UpdatePlatformIO:
                 f.write(decoded)
 
             if "[FAILED]" in decoded or "error occurred" in decoded:
-                print(Fore.RED + "Build failed" + Fore.RESET)
-                self.shared_state["error"] = True
-                self.shared_state["error_message"] = "Build failed"
-                self.shared_state_change.set()
-                process.kill()
+                set_error(
+                    self.shared_state,
+                    self.shared_state_change,
+                    "Build failed " + Fore.YELLOW + env + Fore.RESET,
+                )
+                self.killThreads()
                 return False
 
             if i == 0:
@@ -136,10 +162,11 @@ class UpdatePlatformIO:
         ports = util.get_serial_ports()
 
         if len(ports) == 0:
-            print(Fore.RED + "No serial ports found" + Fore.RESET)
-            self.shared_state["error"] = True
-            self.shared_state["error_message"] = "No serial ports found"
-            self.shared_state_change.set()
+            set_error(
+                self.shared_state,
+                self.shared_state_change,
+                "No serial ports found",
+            )
             return
 
         # Upload to all the serial ports
@@ -174,14 +201,20 @@ class UpdatePlatformIO:
 
         i = 8
 
+        buildFile = os.path.join(self.buildFile, portName + ".txt")
+
         # Check if one of the lines contains an error
         for line in process.stdout:
             decoded = line.decode("utf-8", "ignore")
+            with open(buildFile, "a", encoding="utf-8") as f:
+                f.write(decoded)
+
             if "[FAILED]" in decoded or "error occurred" in decoded:
-                print("Error in port: " + portName)
-                self.shared_state["error"] = True
-                self.shared_state["error_message"] = portName + " failed to upload"
-                self.shared_state_change.set()
+                set_error(
+                    self.shared_state,
+                    self.shared_state_change,
+                    "Failed to upload in port: " + portName,
+                )
                 process.kill()
                 return False
 
@@ -226,27 +259,82 @@ class UpdatePlatformIO:
             stderr=subprocess.PIPE,
         )
 
+        # Add a Timer to reset the building if the monitor takes too long to start
+        def resetTimer(self, portName):
+            timer = threading.Timer(TIMEOUT_MONITOR, self.monitorTimeout)
+            if self.timers.get(portName) and self.timers[portName].is_alive():
+                self.timers[portName].cancel()
+
+            self.timers[portName] = timer
+
+        resetTimer(self, portName)
+
         self.processes.append(process)
 
         # Write the output to a file, but I want to read the file on the fly
         self.ErrorOccurred = False
-        self.deletingIn = 40  # lines
+
+        addrFound = False
+
+        getNumberOfLinesError = 50
+
+        initialLines = 50
+
+        initialized = False
 
         for line in process.stdout:
+            decoded_line = line.decode("utf-8", "ignore")
             with open(file, "a", encoding="utf-8") as f:
-                f.write(line.decode("utf-8", "ignore"))
+                f.write(decoded_line)
 
-            if "Guru Meditation Error" in line.decode(
-                "utf-8", "ignore"
-            ) or "assert failed" in line.decode("utf-8", "ignore"):
+            resetTimer(self, portName)
+
+            if (
+                "Guru Meditation Error" in decoded_line
+                or "assert failed" in decoded_line
+            ):
                 self.ErrorOccurred = True
 
-            if self.ErrorOccurred:
-                self.deletingIn -= 1
-                if self.deletingIn == 0:
-                    print(Fore.RED + "Error in port: " + portName + Fore.RESET)
-                    process.kill()
+            if "waiting for download" in decoded_line:
+                set_error(
+                    self.shared_state,
+                    self.shared_state_change,
+                    "Error in port waiting for upload: " + portName,
+                )
+                self.killThreads()
+                return
+
+            if not initialized:
+                initialLines -= 1
+                if "POWERON_RESET" in decoded_line:
+                    initialized = True
+
+                elif initialLines == 0:
+                    set_error(
+                        self.shared_state,
+                        self.shared_state_change,
+                        "Not upload correctly in port: " + portName,
+                    )
+                    self.killThreads()
                     return
+
+            if self.ErrorOccurred:
+                getNumberOfLinesError -= 1
+                if getNumberOfLinesError == 0:
+                    set_error(
+                        self.shared_state,
+                        self.shared_state_change,
+                        "Error in port: " + portName,
+                    )
+                    self.killThreads()
+                    return
+
+            if not addrFound and "Local LoRa address" in decoded_line:
+                addrFound = True
+                # The last hex value of the line is the address
+                hexAddress = decoded_line.split(" ")[-1]
+                self.shared_state["deviceAddressAndCOM"][portName] = int(hexAddress, 16)
+                self.shared_state_change.set()
 
         process.wait()
 
@@ -259,13 +347,41 @@ class UpdatePlatformIO:
                 self.shared_state["deviceMonitorStarted"] = True
                 self.shared_state_change.set()
 
+            # Remove the timer
+            if self.checkIfAllPortsUploaded(portName):
+                print(Fore.GREEN + "All ports uploaded" + Fore.RESET)
+                self.timer.cancel()
+
             # Monitor the port
             self.monitorPort(portName)
 
+    def checkIfAllPortsUploaded(self, port):
+        self.shared_state["uploadedPorts"].append(port)
+
+        if len(self.shared_state["uploadedPorts"]) == getNumberOfPorts():
+            self.shared_state["allPortsUploaded"] = True
+            self.shared_state_change.set()
+            return True
+
+        return False
+
     def killThreads(self):
         print("Killing update and monitor threads")
+        for timer in self.timers.values():
+            if timer and timer.is_alive():
+                timer.cancel()
         for process in self.processes:
             process.kill()
+
+    def buildAndUploadTimeout(self):
+        set_error(
+            self.shared_state, self.shared_state_change, "Timeout when build or Upload"
+        )
+        self.killThreads()
+
+    def monitorTimeout(self):
+        set_error(self.shared_state, self.shared_state_change, "Timeout when monitor")
+        self.killThreads()
 
 
 def getNumberOfPorts():

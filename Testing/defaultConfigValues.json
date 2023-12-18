@@ -7,7 +7,8 @@
         "UPLOAD_PAYLOAD": "0",
         "LOG_MESHER": "0",
         "ONE_SENDER": "0",
-        "WIFI_ADDR_CONNECTED": "0"
+        "WIFI_ADDR_CONNECTED": "0",
+        "SEND_RELIABLE": "1"
     },
     "LoRaMesher": {
         "LM_BAND": "869.900F",

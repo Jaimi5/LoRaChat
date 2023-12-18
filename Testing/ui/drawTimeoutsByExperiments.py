@@ -55,8 +55,8 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
         # Get the number of messages sent
         total_messages = int(config["Simulator"]["PACKET_COUNT"])
 
-        if int(config["Simulator"]["ONE_SENDER"]) == 0:
-            total_messages = total_messages * 10
+        # if int(config["Simulator"]["ONE_SENDER"]) == 0:
+        total_messages = total_messages * 9
 
         # Get the MAXPACKETSIZE minus the header size (overhead)
         max_packet_size = int(config["LoRaMesher"]["MAXPACKETSIZE"]) - 11
@@ -113,8 +113,8 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
     ax.set_xticklabels(df["Id"], rotation=0)
 
     # Add labels and title
-    ax.set_xlabel("Experiment", fontsize=18)
-    ax.set_ylabel("Count", fontsize=18)
+    ax.set_xlabel("Experiment [#]", fontsize=18)
+    ax.set_ylabel("Count [#]", fontsize=18)
     ax.set_title("Experiment Packet Statistics Overview", fontsize=18)
 
     # Calculate the maximum height of the bars

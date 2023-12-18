@@ -79,18 +79,18 @@ draw_button = tk.Button(
 draw_button.grid(row=1, column=0, sticky="ew")
 
 
-def find_file(function):
-    filename = filedialog.askdirectory(
-        initialdir=initialDirectory,
-        title="Select a File",
-    )
-    draw_button["command"] = lambda: function(filename)
+# def find_file(function):
+#     filename = filedialog.askdirectory(
+#         initialdir=initialDirectory,
+#         title="Select a File",
+#     )
+#     draw_button["command"] = lambda: function(filename)
 
 
-find_button = tk.Button(
-    root, text="Find File", command=lambda: find_file(function=find_file_json)
-)
-find_button.grid(row=0, column=1, sticky="ew")
+# find_button = tk.Button(
+#     root, text="Find File", command=lambda: find_file(function=find_file_json)
+# )
+# find_button.grid(row=0, column=1, sticky="ew")
 
 
 def find_file_and_execute_function(function):
@@ -98,37 +98,41 @@ def find_file_and_execute_function(function):
         initialdir=initialDirectory,
         title="Select a File",
     )
+    # Clear the frame
+    for widget in frame.winfo_children():
+        widget.destroy()
+
     function(frame, filename)
 
 
-def find_all_files_and_plot_loss_messages_by_device(frame, directory):
-    print(directory)
-    # Create a new directory to store the plots
-    plot_dir = os.path.join(directory, "plots")
+# def find_all_files_and_plot_loss_messages_by_device(frame, directory):
+#     print(directory)
+#     # Create a new directory to store the plots
+#     plot_dir = os.path.join(directory, "plots")
 
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir)
+#     if not os.path.exists(plot_dir):
+#         os.makedirs(plot_dir)
 
-    # Get all the directories in the directory
-    directories = os.listdir(directory)
+#     # Get all the directories in the directory
+#     directories = os.listdir(directory)
 
-    # Execute the function for each directory
-    for dir in directories:
-        joined_dir = os.path.join(directory, dir)
-        canvas = draw_loss_messages_by_device(frame, joined_dir)
-        if canvas:
-            canvas.print_figure(os.path.join(plot_dir, dir + ".png"))
+#     # Execute the function for each directory
+#     for dir in directories:
+#         joined_dir = os.path.join(directory, dir)
+#         canvas = draw_loss_messages_by_device(frame, joined_dir)
+#         if canvas:
+#             canvas.print_figure(os.path.join(plot_dir, dir + ".png"))
 
 
-button_find_file_and_plot = tk.Button(
-    root,
-    text="Select file to plot multiple loss messages for all devices",
-    command=lambda: find_file_and_execute_function(
-        function=find_all_files_and_plot_loss_messages_by_device
-    ),
-)
+# button_find_file_and_plot = tk.Button(
+#     root,
+#     text="Select file to plot multiple loss messages for all devices",
+#     command=lambda: find_file_and_execute_function(
+#         function=find_all_files_and_plot_loss_messages_by_device
+#     ),
+# )
 
-button_find_file_and_plot.grid(row=1, column=1, sticky="ew")
+# button_find_file_and_plot.grid(row=1, column=1, sticky="ew")
 
 # Create a button to draw the eed by device
 button_eed_by_device = tk.Button(
@@ -196,5 +200,25 @@ button_free_heap_by_device = tk.Button(
 )
 
 button_free_heap_by_device.grid(row=5, column=0, sticky="ew")
+
+# Create a button to draw the loss messages by device
+button_loss_messages_by_device = tk.Button(
+    root,
+    text="Loss Messages By Device",
+    command=lambda: find_file_and_execute_function(
+        function=draw_loss_messages_by_device
+    ),
+)
+
+button_loss_messages_by_device.grid(row=5, column=1, sticky="ew")
+
+# Create a button to draw the messages by device
+button_messages_by_device = tk.Button(
+    root,
+    text="Messages By Device",
+    command=lambda: find_file_and_execute_function(function=draw_messages_by_device),
+)
+
+button_messages_by_device.grid(row=6, column=0, sticky="ew")
 
 root.mainloop()

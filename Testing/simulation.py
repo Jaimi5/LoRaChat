@@ -8,6 +8,7 @@ import changeConfigurationSerial
 import timeout
 from datetime import datetime
 from time import sleep
+from colorama import Fore
 
 
 class Simulation:
@@ -25,6 +26,8 @@ class Simulation:
                 "%d/%m/%Y %H:%M:%S"
             ),  # Time when the build started
             "builded": False,  # True if the build is done
+            "allPortsUploaded": False,  # True if all ports are uploaded
+            "uploadedPorts": [],  # List of the ports that are uploaded
             "deviceMonitorStarted": False,  # True if the device monitor is started
             "deviceMonitorStartedTime": "",  # Time when the device monitor started
             "allDevicesStartedSim": False,  # True if all devices started the simulation
@@ -33,10 +36,20 @@ class Simulation:
             "allDevicesEndedSimTime": "",  # Time when all devices ended the simulation
             "allDevicesEndedLogs": False,  # True if all devices ended the logs
             "allDevicesEndedLogsTime": "",  # Time when all devices ended the logs
+            "deviceAddressAndCOM": {},  # Address and COM of the devices
             "error": False,  # True if there is an error
             "error_time": "",  # Time when the error occurred
             "error_message": "",  # Error message
         }
+
+        def saveStatus():
+            json_str = json.dumps(self.shared_state, indent=4)
+
+            # Save the results in a file using a json format
+            with open(os.path.join(self.fileName, "summary.json"), "w") as f:
+                f.write(json_str)
+
+        saveStatus()
 
         # If there is a configuration file for the simulation then use it
         self.configFile = os.path.join(self.fileName, "simConfiguration.json")
@@ -67,7 +80,12 @@ class Simulation:
                             self.shared_state["error_time"] = datetime.now().strftime(
                                 "%d/%m/%Y %H:%M:%S"
                             )
-                            print("Error: " + self.shared_state["error_message"])
+                            print(
+                                Fore.RED
+                                + "Error: "
+                                + self.shared_state["error_message"]
+                                + Fore.RESET
+                            )
                             return
 
             waitUntilBuild()
@@ -90,7 +108,12 @@ class Simulation:
                             self.shared_state["error_time"] = datetime.now().strftime(
                                 "%d/%m/%Y %H:%M:%S"
                             )
-                            print("Error: " + self.shared_state["error_message"])
+                            print(
+                                Fore.RED
+                                + "Error: "
+                                + self.shared_state["error_message"]
+                                + Fore.RESET
+                            )
                             return
 
             waitUntilADeviceBuilded()
@@ -107,13 +130,6 @@ class Simulation:
         self.timeout = timeout.Timeout(
             int(simConfig.getTimeout()), self.shared_state_change, self.shared_state
         )
-
-        def saveStatus():
-            json_str = json.dumps(self.shared_state, indent=4)
-
-            # Save the results in a file using a json format
-            with open(os.path.join(self.fileName, "summary.json"), "w") as f:
-                f.write(json_str)
 
         ErrorOccurred = False
         WaitErrorOccurred = 15
@@ -135,7 +151,12 @@ class Simulation:
                     saveStatus()
 
                     if self.shared_state["error"]:
-                        print("Error: " + self.shared_state["error_message"])
+                        print(
+                            Fore.RED
+                            + "Error: "
+                            + self.shared_state["error_message"]
+                            + Fore.RESET
+                        )
                         self.shared_state["error_time"] = datetime.now().strftime(
                             "%d/%m/%Y %H:%M:%S"
                         )
@@ -143,10 +164,8 @@ class Simulation:
                         self.timeout.cancel()
 
                     if self.shared_state["allDevicesEndedLogs"]:
-                        print("All devices ended logs")
+                        print(Fore.GREEN + "All devices ended logs" + Fore.RESET)
                         self.timeout.cancel()
-                        # Wait 1 minutes to be sure that all messages are received
-                        sleep(1 * 60)
                         break
 
         except KeyboardInterrupt:

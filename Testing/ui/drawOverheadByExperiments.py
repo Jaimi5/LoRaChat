@@ -155,8 +155,8 @@ def draw_overhead_by_experiments(frame: Frame, directory):
     ax.set_xticklabels(df["Id"], rotation=0)
 
     # Add labels and title
-    ax.set_xlabel("Experiment", fontsize=18)
-    ax.set_ylabel("Percentage (%)", fontsize=18)
+    ax.set_xlabel("Experiment [#]", fontsize=18)
+    ax.set_ylabel("Percentage [%]", fontsize=18)
     ax.set_title("Experiment Control Overhead Analysis", fontsize=18)
 
     # Calculate the maximum height of the bars

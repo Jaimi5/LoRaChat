@@ -1,9 +1,12 @@
 import os
 import json
+import graph
+import numpy as np
 
 
 class SimConfiguration:
     def __init__(self, file, name):
+        self.file = file
         self.fileName = os.path.join(file, "simConfiguration.json")
         self.Name = name
 
@@ -51,7 +54,7 @@ class SimConfiguration:
                     json_data[key] = value
 
         # Add the adjacency graph
-        json_data["LoRaMesherAdjacencyGraph"] = self.getAdjacencyGraph()
+        json_data["LoRaMesherAdjacencyGraph"] = self.getAdjacencyGraph().tolist()
 
         # Save the file
         with open(self.fileName, "w") as file:
@@ -66,43 +69,75 @@ class SimConfiguration:
         if addAdjacencyGraph == "n":
             return []
 
+        # # Ask the user if he wants to add manually the nodes or if he wants to add a matrix
+        # addManually = input("Do you want to add the nodes manually? (y/n): ")
+        # while addManually != "y" and addManually != "n":
+        #     addManually = input("Do you want to add the nodes manually? (y/n): ")
+
+        # if addManually == "y":
+        return self.getAdjacencyGraphManually()
+        # else:
+        #     return self.getAdjacencyGraphMatrix()
+
+    def getAdjacencyGraphManually(self):
         # Ask the user how many nodes he wants to add to the adjacency graph
         numberOfNodes = int(
             input("How many nodes do you want to add to the adjacency graph?: ")
         )
 
-        print("Enter the values for the adjacency graph, integer or hex values with (0x)")
+        print(
+            "Enter the values for the adjacency graph, integer or hex values with (0x)"
+        )
 
         # Ask the user the id of the nodes
         nodes = []
         for i in range(numberOfNodes):
-            nodes.append(input("Node " + str(i) + " id: "))
+            value = input("Node " + str(i) + " id: ")
+            if value.startswith("0x"):
+                nodes.append(int(value, 16))
+            else:
+                nodes.append(int(value))
 
-        print("Enter the distance between the nodes, 1 if they are neighbors, empty if they are not neighbors")
+        print(
+            "Enter the distance between the nodes, 1 if they are neighbors, empty if they are not neighbors"
+        )
 
         # Ask the user the adjacency matrix
-        adjacencyMatrix = []
+        Graph = graph.Graph()
 
         for i in range(numberOfNodes):
-            adjacencyMatrix.append([])
             for j in range(numberOfNodes):
-                adjacencyMatrix[i].append(
-                    input("Node " + str(i) + " to node " + str(j) + " distance: ")
+                if Graph.check_if_edge_exists(nodes[i], nodes[j]):
+                    continue
+                if i == j:
+                    Graph.add_edge(nodes[i], nodes[j], 1)
+                    continue
+                distance = int(
+                    input(
+                        "Node "
+                        + str(nodes[i])
+                        + " to node "
+                        + str(nodes[j])
+                        + " distance: "
+                    )
                 )
+                Graph.add_edge(nodes[i], nodes[j], distance)
 
         # Create the adjacency graph
-        adjacencyGraph = []
-
-        for i in range(numberOfNodes):
-            neighbors = []
-            for j in range(numberOfNodes):
-                if adjacencyMatrix[i][j] != "":
-                    neighbors.append(
-                        {"to": nodes[j], "distance": adjacencyMatrix[i][j]}
-                    )
-            adjacencyGraph.append({"id": nodes[i], "neighbors": neighbors})
+        adjacencyGraph = Graph.get_adjacency_matrix()
 
         return adjacencyGraph
+
+    def getAdjacencyGraphMatrix(self):
+        print("Enter the matrix for the adjacency graph")
+
+        # Ask the user the adjacency matrix string
+        adjacencyGraph = input("Adjacency graph matrix: ")
+
+        # Parse the adjacency matrix string
+        numpy_array = json.loads(adjacencyGraph)
+
+        return np.array(numpy_array)
 
     def printAdjacencyGraph(self):
         # Read the file

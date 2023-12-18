@@ -81,10 +81,10 @@ def draw_rtt_by_experiments(frame: Frame, directory):
     ax.set_title("RTT by Experiment", fontsize=18)
 
     # Set the x-axis label
-    ax.set_xlabel("Experiment", fontsize=18)
+    ax.set_xlabel("Experiment [#]", fontsize=18)
 
     # Set the y-axis label
-    ax.set_ylabel("RTT (ms)", fontsize=18)
+    ax.set_ylabel("RTT [ms]", fontsize=18)
 
     ax.axhline(y=472, color="green", linestyle="--", label="472 ms (Doubled Delay Min)")
     ax.axhline(

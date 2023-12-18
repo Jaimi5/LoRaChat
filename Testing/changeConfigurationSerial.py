@@ -1,6 +1,7 @@
 import os
 import json
 import simConfiguration
+import numpy as np
 
 
 class ChangeConfigurationSerial:
@@ -93,7 +94,6 @@ class ChangeConfigurationSerial:
             with open(srcFile, "r") as file:
                 srcData = file.read()
 
-
             found_keys = []
 
             # Find the line where the LoRaMesher is defined and change it
@@ -112,7 +112,60 @@ class ChangeConfigurationSerial:
             with open(srcFile, "w") as file:
                 file.write(srcData)
 
+    def get_cpp_function(self, matrix):
+        adjacencyGraphInCpp = "\tuint16_t localAddress = getLocalAddress();\n"
+
+        # Extract the headers (node identifiers)
+        headers = matrix[0][1:]  # Skip the first element
+
+        # Add the headers size to the C++ code
+        adjacencyGraphInCpp += (
+            "\tuint16_t adjacencyGraphSize = " + str(len(headers)) + ";\n"
+        )
+
+        # Add the headers in the C++ code
+        adjacencyGraphInCpp += "\tuint16_t headers[adjacencyGraphSize] = {"
+        adjacencyGraphInCpp += ", ".join(str(header) for header in headers)
+        adjacencyGraphInCpp += "};\n"
+
+        # Find the index of the local node
+        adjacencyGraphInCpp += "\tuint16_t localAddressIndex = 0;\n"
+        adjacencyGraphInCpp += "\tfor (int i = 0; i < adjacencyGraphSize; i++) {\n"
+        adjacencyGraphInCpp += "\t\tif (headers[i] == localAddress) {\n"
+        adjacencyGraphInCpp += "\t\t\tlocalAddressIndex = i;\n"
+        adjacencyGraphInCpp += "\t\t\tbreak;\n"
+        adjacencyGraphInCpp += "\t\t}\n"
+        adjacencyGraphInCpp += "\t}\n"
+
+        # Find the index of the source node
+        adjacencyGraphInCpp += "\tuint16_t sourceIndex = 0;\n"
+        adjacencyGraphInCpp += "\tfor (int i = 0; i < adjacencyGraphSize; i++) {\n"
+        adjacencyGraphInCpp += "\t\tif (headers[i] == source) {\n"
+        adjacencyGraphInCpp += "\t\t\tsourceIndex = i;\n"
+        adjacencyGraphInCpp += "\t\t\tbreak;\n"
+        adjacencyGraphInCpp += "\t\t}\n"
+        adjacencyGraphInCpp += "\t}\n"
+
+        # Remove the first row and column
+        matrix = np.delete(matrix, 0, 0)
+        matrix = np.delete(matrix, 0, 1)
+
+        # Create the C++ matrix excluding the headers
+        cpp_matrix = ",\n    ".join(
+            "{ " + ", ".join(str(cell) for cell in row) + " }" for row in matrix
+        )
+
+        adjacencyGraphInCpp += f"""
+    uint16_t const matrix[adjacencyGraphSize][adjacencyGraphSize] = {{
+    {cpp_matrix}
+    }};
+
+    return matrix[localAddressIndex][sourceIndex] != 0;
+    """
+        return adjacencyGraphInCpp
+
     def changeAdjacencyGraph(self):
+        print("Changing adjacency graph")
         # Read the file
         with open(self.fileName, "r") as file:
             data = file.read()
@@ -136,7 +189,7 @@ class ChangeConfigurationSerial:
             # Check if the file exists
             if not os.path.isfile(srcFile):
                 print("File not found: " + srcFile)
-                return
+                continue
 
             with open(srcFile, "r") as file:
                 srcData = file.read()
@@ -192,36 +245,12 @@ class ChangeConfigurationSerial:
 
                 if json_data["LoRaMesherAdjacencyGraph"] == []:
                     adjacencyGraphInCpp = "\treturn true;\n"
+                    print("No adjacency graph found")
 
                 else:
-                    adjacencyGraphInCpp = (
-                        "\tuint16_t localAddress = getLocalAddress();\n"
-                    )
+                    string_matrix = json_data["LoRaMesherAdjacencyGraph"]
 
-                    # Iterate through the adjacency graph and add it to the cpp file
-                    for i in range(0, len(json_data["LoRaMesherAdjacencyGraph"])):
-                        adjacencyGraphInCpp += (
-                            "\tif (localAddress == "
-                            + str(json_data["LoRaMesherAdjacencyGraph"][i]["id"])
-                            + ") {\n"
-                        )
-                        for neighbor in json_data["LoRaMesherAdjacencyGraph"][i][
-                            "neighbors"
-                        ]:
-                            adjacencyGraphInCpp += (
-                                "\t\tif (source == " + str(neighbor["to"]) + ") {\n"
-                            )
-                            adjacencyGraphInCpp += (
-                                "\t\t\treturn "
-                                + str(neighbor["distance"] == "1").lower()
-                                + ";\n"
-                            )
-                            adjacencyGraphInCpp += "\t\t}\n"
-
-                        adjacencyGraphInCpp += "\t\treturn false;\n"
-                        adjacencyGraphInCpp += "\t}\n"
-
-                    adjacencyGraphInCpp += "\treturn false;\n"
+                    adjacencyGraphInCpp = self.get_cpp_function(string_matrix)
 
                 # Add new contents
                 srcData.insert(
