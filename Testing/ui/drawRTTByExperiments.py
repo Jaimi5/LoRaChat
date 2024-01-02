@@ -32,6 +32,9 @@ def draw_rtt_by_experiments(frame: Frame, directory):
     # Experiments
     experiments = os.listdir(directory)
 
+    # Sort the directories by name
+    experiments.sort()
+
     # Results by experiment
     results = []
 

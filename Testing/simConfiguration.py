@@ -67,7 +67,7 @@ class SimConfiguration:
             addAdjacencyGraph = input("Do you want to add an adjacency graph? (y/n): ")
 
         if addAdjacencyGraph == "n":
-            return []
+            return np.array([])
 
         # # Ask the user if he wants to add manually the nodes or if he wants to add a matrix
         # addManually = input("Do you want to add the nodes manually? (y/n): ")
@@ -112,15 +112,21 @@ class SimConfiguration:
                 if i == j:
                     Graph.add_edge(nodes[i], nodes[j], 1)
                     continue
-                distance = int(
-                    input(
-                        "Node "
-                        + str(nodes[i])
-                        + " to node "
-                        + str(nodes[j])
-                        + " distance: "
-                    )
+                distStr = input(
+                    "Node "
+                    + str(nodes[i])
+                    + " to node "
+                    + str(nodes[j])
+                    + " distance: "
                 )
+                try:
+                    if distStr.startswith("0x"):
+                        distance = int(distStr, 16)
+                    else:
+                        distance = int(distStr)
+                except ValueError:
+                    distance = 0
+
                 Graph.add_edge(nodes[i], nodes[j], distance)
 
         # Create the adjacency graph

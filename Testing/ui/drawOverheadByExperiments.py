@@ -26,6 +26,9 @@ def draw_overhead_by_experiments(frame: Frame, directory):
     # Find all the directories in the directory
     directories = os.listdir(directory)
 
+    # Sort the directories by name
+    directories.sort()
+
     experiment_directories = []
 
     i = 1
@@ -56,7 +59,7 @@ def draw_overhead_by_experiments(frame: Frame, directory):
         total_messages = int(config["Simulator"]["PACKET_COUNT"])
 
         if int(config["Simulator"]["ONE_SENDER"]) == 0:
-            total_messages = total_messages * 10
+            total_messages = total_messages * 9
 
         # Get the MAXPACKETSIZE minus the header size (overhead)
         max_packet_size = int(config["LoRaMesher"]["MAXPACKETSIZE"]) - 11
@@ -64,65 +67,98 @@ def draw_overhead_by_experiments(frame: Frame, directory):
         # Get the Payload size
         payload_size = int(config["Simulator"]["PACKET_SIZE"])
 
-        # Get max packet size with data
-        max_packet_size_data = max_packet_size
-        if (payload_size + 11) < max_packet_size:
-            max_packet_size_data = payload_size + 11
-
-        # Get the number of data packets, by dividing the total messages by the payload size round up
-        total_data_packets = total_messages * math.ceil(payload_size / max_packet_size)
-
-        total_packets = total_data_packets * 2 + total_messages * 2
+        percentage_overhead = 0
+        percentage_packets_lost = 0
+        theoretical_percentage_overhead = 0
 
         print("Experiment: ", name)
-        print("Total Packets: ", total_packets)
 
-        data = get_monitor_status(path)
+        # if the messages are sent reliable
+        if int(config["Simulator"]["SEND_RELIABLE"]) == 1:
+            # Get the number of data packets, by dividing the total messages by the payload size round up
+            total_data_packets = total_messages * math.ceil(
+                payload_size / max_packet_size
+            )
 
-        control_overhead = total_packets * 11
+            total_packets = total_data_packets * 2 + total_messages * 2
+            print("Total Packets: ", total_packets)
 
-        ctrl_overhead_sync = data["totalSyncResend"] * 11
+            data = get_monitor_status(path)
 
-        ctrl_overhead_data = data["totalMessagesResend"] * 11
+            control_overhead = total_packets * 11
 
-        total_control_overhead = (
-            control_overhead + ctrl_overhead_sync + ctrl_overhead_data
-        )
+            ctrl_overhead_sync = data["totalSyncResend"] * 11
 
-        total_data = total_control_overhead + (payload_size * total_messages)
+            ctrl_overhead_data = data["totalMessagesResend"] * 11
 
-        percentage_overhead = round((total_control_overhead / total_data) * 100, 2)
+            total_control_overhead = (
+                control_overhead + ctrl_overhead_sync + ctrl_overhead_data
+            )
 
-        total_packets_lost = data["totalSyncResend"] + data["totalMessagesResend"]
+            total_data = total_control_overhead + (payload_size * total_messages)
 
-        percentage_packets_lost = round((total_packets_lost / total_packets) * 100, 2)
+            percentage_overhead = round((total_control_overhead / total_data) * 100, 2)
 
-        theoretical_percentage_overhead = round(
-            (control_overhead / (control_overhead + (payload_size * total_messages)))
-            * 100,
-            2,
-        )
+            total_packets_lost = data["totalSyncResend"] + data["totalMessagesResend"]
 
-        print("Total Packets Lost: ", total_packets_lost)
-        print("Percentage Packets Lost: ", percentage_packets_lost)
-        print("Control Overhead Sync: ", ctrl_overhead_sync)
-        print("Control Overhead Data: ", ctrl_overhead_data)
-        print("Total Control Overhead: ", total_control_overhead)
-        print("Total Data: ", total_data)
-        print("Percentage Overhead: ", percentage_overhead)
-        print("Theoretical Percentage Overhead: ", theoretical_percentage_overhead)
-        print()
+            percentage_packets_lost = round(
+                (total_packets_lost / total_packets) * 100, 2
+            )
+
+            theoretical_percentage_overhead = round(
+                (
+                    control_overhead
+                    / (control_overhead + (payload_size * total_messages))
+                )
+                * 100,
+                2,
+            )
+
+            print("Total Packets Lost: ", total_packets_lost)
+            print("Percentage Packets Lost: ", percentage_packets_lost)
+            print("Control Overhead Sync: ", ctrl_overhead_sync)
+            print("Control Overhead Data: ", ctrl_overhead_data)
+            print("Total Control Overhead: ", total_control_overhead)
+            print("Total Data: ", total_data)
+            print("Percentage Overhead: ", percentage_overhead)
+            print("Theoretical Percentage Overhead: ", theoretical_percentage_overhead)
+            print()
+
+        else:
+            overhead_in_bytes = total_messages * 8
+            total_data = overhead_in_bytes + (payload_size * total_messages)
+
+            percentage_overhead = round((overhead_in_bytes / total_data) * 100, 2)
+            theoretical_percentage_overhead = round(
+                (overhead_in_bytes / (payload_size * total_messages)) * 100, 2
+            )
+
+            # Open the file messages.json and get the number of messages received
+            messages_path = os.path.join(directory, dir, "messages.json")
+
+            if not os.path.exists(messages_path):
+                print("No messages.json file found in directory")
+                continue
+
+            with open(messages_path, "r") as f:
+                messages = json.load(f)
+
+            total_packets_lost = total_messages - len(messages)
+
+            percentage_packets_lost = round(
+                (total_packets_lost / total_messages) * 100, 2
+            )
 
         # Add to the list of experiment directories
         experiment_directories.append(
             {
-                "Name": name,
+                # "Name": name,
                 "Id": i,
-                "Control Overhead Sync": ctrl_overhead_sync,
-                "Control Overhead Data": ctrl_overhead_data,
-                "Total Control Overhead Data No overhead": total_control_overhead,
-                "Total Control Overhead Data overhead": total_control_overhead,
-                "Total Data": total_data,
+                # "Control Overhead Sync": ctrl_overhead_sync,
+                # "Control Overhead Data": ctrl_overhead_data,
+                # "Total Control Overhead Data No overhead": total_control_overhead,
+                # "Total Control Overhead Data overhead": total_control_overhead,
+                # "Total Data": total_data,
                 "Experimental Overhead": percentage_overhead,
                 "Packets Lost": percentage_packets_lost,
                 "Theoretical Overhead": theoretical_percentage_overhead,

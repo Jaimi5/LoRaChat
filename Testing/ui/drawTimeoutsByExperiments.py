@@ -26,6 +26,9 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
     # Find all the directories in the directory
     directories = os.listdir(directory)
 
+    # Sort the directories by name
+    directories.sort()
+
     experiment_directories = []
 
     i = 1
@@ -55,8 +58,8 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
         # Get the number of messages sent
         total_messages = int(config["Simulator"]["PACKET_COUNT"])
 
-        # if int(config["Simulator"]["ONE_SENDER"]) == 0:
-        total_messages = total_messages * 9
+        if int(config["Simulator"]["ONE_SENDER"]) == 0:
+            total_messages = total_messages * 9
 
         # Get the MAXPACKETSIZE minus the header size (overhead)
         max_packet_size = int(config["LoRaMesher"]["MAXPACKETSIZE"]) - 11
@@ -78,12 +81,13 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
                 "Id": i,
                 "SYNC_P to Send": total_messages,
                 "SYNC_P Resend": data["totalSyncResend"],
-                "SYNC_P lost (%)": data["totalSyncResend"] / total_messages * 100,
+                "SYNC_P lost [%]": data["totalSyncResend"] / total_messages * 100,
                 "XL_DATA_P to Send": total_data_packets,
                 "XL_DATA_P Resend": data["totalMessagesResend"],
-                "XL_DATA_P lost (%)": data["totalMessagesResend"]
+                "XL_DATA_P lost [%]": data["totalMessagesResend"]
                 / total_data_packets
                 * 100,
+                "Data [KB]": int(total_messages * payload_size / 1000),
             }
         )
 
@@ -106,6 +110,7 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
             "SYNC_P Resend",
             "XL_DATA_P to Send",
             "XL_DATA_P Resend",
+            # "Data [KB]",
         ]
     ].plot(kind="bar", ax=ax, width=0.7)
 
@@ -124,6 +129,7 @@ def draw_timeouts_by_experiments(frame: Frame, directory):
             "SYNC_P Resend",
             "XL_DATA_P to Send",
             "XL_DATA_P Resend",
+            # "Data [KB]",
         ]
     ].values.max()
 
