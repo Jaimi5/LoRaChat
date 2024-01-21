@@ -424,10 +424,10 @@ void loop() {
         return;
     }
 
-    if (millis() > 21600000) {
-        ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
-        ESP.restart();
-    }
-    }
+    // if (millis() > 21600000) {
+    //     ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
+    //     ESP.restart();
+    // }
+}
 
 #endif
