@@ -16,6 +16,8 @@
 
 #include "LoraMesher.h"
 
+#include "WiFi.h"
+
 // #include "sensor/temperature-onewire/temperature.h"
 
 // #include "sensor/dht22/dht22.h"
