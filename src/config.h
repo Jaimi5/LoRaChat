@@ -62,9 +62,9 @@
 
 
 #if defined(T_BEAM_LORA_32)
-#define DISPLAY_SDA OLED_SDA
-#define DISPLAY_SCL OLED_SCL
-#define DISPLAY_RST OLED_RST
+#define DISPLAY_SDA 4
+#define DISPLAY_SCL 15
+#define DISPLAY_RST 16
 #elif defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_V10)
 #define DISPLAY_SDA I2C_SDA
 #define DISPLAY_SCL I2C_SCL
@@ -83,8 +83,12 @@
 #define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID "****"
-#define WIFI_PASSWORD "****"
+#define WIFI_SSID "Vera_98BFAB"
+#define WIFI_PASSWORD "5dfafbbcef"
+
+// #if WIFI_SSID == "****" || WIFI_PASSWORD == "****"
+// #warning "WiFi credentials not defined"
+// #endif
 
 // MQTT configuration
 #define MQTT_ENABLED
@@ -125,7 +129,7 @@
 #define LED_ON      LOW
 #define LED_OFF     HIGH
 #elif defined(T_BEAM_LORA_32)
-#define LED LED_BUILTIN
+#define LED 2
 #define LED_ON      HIGH
 #define LED_OFF     LOW
 #elif defined(T_BEAM_V10)
@@ -159,6 +163,10 @@
 #define LORA_SCK 14
 #elif defined(NAYAD_V1R2)
 #define LORA_SCK 18
+#elif defined(T_BEAM_LORA_32)
+#define LORA_SCK 5
+#elif defined(T_BEAM_V10)
+#define LORA_SCK 5
 #else 
 #define LORA_SCK LORA_SCK
 #endif
@@ -169,6 +177,10 @@
 #if defined(NAYAD_V1)
 #define LORA_MISO 12
 #elif defined(NAYAD_V1R2)
+#define LORA_MISO 19
+#elif defined(T_BEAM_LORA_32)
+#define LORA_MISO 19
+#elif defined(T_BEAM_V10)
 #define LORA_MISO 19
 #else
 #define LORA_MISO LORA_MISO
@@ -181,6 +193,10 @@
 #define LORA_MOSI 13
 #elif defined(NAYAD_V1R2)
 #define LORA_MOSI 23
+#elif defined(T_BEAM_LORA_32)
+#define LORA_MOSI 27
+#elif defined(T_BEAM_V10)
+#define LORA_MOSI 27
 #else
 #define LORA_MOSI LORA_MOSI
 #endif
@@ -190,6 +206,10 @@
 #ifndef LORA_CS
 #if defined(NAYAD_V1) || defined(NAYAD_V1R2)
 #define LORA_CS 15
+#elif defined(T_BEAM_LORA_32)
+#define LORA_CS 18
+#elif defined(T_BEAM_V10)
+#define LORA_CS 18
 #else
 #define LORA_CS 255U
 #endif
@@ -199,6 +219,10 @@
 #ifndef LORA_RST
 #if defined(NAYAD_V1) || defined(NAYAD_V1R2)
 #define LORA_RST 27
+#elif defined(T_BEAM_LORA_32)
+#define LORA_RST 14
+#elif defined(T_BEAM_V10)
+#define LORA_RST 23
 #else
 #warning "LORA_RST not defined"
 #define LORA_RST 255U
@@ -211,6 +235,10 @@
 #define LORA_IRQ 26
 #elif defined(NAYAD_V1R2)
 #define LORA_IRQ 26
+#elif defined(T_BEAM_LORA_32)
+#define LORA_IRQ 26
+#elif defined(T_BEAM_V10)
+#define LORA_IRQ 26
 #else
 #define LORA_IRQ 255U
 #endif
@@ -221,6 +249,8 @@
 #if defined(NAYAD_V1) 
 #define LORA_IO1 33
 #elif defined(NAYAD_V1R2)
+#define LORA_IO1 33
+#elif defined(T_BEAM_V10)
 #define LORA_IO1 33
 #else
 #ifndef LORA_MODULE_SX1276
@@ -233,11 +263,11 @@
 
 // Simulation Configuration
 // The address of the device that will connect at the beginning of the simulation
-#define WIFI_ADDR_CONNECTED 0x5880
+#define WIFI_ADDR_CONNECTED 22656
 
-#define PACKET_COUNT 3
-#define PACKET_DELAY 30000
-#define PACKET_SIZE 100
+#define PACKET_COUNT 5
+#define PACKET_DELAY 120000
+#define PACKET_SIZE 500
 #define UPLOAD_PAYLOAD 0
 #define LOG_MESHER 0
 

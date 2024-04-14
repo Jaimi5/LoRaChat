@@ -61,12 +61,12 @@ void WiFiServerService::wifi_task(void*) {
         if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
             LoRaMeshService.setGateway();
             wiFiServerService.connected = true;
-            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid, wiFiServerService.password);
+            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid.c_str(), wiFiServerService.password.c_str());
         }
         else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
             wiFiServerService.connected = false;
             LoRaMeshService.removeGateway();
-            ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", wiFiServerService.ssid, wiFiServerService.password);
+            ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", wiFiServerService.ssid.c_str(), wiFiServerService.password.c_str());
         }
 
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
@@ -222,7 +222,7 @@ bool WiFiServerService::connectWiFi() {
         return false;
 #endif
 
-    ESP_LOGI(TAG, "Connecting to %s...", ssid);
+    ESP_LOGI(TAG, "Connecting to %s...", ssid.c_str());
 
     wifi_config_t wifi_config = {0};  // initialize all fields to zero
 

@@ -314,7 +314,7 @@ void setup() {
     Serial.begin(115200);
 
     // Set log level
-    // esp_log_level_set("*", ESP_LOG_VERBOSE);
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     ESP_LOGV(TAG, "Build environment name: %s", BUILD_ENV_NAME);
 
@@ -428,6 +428,6 @@ void loop() {
     //     ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
     //     ESP.restart();
     // }
-}
+    }
 
 #endif

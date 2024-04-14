@@ -141,27 +141,3 @@ void Helper::printHex(uint8_t* data, int length, String title) {
     }
     Serial.println("]");
 }
-
-String Helper::intToHexString(int n) {
-    String hex_value = "";
-    char buf[50];
-    sprintf(buf, "%llu", n);
-    while (n > 0) {
-        int temp = 0;
-        int  divisor = 16;
-        char aux;
-        temp = n % divisor;
-        if (temp < 10) {
-            aux = temp + '0';
-            hex_value = aux + hex_value;
-        }
-        else {
-            aux = (temp - 10) + 'A';
-            hex_value = aux + hex_value;
-        }
-
-        n = n / divisor;
-    }
-    if (hex_value.length() % 2 > 0) hex_value = "0" + hex_value;
-    return hex_value;
-}

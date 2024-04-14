@@ -40,7 +40,7 @@ public:
             month = 1;
         }
 
-        char isoTime[20]; // Enough space for the ISO time string
+        char isoTime[27]; // Increased size to accommodate the maximum possible length of the formatted string
         snprintf(isoTime, sizeof(isoTime), "%04d-%02d-%02dT%02d:%02d:%02dZ",
             year, month, day, hour, minute, second);
 
