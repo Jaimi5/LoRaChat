@@ -21,12 +21,12 @@
 #define DISPLAY_ENABLED
 #define LED_ENABLED
 #define LORA_ENABLED
-// #define WIFI_ENABLED
-// #define MQTT_ENABLED
+#define WIFI_ENABLED
+#define MQTT_ENABLED
 #define ROUTING_TABLE_RECORDING_ENABLED
+#define BLUETOOTH_ENABLED
 // #define NO_SENSOR_DATA // If the sensors are not connected
 // #define SIMULATION_ENABLED
-#define BLUETOOTH_ENABLED
 // #define GPS_ENABLED
 #elif defined(T_BEAM_LORA_32)
 #define DISPLAY_ENABLED
