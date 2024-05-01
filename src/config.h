@@ -75,6 +75,7 @@
 
 
 
+// Display Configuration
 #if defined(T_BEAM_LORA_32)
 #define DISPLAY_SDA 4
 #define DISPLAY_SCL 15
@@ -96,12 +97,8 @@
 #define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID ""
-#define WIFI_PASSWORD ""
-
-// #if WIFI_SSID == "****" || WIFI_PASSWORD == "****"
-// #warning "WiFi credentials not defined"
-// #endif
+#define WIFI_SSID "***"
+#define WIFI_PASSWORD "***"
 
 // MQTT configuration
 #define MQTT_SERVER "192.168.1.26" 

@@ -17,16 +17,15 @@ void WiFiServerService::initWiFi() {
     initialized = true;
 
     wifi_init_sta();
+    createWiFiTask();
 
     if (restartWiFiData())
         connectWiFi();
 
-    createWiFiTask();
-
-    // Set the MQTT_CLIENT library logging level
+    // Set the log level for the wifi module
     esp_log_level_set("wifi", ESP_LOG_WARN);
-
-    vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 seconds
+    esp_log_level_set("esp_netif_lwip", ESP_LOG_WARN);
+    esp_log_level_set("nvs", ESP_LOG_WARN);
 
     ESP_LOGI(TAG, "WiFi initialized");
 }
@@ -126,6 +125,8 @@ void WiFiServerService::wifi_init_sta() {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
+
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
@@ -141,11 +142,7 @@ void WiFiServerService::wifi_init_sta() {
 }
 
 void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* message) {
-    // if (connectAndSend(message))
-    //     ESP_LOGI(TAG,"Message sent to WiFi"));
-    // else
-    // LOG NOT IMPLEMENTED
-    ESP_LOGW(TAG, "Message not sent to WiFi");
+    ESP_LOGE(TAG, "Receive messages on WiFi is not implemented");
 }
 
 void WiFiServerService::sendMessage(DataMessage* message) {
@@ -153,6 +150,7 @@ void WiFiServerService::sendMessage(DataMessage* message) {
 }
 
 String WiFiServerService::addSSID(String ssid) {
+    // Copy the string to the ssid
     this->ssid = ssid;
 
     return F("SSID added");
@@ -164,18 +162,10 @@ String WiFiServerService::addPassword(String password) {
     return F("Password added");
 }
 
-String WiFiServerService::saveWiFiData() {
-    ConfigService& configService = ConfigService::getInstance();
-    configService.setConfig("WiFiSSid", this->ssid);
-    configService.setConfig("WiFiPsw", this->password);
-
-    return F("WiFi data saved");
-}
-
 String WiFiServerService::resetWiFiData() {
-    ConfigService& configService = ConfigService::getInstance();
-    configService.setConfig("WiFiSSid", DEFAULT_WIFI_SSID);
-    configService.setConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
+    wifi_config_t wifi_cfg = {};  // initialize all fields to zero
+
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
 
     this->ssid = DEFAULT_WIFI_SSID;
     this->password = DEFAULT_WIFI_PASSWORD;
@@ -282,28 +272,48 @@ String WiFiServerService::getIP() {
 }
 
 String WiFiServerService::getSSID() {
-    ConfigService& configService = ConfigService::getInstance();
-    return configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
+    wifi_config_t wifi_cfg;
+
+    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get wifi config");
+        return F("Failed to get SSID");
+    }
+
+    return String((char*) wifi_cfg.sta.ssid);
 }
 
 String WiFiServerService::getPassword() {
-    ConfigService& configService = ConfigService::getInstance();
-    return configService.getConfig("WiFiPsw", DEFAULT_WIFI_SSID);
+    wifi_config_t wifi_cfg;
+
+    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get wifi config");
+        return F("Failed to get password");
+    }
+
+    return String((char*) wifi_cfg.sta.password);
 }
 
 bool WiFiServerService::restartWiFiData() {
-    ConfigService& configService = ConfigService::getInstance();
+    wifi_config_t wifi_cfg;
 
-    this->ssid = WIFI_SSID;
-    this->password = WIFI_PASSWORD;
+    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get wifi config");
+        return false;
+    }
 
-    // this->ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
-    // this->password = configService.getConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
+    if (wifi_cfg.sta.ssid[0] == 0 && wifi_cfg.sta.password[0] == 0) {
+        ESP_LOGI(TAG, "No wifi credentials stored");
+        return false;
+    }
 
-    // //TODO: Remove this when we have a way to set the default wifi data
-    // if (this->ssid == DEFAULT_WIFI_SSID && this->password == DEFAULT_WIFI_PASSWORD) {
+    ESP_LOGI(TAG, "WIFI SSID: %s", (char*) wifi_cfg.sta.ssid);
+    ESP_LOGI(TAG, "WIFI Password: %s", (char*) wifi_cfg.sta.password);
 
-    // }
+    this->ssid = String((char*) wifi_cfg.sta.ssid);
+    this->password = String((char*) wifi_cfg.sta.password);
 
     return true;
 }

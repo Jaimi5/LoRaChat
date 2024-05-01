@@ -10,7 +10,7 @@ void BluetoothService::createBluetoothTask() {
     int res = xTaskCreate(
         BluetoothLoop,
         "Bluetooth Task",
-        2048,
+        4096,
         (void*) 1,
         2,
         &bluetooth_TaskHandle);
