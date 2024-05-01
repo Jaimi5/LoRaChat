@@ -225,3 +225,16 @@ bool LoRaMeshService::hasGateway() {
 
     return gatewayNode != nullptr;
 }
+
+void LoRaMeshService::updateRoutingTable() {
+    if (radio.routingTableSize() == 0) {
+        ESP_LOGW(LMS_TAG, "No routes in the routing table");
+    }
+
+    if (routingTableList != NULL) {
+        routingTableList->Clear();
+        delete(routingTableList);
+    }
+
+    routingTableList = radio.routingTableListCopy();
+}

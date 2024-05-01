@@ -22,8 +22,22 @@
 //Metadata
 #include "sensor/metadata/metadata.h"
 
+// Routing Table
+#include "routing-table/rtService.h"
+
 
 static const char* TAG = "Main";
+
+
+// Routing Table
+#pragma region Routing Table
+RtService& rtService = RtService::getInstance();
+
+void initRT() {
+    rtService.init();
+}
+
+#pragma endregion
 
 // Battery
 #pragma region Battery
@@ -178,6 +192,9 @@ void initManager() {
 
     manager.addMessageService(&simulator);
     ESP_LOGV(TAG, "Simulator service added to manager");
+
+    manager.addMessageService(&rtService);
+    ESP_LOGV(TAG, "Routing Table service added to manager");
 
     Serial.println(manager.getAvailableCommands());
 }
@@ -399,6 +416,12 @@ void setup() {
     // Blink 2 times to show that the device is ready
     led.ledBlink();
 #endif
+
+#ifdef ROUTING_TABLE_RECORDING_ENABLED
+    initRT();
+    ESP_LOGV(TAG, "Heap after initRT: %d", ESP.getFreeHeap());
+#endif
+
 }
 
 void loop() {
@@ -418,7 +441,7 @@ void loop() {
     }
 #endif
 
-    if (ESP.getFreeHeap() < 40000) {
+    if (ESP.getFreeHeap() < 20000) {
         ESP_LOGE(TAG, "Not enough memory to process mqtt messages");
         ESP.restart();
         return;
@@ -428,6 +451,6 @@ void loop() {
     //     ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
     //     ESP.restart();
     // }
-    }
+}
 
 #endif

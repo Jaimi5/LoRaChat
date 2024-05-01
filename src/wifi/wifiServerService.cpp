@@ -23,6 +23,9 @@ void WiFiServerService::initWiFi() {
 
     createWiFiTask();
 
+    // Set the MQTT_CLIENT library logging level
+    esp_log_level_set("wifi", ESP_LOG_WARN);
+
     vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 seconds
 
     ESP_LOGI(TAG, "WiFi initialized");
@@ -205,18 +208,20 @@ bool WiFiServerService::isConnected() {
 }
 
 bool WiFiServerService::connectWiFi() {
-    if (!initialized)
-        return false;
-
-    if (isConnected())
-        return true;
-
-    if (!checkIfWiFiCredentialsAreSet()) {
-        ESP_LOGI(TAG, "WiFi credentials are not set");
+    if (!initialized) {
         return false;
     }
 
-#if (!defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
+    if (isConnected()) {
+        return true;
+    }
+
+    if (!checkIfWiFiCredentialsAreSet()) {
+        ESP_LOGW(TAG, "WiFi credentials are not set");
+        return false;
+    }
+
+#if (defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
     // If WIFI_ADDR_CONNECTED is not 0, we are in simulation mode and we want to initialize only if the local address is WIFI_ADDR_CONNECTED
     if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED)
         return false;
@@ -224,7 +229,7 @@ bool WiFiServerService::connectWiFi() {
 
     ESP_LOGI(TAG, "Connecting to %s...", ssid.c_str());
 
-    wifi_config_t wifi_config = {0};  // initialize all fields to zero
+    wifi_config_t wifi_config = {};  // initialize all fields to zero
 
     // Assume ssidHelp and passwordHelp are null-terminated strings
     // and their lengths are less than the size of .ssid and .password arrays

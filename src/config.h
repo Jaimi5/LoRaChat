@@ -13,14 +13,28 @@
 #define LED_ENABLED
 #define SENSORS_ENABLED
 #define METADATA_ENABLED
+#define WIFI_ENABLED
+#define MQTT_ENABLED
 // #define SIMULATION_ENABLED
 // #define BLUETOOTH_ENABLED
-#else
+#elif defined(T_BEAM_V10)
 #define DISPLAY_ENABLED
 #define LED_ENABLED
 #define LORA_ENABLED
+// #define WIFI_ENABLED
+// #define MQTT_ENABLED
+#define ROUTING_TABLE_RECORDING_ENABLED
 // #define NO_SENSOR_DATA // If the sensors are not connected
+// #define SIMULATION_ENABLED
+#define BLUETOOTH_ENABLED
+// #define GPS_ENABLED
+#elif defined(T_BEAM_LORA_32)
+#define DISPLAY_ENABLED
+#define LED_ENABLED
+#define LORA_ENABLED
 #define SIMULATION_ENABLED
+#define WIFI_ENABLED
+#define MQTT_ENABLED
 // #define BLUETOOTH_ENABLED
 #endif
 
@@ -79,19 +93,17 @@
 
 
 //WiFi Configuration
-#define WIFI_ENABLED
 #define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID "Vera_98BFAB"
-#define WIFI_PASSWORD "5dfafbbcef"
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
 
 // #if WIFI_SSID == "****" || WIFI_PASSWORD == "****"
 // #warning "WiFi credentials not defined"
 // #endif
 
 // MQTT configuration
-#define MQTT_ENABLED
 #define MQTT_SERVER "192.168.1.26" 
 #define MQTT_PORT 1883
 #define MQTT_USERNAME "admin"
@@ -102,13 +114,6 @@
 #define MQTT_MAX_QUEUE_SIZE 10
 #define MQTT_STILL_CONNECTED_INTERVAL 300000 // In milliseconds, 0 to disable
 
-
-#if defined(BLUETOOTH_ENABLED)
-#undef WIFI_ENABLED
-#undef MQTT_ENABLED
-#endif
-
-
 // Sensors Configuration
 #define STORED_SENSOR_DATA 10
     //- Temperature Configuration
@@ -116,6 +121,9 @@
 #define SENSOR_SENDING_EVERY 60000 //ms
     //- Metadata Configuration
 #define METADATA_UPDATE_DELAY 300000 //ms
+
+// Routing table configuration
+#define RT_SENDING_EVERY 60000 //ms
 
 
 // Battery configuration
@@ -263,12 +271,12 @@
 
 // Simulation Configuration
 // The address of the device that will connect at the beginning of the simulation
-#define WIFI_ADDR_CONNECTED 22656
+#define WIFI_ADDR_CONNECTED 38560
 
-#define PACKET_COUNT 5
+#define PACKET_COUNT 10
 #define PACKET_DELAY 120000
 #define PACKET_SIZE 500
-#define UPLOAD_PAYLOAD 0
+#define UPLOAD_PAYLOAD 1
 #define LOG_MESHER 0
 
 // If defined, there only be one sender

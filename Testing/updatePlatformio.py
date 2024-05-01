@@ -29,6 +29,8 @@ class PortsPlatformIo:
     def printPorts():
         ports = util.get_serial_ports()
 
+        print("Ports: ", ports)
+
         for port in ports:
             print(port["port"], end=",", flush=True)
 
@@ -333,7 +335,20 @@ class UpdatePlatformIO:
                 addrFound = True
                 # The last hex value of the line is the address
                 hexAddress = decoded_line.split(" ")[-1]
-                self.shared_state["deviceAddressAndCOM"][portName] = int(hexAddress, 16)
+                # Get only the first 4 characters
+                hexAddress = hexAddress[:4]
+                try:
+                    self.shared_state["deviceAddressAndCOM"][portName] = int(
+                        hexAddress, 16
+                    )
+                except ValueError:
+                    set_error(
+                        self.shared_state,
+                        self.shared_state_change,
+                        "Error in port: " + portName + " when getting the address",
+                    )
+                    self.killThreads()
+                    return
                 self.shared_state_change.set()
 
         process.wait()
