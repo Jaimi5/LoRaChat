@@ -29,7 +29,10 @@
         "cmath": "cpp",
         "numeric": "cpp",
         "thread": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "*.ipp": "cpp",
+        "list": "cpp",
+        "unordered_set": "cpp"
     },
     "C_Cpp.formatting": "vcFormat"
 }

@@ -25,8 +25,20 @@
 // Routing Table
 #include "routing-table/rtService.h"
 
+// Display
+#include "display/displayService.h"
+
 
 static const char* TAG = "Main";
+
+// Display
+#pragma region Display
+DisplayService& displayService = DisplayService::getInstance();
+void initDisplay() {
+    displayService.init();
+}
+
+#pragma endregion
 
 
 // Routing Table
@@ -196,130 +208,21 @@ void initManager() {
     manager.addMessageService(&rtService);
     ESP_LOGV(TAG, "Routing Table service added to manager");
 
+    manager.addMessageService(&displayService);
+    ESP_LOGV(TAG, "Display service added to manager");
+
     Serial.println(manager.getAvailableCommands());
 }
 
 #pragma endregion
-
-// #pragma region AXP20x
-// #include <axp20x.h>
-
-// AXP20X_Class axp;
-
-// void initAXP() {
-//     Wire.begin(21, 22);
-//     if (axp.begin(Wire, AXP192_SLAVE_ADDRESS) == AXP_FAIL) {
-//         Serial.println(F("failed to initialize communication with AXP192"));
-//     }
-//     Serial.println(axp.getBattVoltage());
-// }
-
-// float getBatteryVoltage() {
-//     return axp.getBattVoltage();
-// }
-
-// #pragma endregion
-
-#ifdef DISPLAY_ENABLED
-#pragma region Display
-//Display
-#include "display.h"
-
-TaskHandle_t display_TaskHandle = NULL;
-
-#define DISPLAY_TASK_DELAY 50 //ms
-#define DISPLAY_LINE_TWO_DELAY 10000 //ms
-#define DISPLAY_LINE_THREE_DELAY 50000 //ms
-#define DISPLAY_LINE_FOUR_DELAY 20000 //ms
-#define DISPLAY_LINE_FIVE_DELAY 10000 //ms
-#define DISPLAY_LINE_SIX_DELAY 10000 //ms
-#define DISPLAY_LINE_ONE 10000 //ms
-
-void display_Task(void* pvParameters) {
-
-    uint32_t lastLineOneUpdate = 0;
-    uint32_t lastLineTwoUpdate = 0;
-    uint32_t lastLineThreeUpdate = 0;
-#ifdef GPS_ENABLED
-    uint32_t lastGPSUpdate = 0;
-#endif
-    uint32_t lastLineFourUpdate = 0;
-    uint32_t lastLineFiveUpdate = 0;
-    uint32_t lastLineSixUpdate = 0;
-    uint32_t lastLineSevenUpdate = 0;
-
-    while (true) {
-        //Update line one every DISPLAY_LINE_ONE ms
-        if (millis() - lastLineOneUpdate > DISPLAY_LINE_ONE) {
-            lastLineOneUpdate = millis();
-            // float batteryVoltage = getBatteryVoltage();
-            // Given the previous float value, convert it into string with 2 decimal places
-            bool isConnected = wiFiService.isConnected() || loraMeshService.hasGateway();
-            String lineOne = "LoRaTRUST-  " + String(isConnected ? "CON" : "NC");
-
-            Screen.changeLineOne(lineOne);
-        }
-
-        //Update line two every DISPLAY_LINE_TWO_DELAY ms
-        if (millis() - lastLineTwoUpdate > DISPLAY_LINE_TWO_DELAY) {
-            lastLineTwoUpdate = millis();
-            String lineTwo = String(loraMeshService.getLocalAddress(), HEX);
-
-            if (wiFiService.isConnected())
-                lineTwo += " | " + wiFiService.getIP();
-
-            Screen.changeLineTwo(lineTwo);
-        }
-
-#ifdef GPS_ENABLED
-        //Update line three every DISPLAY_LINE_THREE_DELAY ms
-        // if (millis() - lastLineThreeUpdate > DISPLAY_LINE_THREE_DELAY) {
-        //     lastLineThreeUpdate = millis();
-        //     String lineThree = gpsService.getGPSUpdatedWait();
-        //     if (lineThree.begin() != "G")
-        //         Screen.changeLineThree(lineThree);
-        // }
-
-        //Update GPS every UPDATE_GPS_DELAY ms
-        if (millis() - lastGPSUpdate > UPDATE_GPS_DELAY) {
-            lastGPSUpdate = millis();
-            String lineThree = gpsService.getGPSUpdatedWait();
-            if (lineThree.startsWith("G") != 1)
-                Screen.changeLineThree(lineThree);
-        }
-#endif
-
-        Screen.drawDisplay();
-        vTaskDelay(DISPLAY_TASK_DELAY / portTICK_PERIOD_MS);
-    }
-}
-
-void createUpdateDisplay() {
-    int res = xTaskCreate(
-        display_Task,
-        "Display Task",
-        2048,
-        (void*) 1,
-        2,
-        &display_TaskHandle);
-    if (res != pdPASS) {
-        ESP_LOGE(TAG, "Display Task creation gave error: %d", res);
-        createUpdateDisplay();
-    }
-}
-
-void initDisplay() {
-    Screen.initDisplay();
-    createUpdateDisplay();
-}
-#pragma endregion
-#endif
 
 #pragma region Wire
 
 void initWire() {
     Wire.begin((int) I2C_SDA, (int) I2C_SCL);
 }
+
+#pragma endregion
 
 // TODO: The following line could be removed if we add the files in /src to /lib. However, at this moment, it generates a lot of errors
 // TODO: https://docs.platformio.org/en/stable/advanced/unit-testing/structure/shared-code.html#unit-testing-shared-code
@@ -438,7 +341,7 @@ void loop() {
         esp_wifi_deinit();
 
         ESP.deepSleep(DEEP_SLEEP_TIME * (uint32_t) 1000000);
-    }
+}
 #endif
 
     if (ESP.getFreeHeap() < 20000) {

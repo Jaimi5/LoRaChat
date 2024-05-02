@@ -25,9 +25,9 @@
 #define MQTT_ENABLED
 #define ROUTING_TABLE_RECORDING_ENABLED
 #define BLUETOOTH_ENABLED
-// #define NO_SENSOR_DATA // If the sensors are not connected
+#define GPS_ENABLED
 // #define SIMULATION_ENABLED
-// #define GPS_ENABLED
+// #define NO_SENSOR_DATA // If the sensors are not connected
 #elif defined(T_BEAM_LORA_32)
 #define DISPLAY_ENABLED
 #define LED_ENABLED
@@ -76,6 +76,10 @@
 
 
 // Display Configuration
+#define DISPLAY_WIDTH 128
+#define DISPLAY_HEIGHT 64
+#define DISPLAY_ADDRESS 0x3C
+
 #if defined(T_BEAM_LORA_32)
 #define DISPLAY_SDA 4
 #define DISPLAY_SCL 15

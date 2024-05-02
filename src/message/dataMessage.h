@@ -31,6 +31,7 @@ enum appPort: uint8_t {
     SensorApp = 14,
     MetadataApp = 15,
     RtApp = 16,
+    DisplayApp = 17,
 };
 
 class DataMessageGeneric {
