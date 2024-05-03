@@ -29,7 +29,7 @@ DataMessage* RtService::getDataMessage(JsonObject data) {
 }
 
 void RtService::processReceivedMessage(messagePort port, DataMessage* message) {
-  rtMessage* rt = (rtMessage*) message;
+  // rtMessage* rt = (rtMessage*) message;
   ESP_LOGI(RT_TAG, "Received rt data");
 }
 

@@ -51,7 +51,7 @@ void GPSService::initGPS() {
     GPS.begin(GPS_BAUD);
 
 #endif
-    // createGPSTask();
+    createGPSTask();
 
     ESP_LOGV(GPS_TAG, "GPS Initialized");
 }
@@ -64,7 +64,7 @@ void GPSService::createGPSTask() {
     int res = xTaskCreate(
         GPSLoop,
         "GPS Task",
-        2048,
+        8128,
         (void*) 1,
         2,
         &gps_TaskHandle);
@@ -75,12 +75,19 @@ void GPSService::createGPSTask() {
 
 void GPSService::GPSLoop(void*) {
     GPSService& gpsService = GPSService::getInstance();
+    DisplayService& displayService = DisplayService::getInstance();
+
+    ESP_LOGV(GPS_TAG, "Stack space unused after entering gps task: %d", uxTaskGetStackHighWaterMark(NULL));
     for (;;) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        // ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         gpsService.updateGPS();
-        String GPSstring = gpsService.getGPSString();
-        Serial.println(GPSstring);
+        String gpsString = gpsService.getGPSString();
+
+        Serial.println(gpsString);
+        displayService.printGPSData(gpsString);
+
+        vTaskDelay(60000 / portTICK_PERIOD_MS);
     }
 }
 

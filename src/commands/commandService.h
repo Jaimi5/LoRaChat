@@ -27,6 +27,8 @@ public:
     Command* currentCommand = nullptr;
     Command* previousCommand = nullptr;
 
+    uint16_t getCommandAddress(String command);
+
 private:
     uint8_t commandsCount = 0;
     Command* commands;

@@ -29,29 +29,27 @@ public:
 
     void init();
 
-    String displayOn();
-
     String displayOn(uint16_t dst);
-
-    String displayOff();
 
     String displayOff(uint16_t dst);
 
-    String displayBlink();
+    String displayBlink(uint16_t dst);
 
-    String clearDisplay();
+    String clearDisplay(uint16_t dst);
 
-    String displayLogo();
+    String displayLogo(uint16_t dst, uint16_t src = 0);
 
-    String displayText(String text);
+    String displayText(uint16_t dst, String text, uint16_t src = 0);
 
-    // String getJSON(DataMessage* message);
+    String getJSON(DataMessage* message);
 
-    // DataMessage* getDataMessage(JsonObject data);
+    DataMessage* getDataMessage(JsonObject data);
 
-    // DataMessage* getDisplayMessage(DisplayCommand command, uint16_t dst);
+    DataMessage* getDisplayMessage(DisplayCommand command, uint16_t dst, String text = "");
 
-    // void processReceivedMessage(messagePort port, DataMessage* message);
+    void processReceivedMessage(messagePort port, DataMessage* message);
+
+    void printGPSData(String data);
 
 
 private:
@@ -73,7 +71,7 @@ private:
     std::vector<bool> moveStatus;
     const int maxLines = 7; // Maximum number of lines the display can handle
     const int lineHeight = 9; // Height of each line of text
-    const int staticLines = 2; // Number of static lines at the top
+    const int staticLines = 3; // Number of static lines at the top
 
     void drawDisplay();
     void printLine(const String& str, int& x, int y, int size, int minX, bool move);
@@ -83,4 +81,5 @@ private:
 
     bool displayOnFlag = true;
     bool displayingLogo = false;
+    bool initialized = false;
 };

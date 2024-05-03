@@ -81,6 +81,19 @@ bool CommandService::hasCommand(String command) {
     return false;
 }
 
+uint16_t CommandService::getCommandAddress(String command) {
+    // If first parameter of the command is a hex number return it, otherwise return 0
+    // The HEX value does not have the 0x prefix
+    String firstCommand = command.substring(0, command.indexOf(" "));
+    if (firstCommand.length() == 0) return 0;
+
+    for (uint8_t i = 0; i < firstCommand.length(); i++) {
+        if (!isHexadecimalDigit(firstCommand.charAt(i))) return 0;
+    }
+
+    return strtol(firstCommand.c_str(), NULL, 16);
+}
+
 String CommandService::helpCommand() {
     String help = "Available commands:\n";
     for (uint8_t i = 0; i < commandsCount; i++) {

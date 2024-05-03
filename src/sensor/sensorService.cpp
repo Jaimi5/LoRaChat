@@ -36,7 +36,6 @@ String SensorService::getJSON(DataMessage* message) {
 }
 
 DataMessage* SensorService::getDataMessage(JsonObject data) {
-    DataMessage* message = nullptr;
     switch ((SensorCommand) data["sensorCommand"]) {
         case SensorCommand::Data:
             return getMeasurementMessage(data);;

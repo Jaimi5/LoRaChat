@@ -260,8 +260,11 @@ void setup() {
     ESP_LOGV(TAG, "Heap after initMQTT: %d", ESP.getFreeHeap());
 #endif
 
-    // Initialize AXP192
-    // initAXP();
+#ifdef DISPLAY_ENABLED
+    // Initialize Display
+    initDisplay();
+    ESP_LOGV(TAG, "Heap after initDisplay: %d", ESP.getFreeHeap());
+#endif
 
 #ifdef GPS_ENABLED
     // Initialize GPS
@@ -295,13 +298,6 @@ void setup() {
     initSensors();
     ESP_LOGV(TAG, "Heap after init Sensors: %d", ESP.getFreeHeap());
 #endif
-
-#ifdef DISPLAY_ENABLED
-    // Initialize Display
-    initDisplay();
-    ESP_LOGV(TAG, "Heap after initDisplay: %d", ESP.getFreeHeap());
-#endif
-
 
 #ifdef SIMULATION_ENABLED
     // Initialize Simulator
@@ -341,19 +337,19 @@ void loop() {
         esp_wifi_deinit();
 
         ESP.deepSleep(DEEP_SLEEP_TIME * (uint32_t) 1000000);
-}
+    }
 #endif
 
-    if (ESP.getFreeHeap() < 20000) {
-        ESP_LOGE(TAG, "Not enough memory to process mqtt messages");
-        ESP.restart();
-        return;
-    }
+    // if (ESP.getFreeHeap() < 20000) {
+    //     ESP_LOGE(TAG, "Not enough memory to process mqtt messages");
+    //     ESP.restart();
+    //     return;
+    // }
 
     // if (millis() > 21600000) {
     //     ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
     //     ESP.restart();
     // }
-}
+    }
 
 #endif

@@ -24,6 +24,8 @@
 
 #include "gpsCommandService.h"
 
+#include "display/displayService.h"
+
 
 class GPSService: public MessageService {
 

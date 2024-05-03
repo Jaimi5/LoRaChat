@@ -161,6 +161,9 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
         case MqttPort:
             sendMessageMqtt(message);
             break;
+        case InternalPort:
+            processReceivedMessage(InternalPort, message);
+            break;
         default:
             break;
     }

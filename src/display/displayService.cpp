@@ -51,16 +51,42 @@ void DisplayService::init() {
 
     // Create display task
     createDisplayTask();
+
+    initialized = true;
 }
 
-String DisplayService::displayOn() {
+String DisplayService::displayOn(uint16_t dst) {
+    if (!initialized)
+        return "Display Service not initialized";
+
+    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+        DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayOn, dst);
+        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
+
+        delete msg;
+
+        return "Send Display On";
+    }
+
     DisplayService& displayService = DisplayService::getInstance();
     displayService.displayOnFlag = true;
 
     return "Display On";
 }
 
-String DisplayService::displayOff() {
+String DisplayService::displayOff(uint16_t dst) {
+    if (!initialized)
+        return "Display Service not initialized";
+
+    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+        DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayOff, dst);
+        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
+
+        delete msg;
+
+        return "Send Display Off";
+    }
+
     DisplayService& displayService = DisplayService::getInstance();
     displayService.displayOnFlag = false;
 
@@ -71,7 +97,19 @@ String DisplayService::displayOff() {
 }
 
 
-String DisplayService::displayBlink() {
+String DisplayService::displayBlink(uint16_t dst) {
+    if (!initialized)
+        return "Display Service not initialized";
+
+    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+        DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayBlink, dst);
+        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
+
+        delete msg;
+
+        return "Send Display Blink";
+    }
+
     DisplayService& displayService = DisplayService::getInstance();
 
     displayService.displayOnFlag = false;
@@ -96,16 +134,28 @@ String DisplayService::displayBlink() {
     return "Display Blink";
 }
 
-String DisplayService::clearDisplay() {
+String DisplayService::clearDisplay(uint16_t dst) {
+    if (!initialized)
+        return "Display Service not initialized";
+
+    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+        DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayClear, dst);
+        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
+
+        delete msg;
+
+        return "Send Display Clear";
+    }
+
     DisplayService& displayService = DisplayService::getInstance();
     displayService.display.clearDisplay();
     displayService.display.display();
 
     // Clear the text vector, but keep the title and device ID
-    displayService.displayTextVector.resize(2, "");
-    displayService.xPos.resize(2, 0);
-    displayService.minXPos.resize(2, 0);
-    displayService.moveStatus.resize(2, false);
+    displayService.displayTextVector.resize(staticLines, "");
+    displayService.xPos.resize(staticLines, 0);
+    displayService.minXPos.resize(staticLines, 0);
+    displayService.moveStatus.resize(staticLines, false);
 
     return "Display Clear";
 }
@@ -115,7 +165,7 @@ void DisplayService::displayTask(void* pvParameters) {
     ESP_LOGV(DISPLAY_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
 
     // Display the initial logo
-    displayService.displayLogo();
+    displayService.displayLogo(0);
 
     for (;;) {
         if (displayService.displayingLogo) {
@@ -130,7 +180,19 @@ void DisplayService::displayTask(void* pvParameters) {
     }
 }
 
-String DisplayService::displayLogo() {
+String DisplayService::displayLogo(uint16_t dst, uint16_t src) {
+    if (!initialized)
+        return "Display Service not initialized";
+
+    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+        DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayLogo, dst);
+        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
+
+        delete msg;
+
+        return "Send Display Logo";
+    }
+
     DisplayService& displayService = DisplayService::getInstance();
     Adafruit_SSD1306& display = displayService.display;
     displayService.displayingLogo = true;
@@ -138,9 +200,12 @@ String DisplayService::displayLogo() {
 
     display.setTextSize(1);
     display.setTextColor(WHITE);
-    const char* title = "LoRaChat"; // Fix: Change char* to const char*
+    String title = "LoRaChat";
+    if (src != 0) {
+        title += " - From " + String(src, HEX);
+    }
     // Print the title in the middle of the screen
-    display.setCursor(DISPLAY_WIDTH / 2 - strlen(title) / 2 * 6, 0);
+    display.setCursor(DISPLAY_WIDTH / 2 - title.length() / 2 * 6, 0);
     display.println(title);
 
     // displayTest.drawXBitmap(0, 0, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, WHITE);
@@ -152,11 +217,115 @@ String DisplayService::displayLogo() {
     return "Display Logo";
 }
 
-String DisplayService::displayText(String text) {
+String DisplayService::displayText(uint16_t dst, String text, uint16_t src) {
+    if (!initialized)
+        return "Display Service not initialized";
+
+    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+        DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayText, dst, text);
+        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
+
+        delete msg;
+
+        return "Send Display Text";
+    }
+
+    if (src != 0) {
+        text = "From " + String(src, HEX) + ": " + text;
+    }
+
     DisplayService& displayService = DisplayService::getInstance();
     displayService.addText(text);
 
     return "Display Text Done";
+}
+
+String DisplayService::getJSON(DataMessage* message) {
+    return "";
+}
+
+DataMessage* DisplayService::getDataMessage(JsonObject data) {
+    DisplayMessage* displayMessage = new DisplayMessage();
+
+    displayMessage->deserialize(data);
+
+    return ((DataMessage*) displayMessage);
+}
+
+DataMessage* DisplayService::getDisplayMessage(DisplayCommand command, uint16_t dst, String text) {
+    DisplayMessage* displayMessage = new DisplayMessage();
+
+    displayMessage->displayCommand = command;
+
+    size_t displayTextSize = 0;
+
+    switch (command) {
+        case DisplayCommand::DisplayText: {
+                displayTextSize = text.length();
+                if (displayTextSize > 128) {
+                    ESP_LOGE(DISPLAY_TAG, "displayText is too long");
+                    return nullptr;
+                }
+                strcpy(displayMessage->displayText, text.c_str());
+                break;
+            }
+        default:
+            break;
+    }
+
+    displayMessage->messageSize = displayTextSize + sizeof(DisplayCommand);
+
+    displayMessage->appPortSrc = appPort::DisplayApp;
+    displayMessage->appPortDst = appPort::DisplayApp;
+
+    displayMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    displayMessage->addrDst = dst;
+
+    return ((DataMessage*) displayMessage);
+}
+
+void DisplayService::processReceivedMessage(messagePort port, DataMessage* message) {
+    DisplayService& displayService = DisplayService::getInstance();
+    DisplayMessage* displayMessage = (DisplayMessage*) message;
+
+    switch (displayMessage->displayCommand) {
+        case DisplayCommand::DisplayOn:
+            displayService.displayOn(0);
+            break;
+        case DisplayCommand::DisplayOff:
+            displayService.displayOff(0);
+            break;
+        case DisplayCommand::DisplayBlink:
+            displayService.displayBlink(0);
+            break;
+        case DisplayCommand::DisplayClear:
+            displayService.clearDisplay(0);
+            break;
+        case DisplayCommand::DisplayText:
+            displayService.displayText(0, displayMessage->displayText);
+            break;
+        case DisplayCommand::DisplayLogo:
+            displayService.displayLogo(0);
+            break;
+        default:
+            break;
+    }
+}
+
+void DisplayService::printGPSData(String data) {
+    if (!initialized) {
+        ESP_LOGW(DISPLAY_TAG, "Display Service not initialized");
+        return;
+    }
+
+    if (data.isEmpty() || data.length() == 0) {
+        ESP_LOGE(DISPLAY_TAG, "GPS data is empty");
+        return;
+    }
+
+    // Remove the leading and trailing brackets
+    displayTextVector[2] = data;
+    setupTextMovement(2, data);
 }
 
 void DisplayService::drawDisplay() {
@@ -179,6 +348,12 @@ void DisplayService::printLine(const String& str, int& x, int y, int size, int m
 }
 
 void DisplayService::addText(String text) {
+    if (!initialized) {
+        ESP_LOGW(DISPLAY_TAG, "Display Service not initialized");
+        return;
+    }
+
+
     // Only update the lines below the first two static lines
     for (int i = displayTextVector.size() - 1; i > staticLines; --i) {
         displayTextVector[i] = displayTextVector[i - 1];

@@ -21,8 +21,12 @@ class DisplayMessage: public DataMessageGeneric {
 public:
     DisplayCommand displayCommand;
     union {
-        char displayText[32];
+        char displayText[128];
     };
+
+    uint32_t getDisplayTextSize() {
+        return this->messageSize - sizeof(DisplayCommand);
+    }
 
     void serialize(JsonObject& doc) {
         ESP_LOGE(DISPLAY_TAG, "Display Message not implemented");
@@ -35,9 +39,12 @@ public:
         // Add the derived class data to the JSON object
         displayCommand = doc["displayCommand"];
 
+        size_t displayTextSize = 0;
+
         switch (displayCommand) {
             case DisplayText: {
-                    if (strlen(doc["displayText"]) > 32) {
+                    displayTextSize = strlen(doc["displayText"]);
+                    if (displayTextSize > 32) {
                         ESP_LOGE(DISPLAY_TAG, "displayText is too long");
                         return;
                     }
@@ -47,6 +54,9 @@ public:
             default:
                 break;
         }
+
+        this->messageSize = displayTextSize + sizeof(DisplayCommand);
+
     }
 };
 #pragma pack()

@@ -35,7 +35,9 @@ public:
         // Add the battery percentage to the JSON object
         doc["battery_percentage"] = batteryPercentage;
 
-        JsonArray sensorsArray = doc.createNestedArray("message");
+        doc.createNestedArray("message");
+
+        // JsonArray sensorsArray = doc.createNestedArray("message");
 
         // for (int i = 0; i < metadataSize; i++) {
         //     JsonObject sensorObject = sensorsArray.createNestedObject();
