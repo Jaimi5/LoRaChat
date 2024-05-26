@@ -34,7 +34,7 @@ void WiFiServerService::createWiFiTask() {
     int res = xTaskCreate(
         wifi_task,
         "WiFi Task",
-        2048,
+        4096,
         (void*) 1,
         2,
         &wifi_TaskHandle);
@@ -211,7 +211,8 @@ bool WiFiServerService::connectWiFi() {
         return false;
     }
 
-#if (defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
+    // #if (defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
+#if (WIFI_ADDR_CONNECTED != 0)
     // If WIFI_ADDR_CONNECTED is not 0, we are in simulation mode and we want to initialize only if the local address is WIFI_ADDR_CONNECTED
     if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED)
         return false;

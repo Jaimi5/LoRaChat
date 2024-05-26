@@ -28,6 +28,9 @@
 // Display
 #include "display/displayService.h"
 
+// Devices
+#include "devices/initDevices.h"
+
 
 static const char* TAG = "Main";
 
@@ -241,6 +244,9 @@ void setup() {
     // Initialize Wire
     initWire();
 
+    // Initialize Devices
+    InitDevices::init();
+
     ESP_LOGV(TAG, "Heap before initManager: %d", ESP.getFreeHeap());
 
     // Initialize Manager
@@ -337,7 +343,7 @@ void loop() {
         esp_wifi_deinit();
 
         ESP.deepSleep(DEEP_SLEEP_TIME * (uint32_t) 1000000);
-    }
+}
 #endif
 
     // if (ESP.getFreeHeap() < 20000) {
@@ -350,6 +356,6 @@ void loop() {
     //     ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
     //     ESP.restart();
     // }
-    }
+}
 
 #endif

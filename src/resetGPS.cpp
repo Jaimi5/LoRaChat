@@ -43,7 +43,6 @@
 // int state = 0; // steps through states
 // HardwareSerial SerialGPS(1);
 
-
 // void setup() {
 //     Serial.begin(115200);
 //     while (!Serial);  // Wait for user to open the terminal
@@ -80,7 +79,7 @@
 //             myGPS.disableNMEAMessage(UBX_NMEA_GSA, COM_PORT_UART1);
 //             myGPS.disableNMEAMessage(UBX_NMEA_GSV, COM_PORT_UART1);
 //             myGPS.disableNMEAMessage(UBX_NMEA_VTG, COM_PORT_UART1);
-//             myGPS.enableNMEAMessage(UBX_NMEA_RMC, COM_PORT_UART1);
+//             myGPS.disableNMEAMessage(UBX_NMEA_RMC, COM_PORT_UART1);
 //             myGPS.enableNMEAMessage(UBX_NMEA_GGA, COM_PORT_UART1);
 //             myGPS.saveConfiguration(); //Save the current settings to flash and BBR
 //             Serial.println("Enabled/disabled NMEA sentences");
@@ -91,11 +90,17 @@
 
 // }  // endofsetup
 
+// static void smartDelay(unsigned long ms) {
+//     unsigned long start = millis();
+//     do {
+//         while (SerialGPS.available()) {
+//             Serial.write(SerialGPS.read());
+//         }
+//     } while (millis() - start < ms);
+// }
+
 // void loop() {
+//     smartDelay(1000);
 
-//     if (SerialGPS.available()) {
-//         Serial.write(SerialGPS.read());  // print anything comes in from the GPS
-//     }
-
-
-// }  // endofloop
+//     sleep(2);
+// }

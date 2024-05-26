@@ -17,7 +17,7 @@
 #define MQTT_ENABLED
 // #define SIMULATION_ENABLED
 // #define BLUETOOTH_ENABLED
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define DISPLAY_ENABLED
 #define LED_ENABLED
 #define LORA_ENABLED
@@ -27,7 +27,7 @@
 #define BLUETOOTH_ENABLED
 #define GPS_ENABLED
 // #define SIMULATION_ENABLED
-// #define NO_SENSOR_DATA // If the sensors are not connected
+#define NO_SENSOR_DATA // If the sensors are not connected
 #elif defined(T_BEAM_LORA_32)
 #define DISPLAY_ENABLED
 #define LED_ENABLED
@@ -44,7 +44,7 @@
 #ifdef NAYAD_V1
 #define I2C_SDA 02
 #define I2C_SCL 04
-#elif defined(NAYAD_V1R2) || defined(T_BEAM_V10) || defined(T_BEAM_LORA_32)
+#elif defined(NAYAD_V1R2) || defined(T_BEAM_V10) || defined(T_BEAM_LORA_32) || defined(T_BEAM_V12)
 #define I2C_SDA SDA
 #define I2C_SCL SCL
 #else
@@ -56,7 +56,7 @@
 
 
 //If the device has a GPS module
-#if defined(T_BEAM_V10)
+#if defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define GPS_TX 12
 #define GPS_RX 34
 #elif defined(NAYAD_V1)
@@ -84,7 +84,7 @@
 #define DISPLAY_SDA 4
 #define DISPLAY_SCL 15
 #define DISPLAY_RST 16
-#elif defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_V10)
+#elif defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define DISPLAY_SDA I2C_SDA
 #define DISPLAY_SCL I2C_SCL
 #define DISPLAY_RST -1
@@ -101,8 +101,8 @@
 #define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID "***"
-#define WIFI_PASSWORD "***"
+#define WIFI_SSID "Vera_98BFAB"
+#define WIFI_PASSWORD "5cfabbcef"
 
 // MQTT configuration
 #define MQTT_SERVER "192.168.1.26" 
@@ -141,7 +141,7 @@
 #define LED 2
 #define LED_ON      HIGH
 #define LED_OFF     LOW
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define LED 4
 #define LED_ON      LOW
 #define LED_OFF     HIGH
@@ -158,7 +158,7 @@
 
 
 // LoRa Configuration
-#if defined(T_BEAM_LORA_32) || defined(T_BEAM_V10)
+#if defined(T_BEAM_LORA_32) || defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define LORA_MODULE_SX1276 0
 #elif defined(NAYAD_V1) || defined(NAYAD_V1R2)
 #define LORA_MODULE_SX1262 1
@@ -174,7 +174,7 @@
 #define LORA_SCK 18
 #elif defined(T_BEAM_LORA_32)
 #define LORA_SCK 5
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define LORA_SCK 5
 #else 
 #define LORA_SCK LORA_SCK
@@ -189,7 +189,7 @@
 #define LORA_MISO 19
 #elif defined(T_BEAM_LORA_32)
 #define LORA_MISO 19
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define LORA_MISO 19
 #else
 #define LORA_MISO LORA_MISO
@@ -204,7 +204,7 @@
 #define LORA_MOSI 23
 #elif defined(T_BEAM_LORA_32)
 #define LORA_MOSI 27
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define LORA_MOSI 27
 #else
 #define LORA_MOSI LORA_MOSI
@@ -217,7 +217,7 @@
 #define LORA_CS 15
 #elif defined(T_BEAM_LORA_32)
 #define LORA_CS 18
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_V10)|| defined(T_BEAM_V12)
 #define LORA_CS 18
 #else
 #define LORA_CS 255U
@@ -230,7 +230,7 @@
 #define LORA_RST 27
 #elif defined(T_BEAM_LORA_32)
 #define LORA_RST 14
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_V10)|| defined(T_BEAM_V12)
 #define LORA_RST 23
 #else
 #warning "LORA_RST not defined"
@@ -246,7 +246,7 @@
 #define LORA_IRQ 26
 #elif defined(T_BEAM_LORA_32)
 #define LORA_IRQ 26
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_V10)|| defined(T_BEAM_V12)
 #define LORA_IRQ 26
 #else
 #define LORA_IRQ 255U
@@ -259,7 +259,7 @@
 #define LORA_IO1 33
 #elif defined(NAYAD_V1R2)
 #define LORA_IO1 33
-#elif defined(T_BEAM_V10)
+#elif defined(T_BEAM_LORA_32)
 #define LORA_IO1 33
 #else
 #ifndef LORA_MODULE_SX1276
@@ -270,14 +270,21 @@
 #endif
 
 
+// PMU configuration
+#if defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#define HAS_PMU
+#define PMU_IRQ 35
+#endif
+
+
 // Simulation Configuration
 // The address of the device that will connect at the beginning of the simulation
-#define WIFI_ADDR_CONNECTED 38560
+#define WIFI_ADDR_CONNECTED 0x9234
 
-#define PACKET_COUNT 10
+#define PACKET_COUNT 1
 #define PACKET_DELAY 120000
-#define PACKET_SIZE 500
-#define UPLOAD_PAYLOAD 1
+#define PACKET_SIZE 100
+#define UPLOAD_PAYLOAD 0
 #define LOG_MESHER 0
 
 // If defined, there only be one sender

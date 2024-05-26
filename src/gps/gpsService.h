@@ -9,7 +9,6 @@
 #include <TinyGPSPlus.h>
 
 #if defined(T_BEAM_V10)
-#include <axp20x.h>
 #include <HardwareSerial.h>
 #include <SparkFun_Ublox_Arduino_Library.h> //http://librarymanager/All#SparkFun_Ublox_GPS
 #elif defined(NAYAD_V1) || defined(NAYAD_V1R2)
@@ -144,6 +143,5 @@ private:
 
 #if defined(T_BEAM_V10)
     SFE_UBLOX_GPS myGPS;
-    AXP20X_Class axp;
 #endif
 };

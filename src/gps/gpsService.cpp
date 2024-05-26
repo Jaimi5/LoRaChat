@@ -3,29 +3,19 @@
 static const char* GPS_TAG = "GPSService";
 
 
-#if defined(T_BEAM_V10) || defined(T_BEAM_LORA_32)
+#if defined(T_BEAM_V10) || defined(T_BEAM_LORA_32) || defined(T_BEAM_V12)
 HardwareSerial GPS(1);
 #elif defined(NAYAD_V1) || defined(NAYAD_V1R2)
 SoftwareSerial GPS(GPS_RX, GPS_TX);
 #endif
 
 void GPSService::initGPS() {
-#if defined(T_BEAM_V10)
-    if (!axp.begin(Wire, AXP192_SLAVE_ADDRESS)) {
-        ESP_LOGV(GPS_TAG, "AXP192 Begin PASS");
-    }
-    else {
-        ESP_LOGV(GPS_TAG, "AXP192 Begin FAIL");
-    }
-    axp.setPowerOutPut(AXP192_LDO3, AXP202_ON); // GPS main power
-    axp.setPowerOutPut(AXP192_LDO2, AXP202_ON); // provides power to GPS backup battery
-    axp.setPowerOutPut(AXP192_LDO3, AXP202_ON);
-    axp.setPowerOutPut(AXP192_DCDC2, AXP202_ON);
-    axp.setPowerOutPut(AXP192_EXTEN, AXP202_ON);
-    axp.setPowerOutPut(AXP192_DCDC1, AXP202_ON); // enables power to ESP32 on T-beam
-    axp.setPowerOutPut(AXP192_DCDC3, AXP202_ON); // I foresee similar benefit for restting T-watch 
-    // where ESP32 is on DCDC3 but remember to change I2C pins and GPS pins!
+    // Set UART log level to prevent "UART event queue full" spam
+    esp_log_level_set("uart", ESP_LOG_WARN);
+
     GPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
+
+#if defined(T_BEAM_V10)
     ESP_LOGV(GPS_TAG, "All comms started");
     delay(100);
 
@@ -47,9 +37,6 @@ void GPSService::initGPS() {
         }
         delay(1000);
     } while (1);
-#else
-    GPS.begin(GPS_BAUD);
-
 #endif
     createGPSTask();
 
@@ -64,7 +51,7 @@ void GPSService::createGPSTask() {
     int res = xTaskCreate(
         GPSLoop,
         "GPS Task",
-        8128,
+        2048,
         (void*) 1,
         2,
         &gps_TaskHandle);
@@ -80,11 +67,9 @@ void GPSService::GPSLoop(void*) {
     ESP_LOGV(GPS_TAG, "Stack space unused after entering gps task: %d", uxTaskGetStackHighWaterMark(NULL));
     for (;;) {
         // ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        String gpsString = gpsService.getGPSUpdatedWait();
 
-        gpsService.updateGPS();
-        String gpsString = gpsService.getGPSString();
-
-        Serial.println(gpsString);
+        ESP_LOGV(GPS_TAG, "%s", gpsString.c_str());
         displayService.printGPSData(gpsString);
 
         vTaskDelay(60000 / portTICK_PERIOD_MS);
@@ -169,7 +154,7 @@ void GPSService::notifyUpdate() {
 }
 
 void GPSService::updateGPS() {
-    smartDelay(400);
+    smartDelay(1000);
     if (isGPSValid())
         previousValidGPS = gps;
 }
