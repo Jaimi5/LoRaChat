@@ -1,0 +1,4 @@
+platformio
+paho-mqtt
+networkx
+matplotlib

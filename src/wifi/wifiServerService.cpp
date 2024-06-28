@@ -17,13 +17,15 @@ void WiFiServerService::initWiFi() {
     initialized = true;
 
     wifi_init_sta();
+    createWiFiTask();
 
     if (restartWiFiData())
         connectWiFi();
 
-    createWiFiTask();
-
-    vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 seconds
+    // Set the log level for the wifi module
+    esp_log_level_set("wifi", ESP_LOG_WARN);
+    esp_log_level_set("esp_netif_lwip", ESP_LOG_WARN);
+    esp_log_level_set("nvs", ESP_LOG_WARN);
 
     ESP_LOGI(TAG, "WiFi initialized");
 }
@@ -32,7 +34,7 @@ void WiFiServerService::createWiFiTask() {
     int res = xTaskCreate(
         wifi_task,
         "WiFi Task",
-        2048,
+        4096,
         (void*) 1,
         2,
         &wifi_TaskHandle);
@@ -61,12 +63,12 @@ void WiFiServerService::wifi_task(void*) {
         if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
             LoRaMeshService.setGateway();
             wiFiServerService.connected = true;
-            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid, wiFiServerService.password);
+            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid.c_str(), wiFiServerService.password.c_str());
         }
         else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
             wiFiServerService.connected = false;
             LoRaMeshService.removeGateway();
-            ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", wiFiServerService.ssid, wiFiServerService.password);
+            ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", wiFiServerService.ssid.c_str(), wiFiServerService.password.c_str());
         }
 
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
@@ -123,6 +125,8 @@ void WiFiServerService::wifi_init_sta() {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
+
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
@@ -138,11 +142,7 @@ void WiFiServerService::wifi_init_sta() {
 }
 
 void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* message) {
-    // if (connectAndSend(message))
-    //     ESP_LOGI(TAG,"Message sent to WiFi"));
-    // else
-    // LOG NOT IMPLEMENTED
-    ESP_LOGW(TAG, "Message not sent to WiFi");
+    ESP_LOGE(TAG, "Receive messages on WiFi is not implemented");
 }
 
 void WiFiServerService::sendMessage(DataMessage* message) {
@@ -150,6 +150,7 @@ void WiFiServerService::sendMessage(DataMessage* message) {
 }
 
 String WiFiServerService::addSSID(String ssid) {
+    // Copy the string to the ssid
     this->ssid = ssid;
 
     return F("SSID added");
@@ -161,18 +162,10 @@ String WiFiServerService::addPassword(String password) {
     return F("Password added");
 }
 
-String WiFiServerService::saveWiFiData() {
-    ConfigService& configService = ConfigService::getInstance();
-    configService.setConfig("WiFiSSid", this->ssid);
-    configService.setConfig("WiFiPsw", this->password);
-
-    return F("WiFi data saved");
-}
-
 String WiFiServerService::resetWiFiData() {
-    ConfigService& configService = ConfigService::getInstance();
-    configService.setConfig("WiFiSSid", DEFAULT_WIFI_SSID);
-    configService.setConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
+    wifi_config_t wifi_cfg = {};  // initialize all fields to zero
+
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
 
     this->ssid = DEFAULT_WIFI_SSID;
     this->password = DEFAULT_WIFI_PASSWORD;
@@ -205,26 +198,29 @@ bool WiFiServerService::isConnected() {
 }
 
 bool WiFiServerService::connectWiFi() {
-    if (!initialized)
-        return false;
-
-    if (isConnected())
-        return true;
-
-    if (!checkIfWiFiCredentialsAreSet()) {
-        ESP_LOGI(TAG, "WiFi credentials are not set");
+    if (!initialized) {
         return false;
     }
 
-#if (!defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
+    if (isConnected()) {
+        return true;
+    }
+
+    if (!checkIfWiFiCredentialsAreSet()) {
+        ESP_LOGW(TAG, "WiFi credentials are not set");
+        return false;
+    }
+
+    // #if (defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
+#if (WIFI_ADDR_CONNECTED != 0)
     // If WIFI_ADDR_CONNECTED is not 0, we are in simulation mode and we want to initialize only if the local address is WIFI_ADDR_CONNECTED
     if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED)
         return false;
 #endif
 
-    ESP_LOGI(TAG, "Connecting to %s...", ssid);
+    ESP_LOGI(TAG, "Connecting to %s...", ssid.c_str());
 
-    wifi_config_t wifi_config = {0};  // initialize all fields to zero
+    wifi_config_t wifi_config = {};  // initialize all fields to zero
 
     // Assume ssidHelp and passwordHelp are null-terminated strings
     // and their lengths are less than the size of .ssid and .password arrays
@@ -277,28 +273,48 @@ String WiFiServerService::getIP() {
 }
 
 String WiFiServerService::getSSID() {
-    ConfigService& configService = ConfigService::getInstance();
-    return configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
+    wifi_config_t wifi_cfg;
+
+    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get wifi config");
+        return F("Failed to get SSID");
+    }
+
+    return String((char*) wifi_cfg.sta.ssid);
 }
 
 String WiFiServerService::getPassword() {
-    ConfigService& configService = ConfigService::getInstance();
-    return configService.getConfig("WiFiPsw", DEFAULT_WIFI_SSID);
+    wifi_config_t wifi_cfg;
+
+    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get wifi config");
+        return F("Failed to get password");
+    }
+
+    return String((char*) wifi_cfg.sta.password);
 }
 
 bool WiFiServerService::restartWiFiData() {
-    ConfigService& configService = ConfigService::getInstance();
+    wifi_config_t wifi_cfg;
 
-    this->ssid = WIFI_SSID;
-    this->password = WIFI_PASSWORD;
+    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
+    if (error != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get wifi config");
+        return false;
+    }
 
-    // this->ssid = configService.getConfig("WiFiSSid", DEFAULT_WIFI_SSID);
-    // this->password = configService.getConfig("WiFiPsw", DEFAULT_WIFI_PASSWORD);
+    if (wifi_cfg.sta.ssid[0] == 0 && wifi_cfg.sta.password[0] == 0) {
+        ESP_LOGI(TAG, "No wifi credentials stored");
+        return false;
+    }
 
-    // //TODO: Remove this when we have a way to set the default wifi data
-    // if (this->ssid == DEFAULT_WIFI_SSID && this->password == DEFAULT_WIFI_PASSWORD) {
+    ESP_LOGI(TAG, "WIFI SSID: %s", (char*) wifi_cfg.sta.ssid);
+    ESP_LOGI(TAG, "WIFI Password: %s", (char*) wifi_cfg.sta.password);
 
-    // }
+    this->ssid = String((char*) wifi_cfg.sta.ssid);
+    this->password = String((char*) wifi_cfg.sta.password);
 
     return true;
 }

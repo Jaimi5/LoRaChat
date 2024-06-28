@@ -161,6 +161,9 @@ void MessageManager::sendMessage(messagePort port, DataMessage* message) {
         case MqttPort:
             sendMessageMqtt(message);
             break;
+        case InternalPort:
+            processReceivedMessage(InternalPort, message);
+            break;
         default:
             break;
     }
@@ -173,7 +176,7 @@ void MessageManager::sendMessageLoRaMesher(DataMessage* message) {
 
 void MessageManager::sendMessageMqtt(DataMessage* message) {
     MqttService& mqtt = MqttService::getInstance();
-    if (mqtt.writeToMqtt(message)) {
+    if (mqtt.isInitialized() && mqtt.writeToMqtt(message)) {
         ESP_LOGI(MANAGER_TAG, "Message sent to MQTT");
         return;
     }

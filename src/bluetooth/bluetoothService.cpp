@@ -10,7 +10,7 @@ void BluetoothService::createBluetoothTask() {
     int res = xTaskCreate(
         BluetoothLoop,
         "Bluetooth Task",
-        2048,
+        4096,
         (void*) 1,
         2,
         &bluetooth_TaskHandle);
@@ -21,8 +21,8 @@ void BluetoothService::createBluetoothTask() {
 
 void BluetoothService::BluetoothLoop(void*) {
     BluetoothService& bluetoothService = BluetoothService::getInstance();
+    ESP_LOGV(BLE_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
     for (;;) {
-        ESP_LOGV(BLE_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
 
         bluetoothService.loop();
         vTaskDelay(20 / portTICK_PERIOD_MS);

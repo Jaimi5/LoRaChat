@@ -13,7 +13,6 @@ public:
     static void ledBlink(uint8_t times, uint16_t delayTime, uint8_t pin = LED);
 
     static String longDecimalToHexString(unsigned long long);
-    static String intToHexString(int n);
     static String pad32Bytes(String);
 
     static void utf8ToByteArray(String data, uint8_t* array);

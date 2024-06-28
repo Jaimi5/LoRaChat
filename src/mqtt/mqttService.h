@@ -48,6 +48,10 @@ public:
 
     void initMqtt(String localName);
 
+    bool isInitialized() {
+        return initialized;
+    }
+
     bool connect();
 
     void disconnect();
@@ -66,7 +70,7 @@ public:
     void processReceivedMessageFromMQTT(String& topic, String& payload);
 
     void mqtt_service_subscribe(const char* topic);
-    
+
     String localName = "";
 
 private:
@@ -96,4 +100,5 @@ private:
     void mqtt_app_start(const char* client_id);
     void mqtt_service_send(const char* topic, const char* data, int len);
 
+    bool initialized = false;
 };

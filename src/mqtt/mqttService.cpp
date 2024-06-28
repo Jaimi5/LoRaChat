@@ -5,6 +5,8 @@ static const char* MQTT_TAG = "MQTT";
 void MqttService::initMqtt(String lclName) {
     ESP_LOGI(MQTT_TAG, "Initializing mqtt");
 
+    initialized = true;
+
     localName = lclName;
 
     mqtt_service_init(lclName.c_str());
@@ -12,6 +14,9 @@ void MqttService::initMqtt(String lclName) {
     receiveQueue = xQueueCreate(10, sizeof(MQTTQueueMessageV2*));
 
     createMqttTask();
+
+    // Set the MQTT_CLIENT library logging level
+    esp_log_level_set("MQTT_CLIENT", ESP_LOG_WARN);
 
     ESP_LOGI(MQTT_TAG, "Mqtt initialized");
 }
@@ -63,6 +68,11 @@ bool MqttService::sendMqttMessage(MQTTQueueMessageV2* message) {
 }
 
 bool MqttService::connect() {
+    if (!isInitialized()) {
+        ESP_LOGW(MQTT_TAG, "Mqtt not initialized");
+        return false;
+    }
+
     if (!WiFiServerService::getInstance().connectWiFi()) {
         ESP_LOGW(MQTT_TAG, "No WiFi connection");
         return false;
@@ -207,7 +217,7 @@ void MqttService::mqtt_app_start(const char* client_id) {
 
     ESP_LOGI(MQTT_TAG, "MQTT URI: %s", uri.c_str());
 
-    esp_mqtt_client_config_t mqtt_cfg = {0};  // initialize all fields to zero
+    esp_mqtt_client_config_t mqtt_cfg = {};
 
     mqtt_cfg.uri = uri.c_str();
     mqtt_cfg.client_id = client_id;
@@ -233,6 +243,10 @@ void MqttService::mqtt_service_subscribe(const char* topic) {
 void MqttService::mqtt_service_send(const char* topic, const char* data, int len) {
     int msg_id;
     msg_id = esp_mqtt_client_publish(client, topic, data, len, 2, 0);
+    if (msg_id == -1) {
+        ESP_LOGE(MQTT_TAG, "Error sending message to MQTT");
+        return;
+    }
     ESP_LOGI(MQTT_TAG, "sent publish successful, msg_id %d", msg_id);
 }
 

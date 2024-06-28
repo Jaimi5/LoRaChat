@@ -34,14 +34,14 @@ class MQTT:
         MQTT_TOPIC_IN = "to-server/#"
 
         try:
-            self.client = mqtt.Client("Testing")
+            self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+            self.client.on_message = self.on_message
             self.client.connect(host, port)
 
             self.client.loop_start()
 
             self.client.subscribe(MQTT_TOPIC_IN, 2)
 
-            self.client.on_message = self.on_message
         except ConnectionRefusedError:
             self.shared_state["error"] = True
             self.shared_state["error_message"] = "MQTT broker is not running"
@@ -81,5 +81,5 @@ class MQTT:
 
     def disconnect(self):
         print("disconnecting MQTT client")
-        self.client.loop_stop(True)
+        self.client.loop_stop()
         self.client.disconnect()

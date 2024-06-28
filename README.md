@@ -129,6 +129,14 @@ Call firstly the next command to get the com ports of your devices:
 ./Testing/main.py directoryName -p
 ```
 
+- Execute requirements.txt
+
+Run the following command to install the requirements:
+
+```bash
+pip install -r ./Testing/requirements.txt
+```
+
 After that, go to ./Testing/updatePlatformio.py and add the com ports of the devices like this:
 
 ```python

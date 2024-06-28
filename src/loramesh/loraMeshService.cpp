@@ -2,7 +2,7 @@
 
 static const char* LMS_TAG = "LoRaMeshService";
 
-#if defined(NAYAD_V1) || defined(NAYAD_V1R2)
+#if defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_LORA_32) || defined(T_BEAM_V10) || defined(T_BEAM_V12)
 SPIClass newSPI(HSPI);
 #endif
 
@@ -23,7 +23,7 @@ void LoRaMeshService::initLoraMesherService() {
     config.module = LoraMesher::LoraModules::SX1262_MOD;
 #endif
 
-#if defined(NAYAD_V1) || defined(NAYAD_V1R2)
+#if defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_LORA_32) || defined(T_BEAM_V10) || defined(T_BEAM_V12)
     newSPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
     config.spi = &newSPI;
 #endif
@@ -224,4 +224,17 @@ bool LoRaMeshService::hasGateway() {
     RouteNode* gatewayNode = radio.getClosestGateway();
 
     return gatewayNode != nullptr;
+}
+
+void LoRaMeshService::updateRoutingTable() {
+    if (radio.routingTableSize() == 0) {
+        ESP_LOGW(LMS_TAG, "No routes in the routing table");
+    }
+
+    if (routingTableList != NULL) {
+        routingTableList->Clear();
+        delete(routingTableList);
+    }
+
+    routingTableList = radio.routingTableListCopy();
 }

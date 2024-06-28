@@ -4,8 +4,6 @@
 
 #include "wifiCommandService.h"
 
-#include "configuration/configService.h"
-
 #include "message/messageManager.h"
 
 #include "message/messageService.h"
@@ -53,8 +51,6 @@ public:
     String addSSID(String ssid);
 
     String addPassword(String password);
-
-    String saveWiFiData();
 
     String resetWiFiData();
 

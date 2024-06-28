@@ -3,12 +3,19 @@
 #include "Arduino.h"
 
 class Command {
+private:
+    String command;
+    String description;
+    bool isPublic;
+    std::function<String(String)> callback;
+    uint8_t commandId;
+
 public:
     Command() {};
 
     //Command with accepting lambda as argument
     Command(String command, String description, uint8_t commandId, bool isPublic, std::function<String(String)> callback):
-        command(command), description(description), commandId(commandId), isPublic(isPublic), callback(callback) {
+        command(command), description(description), isPublic(isPublic), callback(callback), commandId(commandId) {
     }
 
     String execute(String args) { return callback(args); };
@@ -28,11 +35,4 @@ public:
     bool getPublic() {
         return isPublic;
     }
-
-private:
-    String command;
-    String description;
-    bool isPublic;
-    uint8_t commandId;
-    std::function<String(String)> callback;
 };

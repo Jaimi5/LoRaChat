@@ -70,6 +70,10 @@ public:
      */
     bool hasGateway();
 
+    LM_LinkedList<RouteNode>* routingTableList = NULL;
+
+    void updateRoutingTable();
+
 private:
 
     LoraMesher& radio = LoraMesher::getInstance();
