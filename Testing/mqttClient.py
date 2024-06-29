@@ -34,7 +34,7 @@ class MQTT:
         MQTT_TOPIC_IN = "to-server/#"
 
         try:
-            self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+            self.client = mqtt.Client(protocol=mqtt.MQTTv311)
             self.client.on_message = self.on_message
             self.client.connect(host, port)
 

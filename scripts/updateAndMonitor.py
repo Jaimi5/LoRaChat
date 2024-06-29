@@ -30,7 +30,7 @@ def uploadToPort(portName, count):
         + datetime.now().strftime("%H%M%S")
         + "_"
         + portName
-        + ".txt"
+        + ".ans"
     )
 
 

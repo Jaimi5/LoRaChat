@@ -14,10 +14,10 @@
 Write me a two folders named "Testing" and inside it a folder named "Monitoring" and 3 files named "status.json", "data.json"
 
 How would you represent a file in a folder?
-- Folder\file.txt
+- Folder\file.ans
 
 There is another graphic representation using md?
-- [Folder\file.txt](Folder\file.txt)
+- [Folder\file.ans](Folder\file.ans)
 
 ## Test.md
 - [Testing\Monitoring\status.json](Testing\Monitoring\status.json)

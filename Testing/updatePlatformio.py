@@ -9,13 +9,6 @@ from error import set_error
 
 # PlatfromIO configuration
 envPort = {
-    "COM12": "ttgo-lora32-v1",
-    "COM14": "ttgo-lora32-v1",
-    "COM32": "ttgo-lora32-v1",
-    "COM4": "ttgo-lora32-v1",
-    "COM5": "ttgo-lora32-v1",
-    "COM6": "ttgo-lora32-v1",
-    "COM3": "ttgo-t-beam",
     "COM7": "ttgo-t-beam",
     "COM9": "ttgo-t-beam",
     "COM11": "ttgo-t-beam",
@@ -95,7 +88,7 @@ class UpdatePlatformIO:
 
         # Build the environments
         for env in environments:
-            file = os.path.join(self.file, "build" + env + ".txt")
+            file = os.path.join(self.file, "build" + env + ".ans")
 
             buildThread = threading.Thread(
                 target=self.buildEnv,
@@ -203,7 +196,7 @@ class UpdatePlatformIO:
 
         i = 8
 
-        buildFile = os.path.join(self.buildFile, portName + ".txt")
+        buildFile = os.path.join(self.buildFile, portName + ".ans")
 
         # Check if one of the lines contains an error
         for line in process.stdout:
@@ -243,7 +236,7 @@ class UpdatePlatformIO:
     def monitorPort(self, portName):
         print("Start monitoring port: " + portName)
 
-        file = os.path.join(self.file, "monitor_" + portName + ".txt")
+        file = os.path.join(self.file, "monitor_" + portName + ".ans")
 
         process = subprocess.Popen(
             [
