@@ -4,7 +4,7 @@
 
 #include "commands/commandService.h"
 
-class rtCommandService: public CommandService {
+class monCommandService: public CommandService {
 public:
-    rtCommandService();
+    monCommandService();
 };
