@@ -24,6 +24,8 @@ class MQTT:
             self.client.on_message = self.on_message
         except ConnectionRefusedError:
             print("MQTT server is not running")
+            print("Please run the MQTT server, ex. docker")
+            return
 
         print("MQTT client started")
 

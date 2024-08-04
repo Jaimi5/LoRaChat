@@ -343,7 +343,7 @@ void loop() {
         esp_wifi_deinit();
 
         ESP.deepSleep(DEEP_SLEEP_TIME * (uint32_t) 1000000);
-}
+    }
 #endif
 
     // if (ESP.getFreeHeap() < 20000) {

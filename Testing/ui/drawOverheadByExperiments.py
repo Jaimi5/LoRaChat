@@ -61,8 +61,8 @@ def draw_overhead_by_experiments(frame: Frame, directory):
         if int(config["Simulator"]["ONE_SENDER"]) == 0:
             total_messages = total_messages * 9
 
-        # Get the MAXPACKETSIZE minus the header size (overhead)
-        max_packet_size = int(config["LoRaMesher"]["MAXPACKETSIZE"]) - 11
+        # Get the LM_MAX_PACKET_SIZE minus the header size (overhead)
+        max_packet_size = int(config["LoRaMesher"]["LM_MAX_PACKET_SIZE"]) - 11
 
         # Get the Payload size
         payload_size = int(config["Simulator"]["PACKET_SIZE"])
