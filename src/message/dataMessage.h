@@ -31,7 +31,7 @@ enum appPort: uint8_t {
     LedApp = 13,
     SensorApp = 14,
     MetadataApp = 15,
-    RtApp = 16,
+    MonApp = 16,
     DisplayApp = 17,
 };
 

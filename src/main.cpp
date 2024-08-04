@@ -22,9 +22,6 @@
 //Metadata
 #include "sensor/metadata/metadata.h"
 
-// Routing Table
-#include "routing-table/rtService.h"
-
 // Display
 #include "display/displayService.h"
 
@@ -44,14 +41,14 @@ void initDisplay() {
 #pragma endregion
 
 
-// Routing Table
-#pragma region Routing Table
-RtService& rtService = RtService::getInstance();
-
-void initRT() {
-    rtService.init();
+#pragma region MQTT_MON
+#ifdef MQTT_MON_ENABLED
+#include "monitor/monService.h"
+MonService& mon_mqttService = MonService::getInstance();
+void init_mqtt_mon() {
+    mon_mqttService.init();
 }
-
+#endif
 #pragma endregion
 
 // Battery
@@ -208,8 +205,8 @@ void initManager() {
     manager.addMessageService(&simulator);
     ESP_LOGV(TAG, "Simulator service added to manager");
 
-    manager.addMessageService(&rtService);
-    ESP_LOGV(TAG, "Routing Table service added to manager");
+    manager.addMessageService(&mon_mqttService);
+    ESP_LOGV(TAG, "MON-MQTT service added to manager");
 
     manager.addMessageService(&displayService);
     ESP_LOGV(TAG, "Display service added to manager");
@@ -315,18 +312,18 @@ void setup() {
     initBattery();
 #endif
 
+#ifdef MQTT_MON_ENABLED
+    // Initialize MQTT_MON
+    init_mqtt_mon();
+    ESP_LOGV(TAG, "Heap after init_mqtt_mon: %d", ESP.getFreeHeap());
+#endif
+
     ESP_LOGV(TAG, "Setup finished");
 
 #ifdef LED_ENABLED
     // Blink 2 times to show that the device is ready
     led.ledBlink();
 #endif
-
-#ifdef ROUTING_TABLE_RECORDING_ENABLED
-    initRT();
-    ESP_LOGV(TAG, "Heap after initRT: %d", ESP.getFreeHeap());
-#endif
-
 }
 
 void loop() {

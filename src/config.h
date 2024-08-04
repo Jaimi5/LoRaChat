@@ -23,7 +23,7 @@
 #define LORA_ENABLED
 #define WIFI_ENABLED
 #define MQTT_ENABLED
-#define ROUTING_TABLE_RECORDING_ENABLED
+#define MQTT_MON_ENABLED
 #define BLUETOOTH_ENABLED
 #define GPS_ENABLED
 // #define SIMULATION_ENABLED
@@ -123,8 +123,8 @@
     //- Metadata Configuration
 #define METADATA_UPDATE_DELAY 300000 //ms
 
-// Routing table configuration
-#define RT_SENDING_EVERY 60000 //ms
+// MQTT_MON configuration
+#define MON_SENDING_EVERY 30000 //ms
 
 
 // Battery configuration
