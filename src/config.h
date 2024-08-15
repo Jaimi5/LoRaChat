@@ -245,7 +245,7 @@
 #if defined(NAYAD_V1)
 #define LORA_IRQ 26
 #elif defined(NAYAD_V1R2)
-#define LORA_IRQ 26
+#define LORA_IRQ 33
 #elif defined(T_BEAM_LORA_32)
 #define LORA_IRQ 26
 #elif defined(T_BEAM_V10)|| defined(T_BEAM_V12)
@@ -260,7 +260,7 @@
 #if defined(NAYAD_V1) 
 #define LORA_IO1 33
 #elif defined(NAYAD_V1R2)
-#define LORA_IO1 33
+#define LORA_IO1 14
 #elif defined(T_BEAM_LORA_32)
 #define LORA_IO1 33
 #else
