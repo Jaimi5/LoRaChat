@@ -19,8 +19,14 @@ void WiFiServerService::initWiFi() {
     wifi_init_sta();
     createWiFiTask();
 
-    if (restartWiFiData())
-        connectWiFi();
+    if (!restartWiFiData()) {
+        if (!addWiFiCredentialsFromConfig()) {
+            ESP_LOGW(TAG, "No WiFi credentials found");
+            return;
+        }
+    }
+
+    connectWiFi();
 
     // Set the log level for the wifi module
     esp_log_level_set("wifi", ESP_LOG_WARN);
@@ -324,4 +330,23 @@ bool WiFiServerService::restartWiFiData() {
 
 bool WiFiServerService::checkIfWiFiCredentialsAreSet() {
     return this->ssid != DEFAULT_WIFI_SSID && this->password != DEFAULT_WIFI_PASSWORD;
+}
+
+bool WiFiServerService::addWiFiCredentialsFromConfig() {
+    if (strcmp(WIFI_SSID, "") == 0 || strcmp(WIFI_PASSWORD, "") == 0) {
+        ESP_LOGW(TAG, "No WiFi credentials found in config.h");
+        return false;
+    }
+
+    String wifi_ssid_str = String(WIFI_SSID);
+    String wifi_password_str = String(WIFI_PASSWORD);
+
+    if (wifi_ssid_str == "" || wifi_password_str == "") {
+        return false;
+    }
+
+    addSSID(wifi_ssid_str);
+    addPassword(wifi_password_str);
+
+    return true;
 }

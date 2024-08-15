@@ -93,4 +93,6 @@ private:
     bool connected = false;
 
     bool initialized = false;
+
+    bool addWiFiCredentialsFromConfig();
 };

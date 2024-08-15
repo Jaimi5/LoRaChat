@@ -13,9 +13,10 @@ void GPSService::initGPS() {
     // Set UART log level to prevent "UART event queue full" spam
     esp_log_level_set("uart", ESP_LOG_WARN);
 
-    GPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
 
 #if defined(T_BEAM_V10)
+    GPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
+
     ESP_LOGV(GPS_TAG, "All comms started");
     delay(100);
 
@@ -38,6 +39,11 @@ void GPSService::initGPS() {
         delay(1000);
     } while (1);
 #endif
+
+#ifdef defined(NAYAD_V1) || defined(NAYAD_V1R2)
+    GPS.begin(GPS_BAUD, SWSERIAL_8N1, GPS_RX, GPS_TX);
+#endif
+
     createGPSTask();
 
     ESP_LOGV(GPS_TAG, "GPS Initialized");

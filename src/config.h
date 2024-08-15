@@ -7,16 +7,18 @@
 // #define NAYAD_V1R2
 
 #if defined(NAYAD_V1) || defined(NAYAD_V1R2)
-#define GPS_ENABLED
-#define DISPLAY_ENABLED
-#define BATTERY_ENABLED
+// #define GPS_ENABLED
+// #define DISPLAY_ENABLED
+// #define BATTERY_ENABLED
 #define LED_ENABLED
-#define SENSORS_ENABLED
-#define METADATA_ENABLED
+// #define SENSORS_ENABLED
+// #define METADATA_ENABLED
 #define WIFI_ENABLED
 #define MQTT_ENABLED
+#define MQTT_MON_ENABLED
+#define BLUETOOTH_ENABLED
+#define LORA_ENABLED
 // #define SIMULATION_ENABLED
-// #define BLUETOOTH_ENABLED
 #elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define DISPLAY_ENABLED
 #define LED_ENABLED
