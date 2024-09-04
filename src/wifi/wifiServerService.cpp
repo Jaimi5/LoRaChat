@@ -19,12 +19,19 @@ void WiFiServerService::initWiFi() {
     wifi_init_sta();
     createWiFiTask();
 
+#if defined(WIFI_OVERRIDE_CREDENTIALS)
+    if (!addWiFiCredentialsFromConfig()) {
+        ESP_LOGW(TAG, "No WiFi credentials found");
+        return;
+    }
+#else
     if (!restartWiFiData()) {
         if (!addWiFiCredentialsFromConfig()) {
             ESP_LOGW(TAG, "No WiFi credentials found");
             return;
         }
     }
+#endif
 
     connectWiFi();
 
