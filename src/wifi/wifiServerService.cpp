@@ -48,7 +48,7 @@ void WiFiServerService::createWiFiTask() {
         wifi_task,
         "WiFi Task",
         4096,
-        (void*) 1,
+        (void*)1,
         2,
         &wifi_TaskHandle);
     if (res != pdPASS)
@@ -109,7 +109,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
     }
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
         // ESP_LOGI(TAG,"got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
 
@@ -225,7 +225,7 @@ bool WiFiServerService::connectWiFi() {
     }
 
     // #if (defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
-#if (SIMULATION_ENABLED && WIFI_ADDR_CONNECTED != 0)
+#if defined(SIMULATION_ENABLED) && (WIFI_ADDR_CONNECTED != 0)
     ESP_LOGV(TAG, "Simulation mode enabled");
     // If WIFI_ADDR_CONNECTED is not 0, we are in simulation mode and we want to initialize only if the local address is WIFI_ADDR_CONNECTED
     if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED) {
@@ -281,7 +281,7 @@ String WiFiServerService::getIP() {
     esp_err_t ret = esp_netif_get_ip_info(netif, &ip_info);
     if (ret == ESP_OK) {
         char ipStr[16];  // Buffer to hold the IP address string
-        ip4addr_ntoa_r((const ip4_addr_t*) &ip_info.ip, ipStr, sizeof(ipStr));
+        ip4addr_ntoa_r((const ip4_addr_t*)&ip_info.ip, ipStr, sizeof(ipStr));
         return String(ipStr);
     }
 
@@ -297,7 +297,7 @@ String WiFiServerService::getSSID() {
         return F("Failed to get SSID");
     }
 
-    return String((char*) wifi_cfg.sta.ssid);
+    return String((char*)wifi_cfg.sta.ssid);
 }
 
 String WiFiServerService::getPassword() {
@@ -309,7 +309,7 @@ String WiFiServerService::getPassword() {
         return F("Failed to get password");
     }
 
-    return String((char*) wifi_cfg.sta.password);
+    return String((char*)wifi_cfg.sta.password);
 }
 
 bool WiFiServerService::restartWiFiData() {
@@ -326,11 +326,11 @@ bool WiFiServerService::restartWiFiData() {
         return false;
     }
 
-    ESP_LOGI(TAG, "WIFI SSID: %s", (char*) wifi_cfg.sta.ssid);
-    ESP_LOGI(TAG, "WIFI Password: %s", (char*) wifi_cfg.sta.password);
+    ESP_LOGI(TAG, "WIFI SSID: %s", (char*)wifi_cfg.sta.ssid);
+    ESP_LOGI(TAG, "WIFI Password: %s", (char*)wifi_cfg.sta.password);
 
-    this->ssid = String((char*) wifi_cfg.sta.ssid);
-    this->password = String((char*) wifi_cfg.sta.password);
+    this->ssid = String((char*)wifi_cfg.sta.ssid);
+    this->password = String((char*)wifi_cfg.sta.password);
 
     return true;
 }

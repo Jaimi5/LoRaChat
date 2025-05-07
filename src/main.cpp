@@ -42,13 +42,11 @@ void initDisplay() {
 
 
 #pragma region MQTT_MON
-#ifdef MQTT_MON_ENABLED
 #include "monitor/monService.h"
 MonService& mon_mqttService = MonService::getInstance();
 void init_mqtt_mon() {
     mon_mqttService.init();
 }
-#endif
 #pragma endregion
 
 // Battery
@@ -219,7 +217,7 @@ void initManager() {
 #pragma region Wire
 
 void initWire() {
-    Wire.begin((int) I2C_SDA, (int) I2C_SCL);
+    Wire.begin((int)I2C_SDA, (int)I2C_SCL);
 }
 
 #pragma endregion
@@ -339,7 +337,7 @@ void loop() {
         wiFiService.disconnectWiFi();
         esp_wifi_deinit();
 
-        ESP.deepSleep(DEEP_SLEEP_TIME * (uint32_t) 1000000);
+        ESP.deepSleep(DEEP_SLEEP_TIME * (uint32_t)1000000);
     }
 #endif
 
@@ -353,6 +351,6 @@ void loop() {
     //     ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
     //     ESP.restart();
     // }
-}
+    }
 
 #endif
