@@ -176,14 +176,44 @@ String WiFiServerService::addPassword(String password) {
 }
 
 String WiFiServerService::resetWiFiData() {
-    wifi_config_t wifi_cfg = {};  // initialize all fields to zero
+    esp_err_t result;
 
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+    // Stop WiFi before changing configuration to prevent conflicts
+    result = esp_wifi_stop();
+    if (result != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to stop WiFi: %s", esp_err_to_name(result));
+        return String("Failed to stop WiFi: ") + esp_err_to_name(result);
+    }
 
+    // Create empty WiFi configuration with proper initialization
+    wifi_config_t wifi_cfg = {};
+
+    // Clear the SSID and password fields explicitly
+    strcpy((char*)wifi_cfg.sta.ssid, DEFAULT_WIFI_SSID);
+    strcpy((char*)wifi_cfg.sta.password, DEFAULT_WIFI_PASSWORD);
+
+    // Apply the cleared configuration
+    result = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
+    if (result != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set WiFi config: %s", esp_err_to_name(result));
+        return String("Failed to reset WiFi config: ") + esp_err_to_name(result);
+    }
+
+    // Reset local credentials to default values
     this->ssid = DEFAULT_WIFI_SSID;
     this->password = DEFAULT_WIFI_PASSWORD;
 
-    return F("WiFi data reset");
+    // Restart WiFi if it was previously initialized
+    if (initialized) {
+        result = esp_wifi_start();
+        if (result != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to restart WiFi: %s", esp_err_to_name(result));
+            return String("WiFi reset but failed to restart: ") + esp_err_to_name(result);
+        }
+    }
+
+    ESP_LOGI(TAG, "WiFi data successfully reset to defaults");
+    return String("WiFi data reset successfully");
 }
 
 bool WiFiServerService::isConnected() {
@@ -223,16 +253,6 @@ bool WiFiServerService::connectWiFi() {
         ESP_LOGW(TAG, "WiFi credentials are not set");
         return false;
     }
-
-    // #if (defined(SIMULATION_ENABLED) && WIFI_ADDR_CONNECTED != 0)
-#if defined(SIMULATION_ENABLED) && (WIFI_ADDR_CONNECTED != 0)
-    ESP_LOGV(TAG, "Simulation mode enabled");
-    // If WIFI_ADDR_CONNECTED is not 0, we are in simulation mode and we want to initialize only if the local address is WIFI_ADDR_CONNECTED
-    if (LoraMesher::getInstance().getLocalAddress() != WIFI_ADDR_CONNECTED) {
-        ESP_LOGV(TAG, "Local address is not WIFI_ADDR_CONNECTED");
-        return false;
-    }
-#endif
 
     ESP_LOGI(TAG, "Connecting to %s...", ssid.c_str());
 
