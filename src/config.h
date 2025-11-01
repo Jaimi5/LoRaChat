@@ -105,10 +105,9 @@
 #define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID "Vera_98BFAB"
-#define WIFI_PASSWORD "5dfafbbcef"
-#define WIFI_OVERRIDE_CREDENTIALS  // If defined, every time the device is reset it will set the
-                                   // wifi credentials.
+#define WIFI_SSID "*********"
+#define WIFI_PASSWORD "*********"
+#define WIFI_OVERRIDE_CREDENTIALS //If defined, every time the device is reset it will set the wifi credentials.
 
 // MQTT configuration
 #define MQTT_SERVER "192.168.1.26"
