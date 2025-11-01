@@ -1,0 +1,59 @@
+# Git attributes for LoRaChat project
+# Enforce consistent line endings across platforms
+
+# Auto-detect text files and normalize to LF
+* text=auto eol=lf
+
+# Source code - always LF
+*.cpp text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.ino text eol=lf
+
+# Python scripts - always LF
+*.py text eol=lf
+
+# Configuration files - always LF
+*.json text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.conf text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+
+# Documentation - always LF
+*.md text eol=lf
+*.txt text eol=lf
+*.rst text eol=lf
+README text eol=lf
+
+# Shell scripts - always LF
+*.sh text eol=lf
+*.bash text eol=lf
+
+# CMake files - always LF
+CMakeLists.txt text eol=lf
+*.cmake text eol=lf
+
+# PlatformIO files - always LF
+platformio.ini text eol=lf
+
+# Git files - always LF
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Binary files - no text processing
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.bin binary
+*.hex binary
+*.elf binary
+*.a binary
+*.so binary
+*.dll binary
+*.dylib binary

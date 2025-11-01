@@ -1,0 +1,91 @@
+---
+# Google-inspired C++ formatting with project-specific customizations
+# Based on Google C++ Style Guide with adjusted indentation and line length
+
+BasedOnStyle: Google
+Language: Cpp
+
+# Indentation - keep current 4-space style
+IndentWidth: 4
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+ConstructorInitializerIndentWidth: 4
+
+# Line length - relaxed from Google's 80 to accommodate ESP_LOG statements
+ColumnLimit: 100
+
+# Pointer and reference alignment - Google style (Type* var)
+PointerAlignment: Left
+DerivePointerAlignment: false
+ReferenceAlignment: Left
+
+# Brace styles - keep current K&R/Attach style
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+
+# Spacing
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInAngles: false
+SpacesInContainerLiterals: false
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeAssignmentOperators: true
+SpacesBeforeTrailingComments: 2
+
+# Includes
+SortIncludes: CaseInsensitive
+IncludeBlocks: Preserve
+
+# Comments
+ReflowComments: true
+CommentPragmas: '^ pragma:'
+
+# Alignment
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+AlignOperands: true
+AlignEscapedNewlines: Left
+
+# Breaking
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+BreakStringLiterals: true
+
+# Namespaces
+CompactNamespaces: false
+NamespaceIndentation: None
+
+# Other
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 2
+IndentCaseLabels: true
+IndentPPDirectives: None
+UseTab: Never
+TabWidth: 4
+
+# Penalties (for line breaking decisions)
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakString: 1000
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 60
+
+# Constructor initializer list
+PackConstructorInitializers: NextLine
