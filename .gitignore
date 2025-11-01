@@ -8,3 +8,4 @@
 .vscode/ipch
 .vscode/extensions.json
 *.code-workspace
+*.ans
