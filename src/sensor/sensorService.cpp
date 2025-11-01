@@ -21,7 +21,7 @@ void SensorService::init() {
 }
 
 String SensorService::getJSON(DataMessage* message) {
-    SensorCommandMessage* sensorMessage = (SensorCommandMessage*) message;
+    SensorCommandMessage* sensorMessage = (SensorCommandMessage*)message;
 
     StaticJsonDocument<2000> doc;
 
@@ -36,9 +36,10 @@ String SensorService::getJSON(DataMessage* message) {
 }
 
 DataMessage* SensorService::getDataMessage(JsonObject data) {
-    switch ((SensorCommand) data["sensorCommand"]) {
+    switch ((SensorCommand)data["sensorCommand"]) {
         case SensorCommand::Data:
-            return getMeasurementMessage(data);;
+            return getMeasurementMessage(data);
+            ;
             break;
 
         case SensorCommand::Calibrate:
@@ -55,19 +56,19 @@ DataMessage* SensorService::getMeasurementMessage(JsonObject data) {
     MeasurementMessage* measurement = new MeasurementMessage();
     measurement->deserialize(data);
     measurement->messageSize = sizeof(MeasurementMessage) - sizeof(DataMessageGeneric);
-    return ((DataMessage*) measurement);
+    return ((DataMessage*)measurement);
 }
 
 DataMessage* SensorService::getCalibrateMessage(JsonObject data) {
     MeasurementMessage* measurement = new MeasurementMessage();
     measurement->deserialize(data);
     measurement->messageSize = sizeof(MeasurementMessage) - sizeof(DataMessageGeneric);
-    return ((DataMessage*) measurement);
+    return ((DataMessage*)measurement);
 }
 
 
 void SensorService::processReceivedMessage(messagePort port, DataMessage* message) {
-    SensorCommandMessage* sensorMessage = (SensorCommandMessage*) message;
+    SensorCommandMessage* sensorMessage = (SensorCommandMessage*)message;
 
     switch (sensorMessage->sensorCommand) {
         case SensorCommand::Data:
@@ -107,14 +108,13 @@ void SensorService::sensorsOff() {
 }
 
 void SensorService::createSendingTask() {
-    BaseType_t res = xTaskCreatePinnedToCore(
-        sendingLoop, /* Function to implement the task */
-        "SendingTask", /* Name of the task */
-        6000,  /* Stack size in words */
-        NULL,  /* Task input parameter */
-        1,  /* Priority of the task */
-        &sending_TaskHandle,  /* Task handle. */
-        0); /* Core where the task should run */
+    BaseType_t res = xTaskCreatePinnedToCore(sendingLoop,   /* Function to implement the task */
+                                             "SendingTask", /* Name of the task */
+                                             6000,          /* Stack size in words */
+                                             NULL,          /* Task input parameter */
+                                             1,             /* Priority of the task */
+                                             &sending_TaskHandle, /* Task handle. */
+                                             0); /* Core where the task should run */
 
     if (res != pdPASS) {
         ESP_LOGE(SENSOR_TAG, "Sending task creation failed");
@@ -134,8 +134,7 @@ void SensorService::sendingLoop(void* parameter) {
         if (!sensorService.running) {
             // Wait until a notification to start the task
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        }
-        else {
+        } else {
             uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
             ESP_LOGD(SENSOR_TAG, "Stack space unused after entering the task: %d", uxHighWaterMark);
 
@@ -174,7 +173,7 @@ void SensorService::createAndSendMessage() {
     message->messageSize = sizeof(MeasurementMessage) - sizeof(DataMessageGeneric);
 
     // Send the message
-    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) message);
+    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*)message);
 
     // Delete the message
     delete message;

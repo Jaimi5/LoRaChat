@@ -6,7 +6,7 @@
 
 #include "loraMeshMessage.h"
 
-class LoRaMeshCommandService: public CommandService {
+class LoRaMeshCommandService : public CommandService {
 public:
     LoRaMeshCommandService();
 };

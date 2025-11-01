@@ -6,11 +6,10 @@
 
 #include "bluetoothMessage.h"
 
-//Bluetooth
+// Bluetooth
 #include <BluetoothSerial.h>
 
-class BluetoothCommandService: public CommandService {
+class BluetoothCommandService : public CommandService {
 public:
-
     BluetoothCommandService();
 };

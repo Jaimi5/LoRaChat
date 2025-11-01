@@ -15,8 +15,7 @@ public:
     float variance;
     uint8_t missingValues;
 
-    MetadataSensorMessage() {
-    }
+    MetadataSensorMessage() {}
 
     void serialize(JsonObject& doc) {
         doc["type"] = type;

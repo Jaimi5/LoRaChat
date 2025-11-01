@@ -15,10 +15,8 @@
 #include "loraMeshCommandService.h"
 
 
-class LoRaMeshService: public MessageService {
-
+class LoRaMeshService : public MessageService {
 public:
-
     /**
      * @brief Construct a new LoRaMeshService object
      *
@@ -26,6 +24,12 @@ public:
     static LoRaMeshService& getInstance() {
         static LoRaMeshService instance;
         return instance;
+    }
+
+    ~LoRaMeshService() {
+        if (loraMesherCommandService != nullptr) {
+            delete loraMesherCommandService;
+        }
     }
 
     void initLoraMesherService();
@@ -40,15 +44,11 @@ public:
 
     bool sendClosestGateway(DataMessage* message);
 
-    static inline void setGateway() {
-        LoraMesher::getInstance().addGatewayRole();
-    }
+    static inline void setGateway() { LoraMesher::getInstance().addGatewayRole(); }
 
-    static inline void removeGateway() {
-        LoraMesher::getInstance().removeGatewayRole();
-    }
+    static inline void removeGateway() { LoraMesher::getInstance().removeGatewayRole(); }
 
-    LoRaMeshCommandService* loraMesherCommandService = new LoRaMeshCommandService();
+    LoRaMeshCommandService* loraMesherCommandService = nullptr;
 
     bool hasActiveConnections();
 
@@ -56,9 +56,7 @@ public:
 
     bool hasActiveReceivedConnections();
 
-    size_t queueWaitingSendPacketsLength() {
-        return radio.queueWaitingSendPacketsLength();
-    }
+    size_t queueWaitingSendPacketsLength() { return radio.queueWaitingSendPacketsLength(); }
 
     void standby();
 
@@ -75,12 +73,12 @@ public:
     void updateRoutingTable();
 
 private:
-
     LoraMesher& radio = LoraMesher::getInstance();
 
     TaskHandle_t receiveLoRaMessage_Handle = NULL;
 
-    LoRaMeshService(): MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
+    LoRaMeshService() : MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
+        loraMesherCommandService = new LoRaMeshCommandService();
         commandService = loraMesherCommandService;
     };
 
@@ -90,4 +88,3 @@ private:
 
     DataMessage* createDataMessage(AppPacket<LoRaMeshMessage>* message);
 };
-

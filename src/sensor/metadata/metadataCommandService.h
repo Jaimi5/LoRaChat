@@ -5,8 +5,7 @@
 #include "commands/commandService.h"
 
 
-class MetadataCommandService: public CommandService {
+class MetadataCommandService : public CommandService {
 public:
-
     MetadataCommandService();
 };

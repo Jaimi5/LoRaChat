@@ -169,43 +169,56 @@
 
 //     Serial.printf("=========================================\n");
 //     if (PMU->isChannelAvailable(XPOWERS_DCDC1)) {
-//         Serial.printf("DC1  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC1) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC1));
+//         Serial.printf("DC1  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC1)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC1));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_DCDC2)) {
-//         Serial.printf("DC2  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC2) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC2));
+//         Serial.printf("DC2  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC2)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC2));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_DCDC3)) {
-//         Serial.printf("DC3  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC3) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC3));
+//         Serial.printf("DC3  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC3)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC3));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_DCDC4)) {
-//         Serial.printf("DC4  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC4) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC4));
+//         Serial.printf("DC4  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC4)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC4));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_DCDC5)) {
-//         Serial.printf("DC5  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC5) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC5));
+//         Serial.printf("DC5  : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_DCDC5)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_DCDC5));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_LDO2)) {
-//         Serial.printf("LDO2 : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_LDO2) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_LDO2));
+//         Serial.printf("LDO2 : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_LDO2)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_LDO2));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_LDO3)) {
-//         Serial.printf("LDO3 : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_LDO3) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_LDO3));
+//         Serial.printf("LDO3 : %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_LDO3)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_LDO3));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_ALDO1)) {
-//         Serial.printf("ALDO1: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_ALDO1) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_ALDO1));
+//         Serial.printf("ALDO1: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_ALDO1)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_ALDO1));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_ALDO2)) {
-//         Serial.printf("ALDO2: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_ALDO2) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_ALDO2));
+//         Serial.printf("ALDO2: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_ALDO2)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_ALDO2));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_ALDO3)) {
-//         Serial.printf("ALDO3: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_ALDO3) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_ALDO3));
+//         Serial.printf("ALDO3: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_ALDO3)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_ALDO3));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_ALDO4)) {
-//         Serial.printf("ALDO4: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_ALDO4) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_ALDO4));
+//         Serial.printf("ALDO4: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_ALDO4)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_ALDO4));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_BLDO1)) {
-//         Serial.printf("BLDO1: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_BLDO1) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_BLDO1));
+//         Serial.printf("BLDO1: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_BLDO1)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_BLDO1));
 //     }
 //     if (PMU->isChannelAvailable(XPOWERS_BLDO2)) {
-//         Serial.printf("BLDO2: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_BLDO2) ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_BLDO2));
+//         Serial.printf("BLDO2: %s   Voltage: %04u mV \n", PMU->isPowerChannelEnable(XPOWERS_BLDO2)
+//         ? "+" : "-", PMU->getPowerChannelVoltage(XPOWERS_BLDO2));
 //     }
 //     Serial.printf("=========================================\n");
 
@@ -290,8 +303,8 @@
 //     wakeup_reason = esp_sleep_get_wakeup_cause();
 //     switch (wakeup_reason) {
 //         case ESP_SLEEP_WAKEUP_UNDEFINED:
-//             Serial.println(" In case of deep sleep, reset was not caused by exit from deep sleep");
-//             break;
+//             Serial.println(" In case of deep sleep, reset was not caused by exit from deep
+//             sleep"); break;
 //         case ESP_SLEEP_WAKEUP_ALL:
 //             break;
 //         case ESP_SLEEP_WAKEUP_EXT0:
@@ -384,7 +397,6 @@
 //     Serial.println();
 // #endif
 // }
-
 
 
 // void setupBoards() {
@@ -514,7 +526,8 @@
 //         u8g2->drawStr(0, 38, "Disp:");     u8g2->drawStr(45, 38, (u8g2) ? "+" : "-");
 
 // #ifdef HAS_SDCARD
-//         u8g2->drawStr(0, 54, "SD :");      u8g2->drawStr(45, 54, (SD.cardSize() != 0) ? "+" : "-");
+//         u8g2->drawStr(0, 54, "SD :");      u8g2->drawStr(45, 54, (SD.cardSize() != 0) ? "+" :
+//         "-");
 // #endif
 
 //         u8g2->drawStr(62, 38, "Radio:");    u8g2->drawStr(120, 38, (radio_online) ? "+" : "-");
@@ -528,7 +541,6 @@
 //     }
 // #endif
 // }
-
 
 
 // static uint8_t ledState = LOW;
@@ -549,6 +561,3 @@
 //     }
 // #endif
 // }
-
-
-

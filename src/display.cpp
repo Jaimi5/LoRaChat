@@ -1,7 +1,6 @@
 #include "display.h"
 
-Display::Display() {
-}
+Display::Display() {}
 
 void Display::drawDisplay() {
     display.clearDisplay();
@@ -47,7 +46,8 @@ void Display::printLine(String str, int& x, int y, int size, int minX, bool move
 
     if (move) {
         x = x - 2;
-        if (x < minX) x = display.width();
+        if (x < minX)
+            x = display.width();
     }
 }
 
@@ -106,8 +106,7 @@ void Display::changeLine(String text, int pos, int& x, int& minX, int size, bool
         x = display.width();
         minX = -(6 * size) * text.length();
         move = true;
-    }
-    else {
+    } else {
         x = 0;
         move = false;
     }
@@ -117,7 +116,7 @@ void Display::changeLine(String text, int pos, int& x, int& minX, int size, bool
 
 
 void Display::initDisplay() {
-    //reset OLED display via software for ESP32LORA
+    // reset OLED display via software for ESP32LORA
 #if DISPLAY_RST != -1
     pinMode(DISPLAY_RST, OUTPUT);
     digitalWrite(DISPLAY_RST, LOW);
@@ -126,7 +125,7 @@ void Display::initDisplay() {
 #endif
 
 #if DISPLAY_SDA != I2C_SDA
-    Wire1.begin((int) DISPLAY_SDA, (int) DISPLAY_SCL);
+    Wire1.begin((int)DISPLAY_SDA, (int)DISPLAY_SCL);
 #endif
 
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
@@ -139,7 +138,7 @@ void Display::initDisplay() {
 
     display.clearDisplay();
 
-    display.setTextColor(WHITE); // Draw white text
+    display.setTextColor(WHITE);  // Draw white text
 
     display.setTextWrap(false);
 

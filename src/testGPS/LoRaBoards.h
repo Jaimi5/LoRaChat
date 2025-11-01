@@ -16,7 +16,7 @@
 // #include <SD.h>
 // #endif
 
-// #if defined(ARDUINO_ARCH_ESP32)  
+// #if defined(ARDUINO_ARCH_ESP32)
 // #include <FS.h>
 // #include <WiFi.h>
 // #endif
@@ -46,8 +46,6 @@
 // #ifndef LORA_FREQ_CONFIG
 // #define LORA_FREQ_CONFIG        915.0
 // #endif
-
-
 
 
 // typedef struct {

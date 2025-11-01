@@ -18,7 +18,7 @@
         "LM_PREAMBLE_LENGTH": "8U",
         "LM_POWER": "6",
         "LM_DUTY_CYCLE": "100",
-        "MAXPACKETSIZE": "100",
+        "LM_MAX_PACKET_SIZE": "100",
         "HELLO_PACKETS_DELAY": "120",
         "DEFAULT_TIMEOUT": "HELLO_PACKETS_DELAY*5",
         "MIN_TIMEOUT": "20",

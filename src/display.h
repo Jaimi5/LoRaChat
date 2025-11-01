@@ -1,15 +1,15 @@
 #pragma once
 
-#include <SPI.h>
-#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <SPI.h>
+#include <Wire.h>
 #include "config.h"
 
-//OLED pins
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define DISP_ADDRESS 0x3C // Address 0x3D for 128x64
+// OLED pins
+#define SCREEN_WIDTH 128   // OLED display width, in pixels
+#define SCREEN_HEIGHT 64   // OLED display height, in pixels
+#define DISP_ADDRESS 0x3C  // Address 0x3D for 128x64
 
 class Display {
 public:

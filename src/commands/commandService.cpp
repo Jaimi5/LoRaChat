@@ -4,8 +4,15 @@ static const char* CMD_TAG = "CommandService";
 
 
 CommandService::CommandService() {
-    addCommand(Command("/help", "Print help", 0, 0, [this](String args) { return this->helpCommand(); }));
+    addCommand(
+        Command("/help", "Print help", 0, 0, [this](String args) { return this->helpCommand(); }));
     addCommand(Command("/exit", "Exit", 0, 0, [this](String args) { return this->exit(); }));
+}
+
+CommandService::~CommandService() {
+    if (commands != nullptr) {
+        delete[] commands;
+    }
 }
 
 String CommandService::executeCommand(String args) {
@@ -53,7 +60,8 @@ void CommandService::addCommand(Command command) {
 
     newCommands[commandsCount] = command;
 
-    if (commandsCount > 0) delete[] commands;
+    if (commandsCount > 0)
+        delete[] commands;
 
     commands = newCommands;
 
@@ -85,10 +93,12 @@ uint16_t CommandService::getCommandAddress(String command) {
     // If first parameter of the command is a hex number return it, otherwise return 0
     // The HEX value does not have the 0x prefix
     String firstCommand = command.substring(0, command.indexOf(" "));
-    if (firstCommand.length() == 0) return 0;
+    if (firstCommand.length() == 0)
+        return 0;
 
     for (uint8_t i = 0; i < firstCommand.length(); i++) {
-        if (!isHexadecimalDigit(firstCommand.charAt(i))) return 0;
+        if (!isHexadecimalDigit(firstCommand.charAt(i)))
+            return 0;
     }
 
     return strtol(firstCommand.c_str(), NULL, 16);
@@ -97,7 +107,8 @@ uint16_t CommandService::getCommandAddress(String command) {
 String CommandService::helpCommand() {
     String help = "Available commands:\n";
     for (uint8_t i = 0; i < commandsCount; i++) {
-        help += commands[i].getCommand() + " (" + commands[i].getCommandID() + ") - " + commands[i].getDescription() + "\n";
+        help += commands[i].getCommand() + " (" + commands[i].getCommandID() + ") - " +
+                commands[i].getDescription() + "\n";
     }
     return help;
 }
@@ -106,7 +117,8 @@ String CommandService::publicCommands() {
     String help = "";
     for (uint8_t i = 0; i < commandsCount; i++) {
         if (commands[i].getPublic())
-            help += commands[i].getCommand() + " (" + commands[i].getCommandID() + ") - " + commands[i].getDescription() + "\n";
+            help += commands[i].getCommand() + " (" + commands[i].getCommandID() + ") - " +
+                    commands[i].getDescription() + "\n";
     }
     return help;
 }
@@ -115,8 +127,8 @@ String CommandService::publicCommandsHTML() {
     String help = "";
     for (uint8_t i = 0; i < commandsCount; i++) {
         if (commands[i].getPublic())
-            help += "<dd>" + commands[i].getCommand() + " - " + commands[i].getDescription() + "</dd>";
+            help +=
+                "<dd>" + commands[i].getCommand() + " - " + commands[i].getDescription() + "</dd>";
     }
     return help;
-
 }

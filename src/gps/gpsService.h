@@ -4,13 +4,13 @@
 
 #include "config.h"
 
-//GPS libraries
+// GPS libraries
 #include <SPI.h>
 #include <TinyGPSPlus.h>
 
 #if defined(T_BEAM_V10)
 #include <HardwareSerial.h>
-#include <SparkFun_Ublox_Arduino_Library.h> //http://librarymanager/All#SparkFun_Ublox_GPS
+#include <SparkFun_Ublox_Arduino_Library.h>  //http://librarymanager/All#SparkFun_Ublox_GPS
 #elif defined(NAYAD_V1) || defined(NAYAD_V1R2)
 #include <SoftwareSerial.h>
 #endif
@@ -26,10 +26,8 @@
 #include "display/displayService.h"
 
 
-class GPSService: public MessageService {
-
+class GPSService : public MessageService {
 public:
-
     /**
      * @brief Construct a new GPSService object
      *
@@ -37,6 +35,12 @@ public:
     static GPSService& getInstance() {
         static GPSService instance;
         return instance;
+    }
+
+    ~GPSService() {
+        if (gpsCommandService != nullptr) {
+            delete gpsCommandService;
+        }
     }
 
     /**
@@ -111,7 +115,7 @@ public:
 
     String getGPSUpdatedWait(uint8_t maxTries = 10);
 
-    GPSCommandService* gpsCommandService = new GPSCommandService();
+    GPSCommandService* gpsCommandService = nullptr;
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
@@ -122,8 +126,8 @@ public:
     GPSMessage getGPSMessage();
 
 private:
-
-    GPSService(): MessageService(appPort::GPSApp, String("GPS")) {
+    GPSService() : MessageService(appPort::GPSApp, String("GPS")) {
+        gpsCommandService = new GPSCommandService();
         commandService = gpsCommandService;
     };
 

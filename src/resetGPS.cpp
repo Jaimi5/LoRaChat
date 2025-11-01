@@ -70,7 +70,8 @@
 //     axp.setPowerOutPut(AXP192_DCDC2, AXP202_ON);
 //     axp.setPowerOutPut(AXP192_EXTEN, AXP202_ON);
 //     axp.setPowerOutPut(AXP192_DCDC1, AXP202_ON);	// enables power to ESP32 on T-beam
-//     axp.setPowerOutPut(AXP192_DCDC3, AXP202_ON);	// I foresee similar benefit for restting T-watch
+//     axp.setPowerOutPut(AXP192_DCDC3, AXP202_ON);	// I foresee similar benefit for restting
+//     T-watch
 //     // where ESP32 is on DCDC3 but remember to change I2C pins and GPS pins!
 // #endif
 //     SerialGPS.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);

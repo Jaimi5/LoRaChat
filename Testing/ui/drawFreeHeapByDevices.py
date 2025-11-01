@@ -81,7 +81,7 @@ def draw_free_heap_by_devices(frame: Frame, directory):
     download_button = tk.Button(
         frame,
         text="Download Plot",
-        command=lambda: download_plot(canvas, directory, "RTTByDevice.png"),
+        command=lambda: download_plot(canvas, directory, "FreeHeapByDevice.png"),
     )
     download_button.pack(side=tk.BOTTOM)
 

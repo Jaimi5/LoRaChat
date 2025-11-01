@@ -16,13 +16,13 @@
 
 #pragma pack(1)
 
-enum SensorCommand: uint8_t {
+enum SensorCommand : uint8_t {
     Data = 0,
     Calibrate = 1,
 };
 
 
-class MeasurementMessage: public DataMessageGeneric {
+class MeasurementMessage : public DataMessageGeneric {
 public:
     SensorCommand sensorCommand;
 
@@ -46,7 +46,7 @@ public:
 
     void serializeDataSerialize(JsonObject& doc) {
         // Call the base class serialize function
-        ((DataMessageGeneric*) (this))->serialize(doc);
+        ((DataMessageGeneric*)(this))->serialize(doc);
 
         // Add the GPS data to the JSON object
         gps.serialize(doc);
@@ -72,11 +72,11 @@ public:
 
     void deserialize(JsonObject& doc) {
         // Call the base class serialize function
-        ((DataMessageGeneric*) (this))->deserialize(doc);
+        ((DataMessageGeneric*)(this))->deserialize(doc);
     }
 };
 
-class SensorCommandMessage: public DataMessageGeneric {
+class SensorCommandMessage : public DataMessageGeneric {
 public:
     SensorCommand sensorCommand;
     uint8_t payload[];
@@ -84,23 +84,23 @@ public:
     void serialize(JsonObject& doc) {
         switch (sensorCommand) {
             case SensorCommand::Data:
-                ((MeasurementMessage*) (this))->serialize(doc);
+                ((MeasurementMessage*)(this))->serialize(doc);
                 break;
             case SensorCommand::Calibrate:
                 // Call the base class serialize function
-                ((DataMessageGeneric*) (this))->serialize(doc);
+                ((DataMessageGeneric*)(this))->serialize(doc);
                 doc["sensorCommand"] = sensorCommand;
                 break;
         }
     }
 
     void deserialize(JsonObject& doc) {
-        switch ((SensorCommand) doc["sensorCommand"]) {
+        switch ((SensorCommand)doc["sensorCommand"]) {
             case SensorCommand::Data:
                 break;
             case SensorCommand::Calibrate:
                 // Call the base class deserialize function
-                ((DataMessageGeneric*) (this))->deserialize(doc);
+                ((DataMessageGeneric*)(this))->deserialize(doc);
                 break;
         }
 

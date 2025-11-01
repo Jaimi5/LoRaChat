@@ -9,10 +9,9 @@
 #include "sensor/metadata/metadataSensorMessage.h"
 
 #pragma pack(1)
-class MetadataMessage final: public DataMessageGeneric {
+class MetadataMessage final : public DataMessageGeneric {
 public:
-    MetadataMessage() {
-    }
+    MetadataMessage() {}
 
     GPSMessage gps;
     int metadataSendTimeInterval;
@@ -22,7 +21,7 @@ public:
 
     void serialize(JsonObject& doc) {
         // Call the base class serialize function
-        ((DataMessageGeneric*) (this))->serialize(doc);
+        ((DataMessageGeneric*)(this))->serialize(doc);
 
         // Add the GPS data to the JSON object
         gps.serialize(doc);

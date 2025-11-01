@@ -14,7 +14,7 @@
 
 #include "LoraMesher.h"
 
-class Led: public MessageService {
+class Led : public MessageService {
 public:
     /**
      * @brief Construct a new GPSService object
@@ -25,7 +25,13 @@ public:
         return instance;
     }
 
-    LedCommandService* ledCommandService = new LedCommandService();
+    ~Led() {
+        if (ledCommandService != nullptr) {
+            delete ledCommandService;
+        }
+    }
+
+    LedCommandService* ledCommandService = nullptr;
 
     void init();
 
@@ -48,7 +54,8 @@ public:
     void processReceivedMessage(messagePort port, DataMessage* message);
 
 private:
-    Led(): MessageService(LedApp, "Led") {
+    Led() : MessageService(LedApp, "Led") {
+        ledCommandService = new LedCommandService();
         commandService = ledCommandService;
     };
 

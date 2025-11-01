@@ -6,18 +6,15 @@
 
 #pragma pack(1)
 
-enum LedCommand: uint8_t {
-    Off = 0,
-    On = 1
-};
+enum LedCommand : uint8_t { Off = 0, On = 1 };
 
-class LedMessage: public DataMessageGeneric {
+class LedMessage : public DataMessageGeneric {
 public:
     LedCommand ledCommand;
 
     void serialize(JsonObject& doc) {
         // Call the base class serialize function
-        ((DataMessageGeneric*) (this))->serialize(doc);
+        ((DataMessageGeneric*)(this))->serialize(doc);
 
         // Add the derived class data to the JSON object
         doc["ledCommand"] = ledCommand;
@@ -25,7 +22,7 @@ public:
 
     void deserialize(JsonObject& doc) {
         // Call the base class deserialize function
-        ((DataMessageGeneric*) (this))->deserialize(doc);
+        ((DataMessageGeneric*)(this))->deserialize(doc);
 
         // Add the derived class data to the JSON object
         ledCommand = doc["ledCommand"];

@@ -24,7 +24,7 @@ void Metadata::stopMetadata() {
 }
 
 String Metadata::getJSON(DataMessage* message) {
-    MetadataMessage* metadataMessage = (MetadataMessage*) message;
+    MetadataMessage* metadataMessage = (MetadataMessage*)message;
     DynamicJsonDocument doc(1024);
     JsonObject jsonObj = doc.to<JsonObject>();
     JsonObject dataObj = jsonObj.createNestedObject("data");
@@ -39,14 +39,7 @@ String Metadata::getJSON(DataMessage* message) {
 
 
 void Metadata::createMetadataTask() {
-    int res = xTaskCreate(
-        metadataLoop,
-        "Metadata Task",
-        4096,
-        (void*) 1,
-        2,
-        &metadata_TaskHandle
-    );
+    int res = xTaskCreate(metadataLoop, "Metadata Task", 4096, (void*)1, 2, &metadata_TaskHandle);
 
     if (res != pdPASS) {
         ESP_LOGE(METADATA_TAG, "Failed to create metadata task");
@@ -62,7 +55,8 @@ void Metadata::metadataLoop(void* pvParameters) {
         if (!metadata.running)
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         else {
-            ESP_LOGV(METADATA_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+            ESP_LOGV(METADATA_TAG, "Stack space unused after entering the task: %d",
+                     uxTaskGetStackHighWaterMark(NULL));
 
             metadata.createAndSendMetadata();
             vTaskDelay(METADATA_UPDATE_DELAY / portTICK_PERIOD_MS);
@@ -76,7 +70,7 @@ void Metadata::createAndSendMetadata() {
 
     // uint8_t metadataSize = 1; //TODO: This should be dynamic with an array of sensors
     // uint16_t metadataSensorSize = metadataSize * sizeof(MetadataSensorMessage);
-    uint16_t messageWithHeaderSize = sizeof(MetadataMessage);// + metadataSensorSize;
+    uint16_t messageWithHeaderSize = sizeof(MetadataMessage);  // + metadataSensorSize;
 
     MetadataMessage* message = new MetadataMessage();
 
@@ -93,16 +87,15 @@ void Metadata::createAndSendMetadata() {
 
     // message->metadataSize = metadataSize;
 
-    //TODO: This should be a vector of sensors
-    // Temperature& temperature = Temperature::getInstance();
+    // TODO: This should be a vector of sensors
+    //  Temperature& temperature = Temperature::getInstance();
 
     // MetadataSensorMessage* tempMetadata = temperature.getMetadataMessage();
     // memcpy(message->sensorMetadata, tempMetadata, sizeof(MetadataSensorMessage));
 
-    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) message);
+    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*)message);
 
-    delete(message);
-
+    delete (message);
 }
 
 void Metadata::getJSONDataObject(JsonObject& doc, MetadataMessage* metadataMessage) {

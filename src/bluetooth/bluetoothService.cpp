@@ -7,13 +7,8 @@ static const char* BLE_TAG = "BluetoothService";
  *
  */
 void BluetoothService::createBluetoothTask() {
-    int res = xTaskCreate(
-        BluetoothLoop,
-        "Bluetooth Task",
-        4096,
-        (void*) 1,
-        2,
-        &bluetooth_TaskHandle);
+    int res =
+        xTaskCreate(BluetoothLoop, "Bluetooth Task", 4096, (void*)1, 2, &bluetooth_TaskHandle);
     if (res != pdPASS) {
         ESP_LOGE(BLE_TAG, "Bluetooth task handle error: %d", res);
     }
@@ -21,9 +16,9 @@ void BluetoothService::createBluetoothTask() {
 
 void BluetoothService::BluetoothLoop(void*) {
     BluetoothService& bluetoothService = BluetoothService::getInstance();
-    ESP_LOGV(BLE_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+    ESP_LOGV(BLE_TAG, "Stack space unused after entering the task: %d",
+             uxTaskGetStackHighWaterMark(NULL));
     for (;;) {
-
         bluetoothService.loop();
         vTaskDelay(20 / portTICK_PERIOD_MS);
     }
@@ -54,8 +49,7 @@ void callback(esp_spp_cb_event_t event, esp_spp_cb_param_t* param) {
         String help = MessageManager::getInstance().getAvailableCommands();
         Serial.println(help);
         instance.writeToBluetooth(help);
-    }
-    else if (event == ESP_SPP_CLOSE_EVT && !instance.SerialBT->hasClient()) {
+    } else if (event == ESP_SPP_CLOSE_EVT && !instance.SerialBT->hasClient()) {
         ESP_LOGV(BLE_TAG, "Bluetooth Disconnected");
         // TODO: Bluetooth and WiFi should not be used at the same time
     }
@@ -88,10 +82,11 @@ void BluetoothService::loop() {
 }
 
 void BluetoothService::processReceivedMessage(messagePort port, DataMessage* message) {
-    BluetoothMessage* bluetoothMessage = (BluetoothMessage*) message;
+    BluetoothMessage* bluetoothMessage = (BluetoothMessage*)message;
     switch (bluetoothMessage->type) {
         case BluetoothMessageType::bluetoothMessage:
-            writeToBluetooth(Helper::uint8ArrayToString(bluetoothMessage->message, bluetoothMessage->getPayloadSize()));
+            writeToBluetooth(Helper::uint8ArrayToString(bluetoothMessage->message,
+                                                        bluetoothMessage->getPayloadSize()));
             break;
         default:
             break;

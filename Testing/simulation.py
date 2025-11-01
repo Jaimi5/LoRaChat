@@ -53,13 +53,19 @@ class Simulation:
 
         # If there is a configuration file for the simulation then use it
         self.configFile = os.path.join(self.fileName, "simConfiguration.json")
+        simConfig = None
+        device_mapping = None
+
         if os.path.isfile(self.configFile):
             simConfig = changeConfigurationSerial.ChangeConfigurationSerial(
                 self.configFile,
-                ["ttgo-t-beam", "ttgo-lora32-v1", "esp-wrover-kitNAYAD_V1R2"],
+                ["ttgo-t-beam", "ttgo-lora32-v1", "esp-wrover-kitNAYAD_V1R2"],  # Fallback environments
             )
             simConfig.changeConfiguration()
+            device_mapping = simConfig.getDeviceMapping()
             print("Configuration changed", self.Name)
+            if device_mapping:
+                print(f"Using device mapping from config: {device_mapping}")
 
         if not noBuild:
             # Update the PlatformIO
@@ -67,6 +73,7 @@ class Simulation:
                 self.fileName,
                 self.shared_state_change,
                 self.shared_state,
+                device_mapping,  # Pass the device mapping from config
             )
 
             def waitUntilBuild():
@@ -131,6 +138,16 @@ class Simulation:
             int(simConfig.getTimeout()), self.shared_state_change, self.shared_state
         )
 
+        # Add timeout for waiting devices to start simulation (10 minutes)
+        self.startSimTimeout = timeout.Timeout(
+            10, self.shared_state_change, self.shared_state,
+            error_message="Timeout waiting for all devices to start simulation"
+        )
+
+        # Add timeout for waiting devices to end simulation (will be started after all devices start)
+        # This is in addition to the main timeout and provides earlier detection of stuck simulations
+        self.endSimTimeout = None
+
         ErrorOccurred = False
         WaitErrorOccurred = 15
 
@@ -162,14 +179,46 @@ class Simulation:
                         )
                         ErrorOccurred = True
                         self.timeout.cancel()
+                        self.startSimTimeout.cancel()
+                        if self.endSimTimeout:
+                            self.endSimTimeout.cancel()
+
+                    if self.shared_state["allDevicesStartedSim"]:
+                        print(Fore.GREEN + "All devices started simulation, canceling start timeout" + Fore.RESET)
+                        self.startSimTimeout.cancel()
+                        # Start a timeout for ending simulation (15 minutes after start)
+                        # self.endSimTimeout = timeout.Timeout(
+                        #     15, self.shared_state_change, self.shared_state,
+                        #     error_message="Timeout waiting for all devices to end simulation"
+                        # )
+
+                    if self.shared_state["allDevicesEndedSim"]:
+                        print(Fore.GREEN + "All devices ended simulation" + Fore.RESET)
+                        if self.endSimTimeout:
+                            self.endSimTimeout.cancel()
 
                     if self.shared_state["allDevicesEndedLogs"]:
                         print(Fore.GREEN + "All devices ended logs" + Fore.RESET)
                         self.timeout.cancel()
+                        self.startSimTimeout.cancel()
+                        if self.endSimTimeout:
+                            self.endSimTimeout.cancel()
                         break
 
         except KeyboardInterrupt:
-            print("KeyboardInterrupt")
+            print("\n" + Fore.YELLOW + "⚠ User interrupted simulation (Ctrl+C)" + Fore.RESET)
+
+            # Cancel all timeout timers to prevent orphaned threads
+            print("Cancelling timeout timers...")
+            self.timeout.cancel()
+            self.startSimTimeout.cancel()
+            if self.endSimTimeout:
+                self.endSimTimeout.cancel()
+
+            # Mark simulation as interrupted
+            self.shared_state["error"] = True
+            self.shared_state["error_message"] = "User interrupted (Ctrl+C)"
+            self.shared_state["error_time"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
         self.mqttClient.disconnect()
 

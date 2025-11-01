@@ -6,8 +6,7 @@
 
 #include "gpsMessage.h"
 
-class GPSCommandService: public CommandService {
+class GPSCommandService : public CommandService {
 public:
-
     GPSCommandService();
 };

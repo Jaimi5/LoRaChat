@@ -8,7 +8,8 @@
 
 #include "SoilSensorMessage.h"
 
-// PIN 12: https://github.com/INFWIN/mt05s-demo/blob/main/sourcecode/MT05S_ArduinoIDE_DOIT_ESP32_DevKit_V1/MT05S_ArduinoIDE_ESP32_DoIt_DevKit_V1.ino
+// PIN 12:
+// https://github.com/INFWIN/mt05s-demo/blob/main/sourcecode/MT05S_ArduinoIDE_DOIT_ESP32_DevKit_V1/MT05S_ArduinoIDE_ESP32_DoIt_DevKit_V1.ino
 
 
 class SoilHTSensor {
@@ -22,4 +23,3 @@ private:
 
     bool initialized = false;
 };
-

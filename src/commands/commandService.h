@@ -5,8 +5,9 @@
 
 class CommandService {
 public:
-
     CommandService();
+
+    ~CommandService();
 
     String executeCommand(String args);
 
@@ -31,5 +32,5 @@ public:
 
 private:
     uint8_t commandsCount = 0;
-    Command* commands;
+    Command* commands = nullptr;
 };

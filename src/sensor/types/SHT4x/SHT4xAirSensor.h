@@ -17,4 +17,3 @@ private:
 
     bool initialized = false;
 };
-

@@ -10,14 +10,14 @@ static const char* MS_TAG = "MessageService";
 
 class MessageService {
 public:
-
     MessageService(uint8_t id, String name) {
         serviceId = id;
         serviceName = name;
     };
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message) {
-        ESP_LOGE(MS_TAG, "processReceivedMessage not implemented for service %s", serviceName.c_str());
+        ESP_LOGE(MS_TAG, "processReceivedMessage not implemented for service %s",
+                 serviceName.c_str());
     };
 
     virtual String getJSON(DataMessage* message) {

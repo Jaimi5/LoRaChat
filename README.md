@@ -103,6 +103,30 @@ As we are using the Heltec WIFI LoRa 32 (V3) we needed to use a custom board con
 There is a Testing application that can be used to test the library. It is located in the `Testing` directory.
 After executing the Testing applications, there is too an UI application that can be used to visualize the results. It is located in the `UI` directory.
 
+## Quick Start
+
+```bash
+# 1. Install dependencies
+pip install -r ./Testing/requirements.txt
+
+# 2. Start MQTT broker (Docker)
+docker run -d --name emqx -p 1883:1883 -p 8083:8083 emqx/emqx
+
+# 3. Update WiFi credentials in src/config.h
+# WIFI_SSID and WIFI_PASSWORD
+
+# 4. Run the testing script
+python ./Testing/main.py my_experiment
+
+# 5. Follow interactive prompts:
+#    - Configure simulation parameters
+#    - Connect devices one-by-one (auto-detected)
+#    - Select environment for each device
+#    - Configure network topology (optional)
+
+# 6. Tests run automatically with retry support!
+```
+
 ## How to use the Testing application
 - Initiate a MQTT broker
 
@@ -121,13 +145,15 @@ Get your IP address of your local network and add it to the `config.h` file in t
 
 Add your WiFi credentials to the `config.h` file in the `WIFI_SSID` and `WIFI_PASSWORD` variables.
 
-- Add the devices COM port
+- (Optional) Check available COM ports
 
-Call firstly the next command to get the com ports of your devices:
+If you want to see which ports are currently available, you can run:
 
 ```bash
-./Testing/main.py directoryName -p
+python ./Testing/main.py directoryName -p
 ```
+
+**Note**: This step is optional! The new interactive device mapping will automatically detect ports as you connect each device during configuration.
 
 - Execute requirements.txt
 
@@ -137,29 +163,103 @@ Run the following command to install the requirements:
 pip install -r ./Testing/requirements.txt
 ```
 
-After that, go to ./Testing/updatePlatformio.py and add the com ports of the devices like this:
-
-```python
-envPort = {
-    "COM12": "ttgo-lora32-v1",
-    "COM14": "ttgo-lora32-v1",
-    "COM32": "ttgo-t-beam"
-}
-```
-
-Adding their respective platformio environment.
+This will install the following dependencies:
+- **platformio**: Device management and compilation
+- **paho-mqtt**: MQTT client for device communication
+- **networkx**: Graph operations for network topology
+- **matplotlib**: Visualization and plotting
+- **colorama**: Colored terminal output
+- **numpy**: Numerical computations and matrix operations
+- **pandas**: Data analysis and manipulation
 
 - Initiate the script
 
 Run the following command to initiate the script:
 
 ```bash
-./Testing/main.py directoryName
+python ./Testing/main.py directoryName
 ```
 
 The `directoryName` is the name of the directory where the results will be saved. If the directory does not exist it will be created.
 
-After that it will ask you some questions, the most important part is to add the packet size you want to test. The packet size is the size of the payload of the message. The header of the message is not included in the packet size.
+### Configuration Process
+
+The script will guide you through an interactive configuration process:
+
+1. **Basic Configuration**: You'll be asked for simulation parameters (packet count, packet delay, packet size, etc.)
+
+2. **Interactive Device Mapping** (NEW FEATURE):
+   - The system will detect devices **one by one** as you connect them
+   - For each device:
+     - Start with devices disconnected (or disconnect all)
+     - Connect a device
+     - Press Enter
+     - System automatically detects the new port (e.g., "COM7")
+     - Select the PlatformIO environment from the list:
+       1. ttgo-t-beam
+       2. ttgo-t-beam-v1-2
+       3. ttgo-lora32-v1
+       4. esp-wrover-kitNAYAD_V1R2
+       5. MAKERFABS_SENSELORA_MOISTURE
+     - Repeat for each device
+     - Type 'done' when all devices are configured
+
+   This mapping is saved in `simConfiguration.json` and can be reused across tests!
+
+3. **Adjacency Graph** (Optional): Configure network topology if needed
+
+The configuration is saved and can be reused or modified for future tests.
+
+### New Features
+
+#### 🔄 Automatic Retry Mechanism
+- **Smart Retries**: Failed simulations automatically retry up to **5 times**
+- **Retry Delay**: 15-second wait between retry attempts
+- **Organized Results**: Each retry creates a separate directory (`experiment_retry1`, `experiment_retry2`, etc.)
+- **Detailed Logging**: Error messages logged for each failure
+- **Graceful Handling**: If all retries fail, the system moves to the next simulation
+
+#### ⏱️ Comprehensive Timeout System
+The testing framework includes multiple timeout layers to detect issues quickly:
+
+- **Global Simulation Timeout**: Configurable (default: 45 minutes) - Overall test duration limit
+- **Device Start Timeout**: 10 minutes - Ensures all devices start the simulation
+- **Device End Simulation Timeout**: 15 minutes - Detects stuck simulations
+- **Monitor Startup Timeout**: 5 minutes per device - Detects monitoring issues
+- **Build/Upload Timeout**: 10 minutes - Prevents hanging during build
+
+All timeouts can be configured in `simConfiguration.json` via the `SimulationTimeoutMinutes` field.
+
+#### 📝 Configurable Device Mapping
+- **No More Code Editing**: Device-to-environment mapping stored in configuration files
+- **Portable Configurations**: Move test configs between different machines
+- **Per-Test Customization**: Each simulation can use different device sets
+- **Backward Compatible**: Old configurations still work with global fallback
+
+> **Migration Note**: If you previously edited `updatePlatformio.py` to add COM ports manually, you can continue using that method (it still works as a fallback). However, the new interactive device mapping is recommended for easier configuration and portability.
+
+#### Example simConfiguration.json
+
+```json
+{
+  "SimulationTimeoutMinutes": "45",
+  "DeviceMapping": {
+    "COM7": "ttgo-t-beam",
+    "COM9": "ttgo-t-beam",
+    "COM11": "ttgo-lora32-v1"
+  },
+  "Simulator": {
+    "PACKET_COUNT": "200",
+    "PACKET_DELAY": "120000",
+    "PACKET_SIZE": "50"
+  },
+  "LoRaMesher": {
+    "LM_BAND": "869.900F",
+    "LM_POWER": "6"
+  },
+  "LoRaMesherAdjacencyGraph": []
+}
+```
 
 ## Results
 

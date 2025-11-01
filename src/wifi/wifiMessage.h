@@ -6,7 +6,7 @@
 
 #pragma pack(1)
 
-enum WiFiMessageType: uint8_t {
+enum WiFiMessageType : uint8_t {
     addSSID = 1,
     addPSD = 2,
     saveConfig = 3,
@@ -17,7 +17,7 @@ enum WiFiMessageType: uint8_t {
     resetConfig = 8
 };
 
-class WiFiMessage: public DataMessageGeneric {
+class WiFiMessage : public DataMessageGeneric {
 public:
     uint8_t url;
     uint8_t payload[];

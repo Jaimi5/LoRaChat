@@ -7,7 +7,7 @@ static EventGroupHandle_t s_wifi_event_group;
  * - we are connected to the AP with an IP
  * - we failed to connect after the maximum amount of retries */
 #define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT      BIT1
+#define WIFI_FAIL_BIT BIT1
 
 static const char* TAG = "WiFi";
 
@@ -44,13 +44,7 @@ void WiFiServerService::initWiFi() {
 }
 
 void WiFiServerService::createWiFiTask() {
-    int res = xTaskCreate(
-        wifi_task,
-        "WiFi Task",
-        4096,
-        (void*)1,
-        2,
-        &wifi_TaskHandle);
+    int res = xTaskCreate(wifi_task, "WiFi Task", 4096, (void*)1, 2, &wifi_TaskHandle);
     if (res != pdPASS)
         ESP_LOGE(TAG, "WiFi task handle error: %d", res);
 }
@@ -61,27 +55,27 @@ void WiFiServerService::wifi_task(void*) {
     LoRaMeshService& LoRaMeshService = LoRaMeshService::getInstance();
 
     for (;;) {
-        /* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
-         * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
-        EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-            pdTRUE,
-            pdFALSE,
-            portMAX_DELAY);
+        /* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection
+         * failed for the maximum number of re-tries (WIFI_FAIL_BIT). The bits are set by
+         * event_handler() (see above) */
+        EventBits_t bits = xEventGroupWaitBits(
+            s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdTRUE, pdFALSE, portMAX_DELAY);
 
-        ESP_LOGV(TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+        ESP_LOGV(TAG, "Stack space unused after entering the task: %d",
+                 uxTaskGetStackHighWaterMark(NULL));
 
-        /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
-         * happened. */
+        /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which
+         * event actually happened. */
         if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
             LoRaMeshService.setGateway();
             wiFiServerService.connected = true;
-            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid.c_str(), wiFiServerService.password.c_str());
-        }
-        else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
+            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid.c_str(),
+                     wiFiServerService.password.c_str());
+        } else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
             wiFiServerService.connected = false;
             LoRaMeshService.removeGateway();
-            ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", wiFiServerService.ssid.c_str(), wiFiServerService.password.c_str());
+            ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
+                     wiFiServerService.ssid.c_str(), wiFiServerService.password.c_str());
         }
 
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
@@ -89,27 +83,23 @@ void WiFiServerService::wifi_task(void*) {
     }
 }
 
-static void wifi_event_handler(void* arg, esp_event_base_t event_base,
-    int32_t event_id, void* event_data) {
+static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id,
+                               void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
-    }
-    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (s_retry_num < MAX_CONNECTION_TRY) {
             esp_wifi_connect();
             s_retry_num++;
             // ESP_LOGI(TAG,"retry to connect to the AP");
-        }
-        else {
+        } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
         // ESP_LOGI(TAG,"connect to the AP fail");
-    }
-    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_STOP) {
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_STOP) {
         xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
-    }
-    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        // ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
         // ESP_LOGI(TAG,"got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
 
@@ -118,7 +108,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 }
 
 void WiFiServerService::wifi_init_sta() {
-    //Initialize NVS
+    // Initialize NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -142,25 +132,17 @@ void WiFiServerService::wifi_init_sta() {
 
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-        ESP_EVENT_ANY_ID,
-        &wifi_event_handler,
-        NULL,
-        &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-        IP_EVENT_STA_GOT_IP,
-        &wifi_event_handler,
-        NULL,
-        &instance_got_ip));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &instance_got_ip));
 }
 
 void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* message) {
     ESP_LOGE(TAG, "Receive messages on WiFi is not implemented");
 }
 
-void WiFiServerService::sendMessage(DataMessage* message) {
-
-}
+void WiFiServerService::sendMessage(DataMessage* message) {}
 
 String WiFiServerService::addSSID(String ssid) {
     // Copy the string to the ssid
@@ -226,13 +208,11 @@ bool WiFiServerService::isConnected() {
         // Connected to an AP
         // ESP_LOGV(TAG, "Connected to AP with SSID: %s", ap_info.ssid);
         return true;
-    }
-    else if (ret == ESP_ERR_WIFI_CONN) {
+    } else if (ret == ESP_ERR_WIFI_CONN) {
         // Not connected to an AP
         // ESP_LOGV(TAG, "Not connected to an AP");
         return false;
-    }
-    else {
+    } else {
         // Other error
         ESP_LOGV(TAG, "Failed to get AP info: %s", esp_err_to_name(ret));
     }
@@ -289,7 +269,7 @@ bool WiFiServerService::disconnectWiFi() {
 String WiFiServerService::getIP() {
     if (!initialized)
         return F("No IP");
-    //TODO: Check if this is the correct way to get the IP
+    // TODO: Check if this is the correct way to get the IP
 
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (netif == NULL) {

@@ -2,11 +2,10 @@
 
 static const char* MANAGER_TAG = "MANAGER";
 
-void MessageManager::init() {
-}
+void MessageManager::init() {}
 
 void MessageManager::addMessageService(MessageService* service) {
-    //Add ordered by serviceId
+    // Add ordered by serviceId
     bool added = false;
     for (int i = 0; i < services.size(); i++) {
         if (services[i]->serviceId > service->serviceId) {
@@ -132,7 +131,8 @@ void MessageManager::processReceivedMessage(messagePort port, DataMessage* messa
 
     // TODO: Add a list to track the messages already received to avoid loops and duplicates
 
-    if (message->addrDst != 0 && message->addrDst != LoRaMeshService::getInstance().getLocalAddress()) {
+    if (message->addrDst != 0 &&
+        message->addrDst != LoRaMeshService::getInstance().getLocalAddress()) {
         ESP_LOGI(MANAGER_TAG, "Message not for me");
         if (port == MqttPort) {
             sendMessage(LoRaMeshPort, message);
@@ -194,10 +194,9 @@ void MessageManager::sendMessageWiFi(DataMessage* message) {
 
     if (wifi.isConnected()) {
         ESP_LOGE(MANAGER_TAG, "Error sending message to WiFi");
-        //TODO: Retry adding it into a queue and send it later or send to closest gateway 
+        // TODO: Retry adding it into a queue and send it later or send to closest gateway
         return;
-    }
-    else
+    } else
         ESP_LOGE(MANAGER_TAG, "WiFi not connected");
 
     LoRaMeshService& mesher = LoRaMeshService::getInstance();

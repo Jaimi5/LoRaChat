@@ -67,7 +67,7 @@ class PacketService:
                     self.status.startedDevice,
                     self.status.checkIfAllDevicesStarted,
                     "allDevicesStartedSim",
-                    "Device already started simulation",
+                    f"Device {packet['data']['addrSrc']} already started simulation",
                     "All devices started simulation",
                 )
 

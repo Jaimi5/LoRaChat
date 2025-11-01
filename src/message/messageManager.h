@@ -52,8 +52,7 @@ public:
     String printDataMessageHeader(String title, DataMessage* message);
 
 private:
-
-    MessageManager() {};
+    MessageManager(){};
 
     std::vector<MessageService*> services;
 
@@ -61,7 +60,7 @@ private:
 
     TaskHandle_t receiveMessageManager_TaskHandle = NULL;
 
-    //TODO: Fix that to a specific sender
+    // TODO: Fix that to a specific sender
     static void sendMessageLoRaMesher(DataMessage* message);
 
     static void sendMessageBluetooth(DataMessage* message) {};

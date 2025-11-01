@@ -95,32 +95,53 @@ def main():
                 )
             )
 
-    for config in simConfigurations:
-        retries = 0
-        while True and retries < 3:
-            directoryName = os.path.join(directory, config.getName())
-            if retries > 0:
-                directoryName = directoryName + str(retries)
-                os.makedirs(directoryName, exist_ok=True)
-                # Copy the file "simConfiguration.json" to the new directory
-                config.copyConfiguration(directoryName)
+    # Maximum number of retries per simulation (configurable)
+    MAX_RETRIES = 5
+    RETRY_DELAY = 15  # seconds
 
-            sim = simulation.Simulation(
-                directoryName,
-                noBuild,
-                config.getName(),
-            )
+    try:
+        for config in simConfigurations:
+            retries = 0
+            success = False
 
-            if sim.error():
-                print(
-                    "Error in simulation " + config.getName(),
-                    "Retrying number " + str(retries),
+            while retries < MAX_RETRIES and not success:
+                directoryName = os.path.join(directory, config.getName())
+
+                # Only create retry directories if we're actually retrying
+                if retries > 0:
+                    directoryName = directoryName + "_retry" + str(retries)
+                    os.makedirs(directoryName, exist_ok=True)
+                    # Copy the file "simConfiguration.json" to the new directory
+                    config.copyConfiguration(directoryName)
+                    print(f"Retry {retries}/{MAX_RETRIES} for simulation: {config.getName()}")
+
+                sim = simulation.Simulation(
+                    directoryName,
+                    noBuild,
+                    config.getName(),
                 )
-                sleep(10)
-                retries += 1
-                continue
 
-            break
+                if sim.error():
+                    retries += 1
+                    if retries < MAX_RETRIES:
+                        print(
+                            f"Error in simulation {config.getName()}: {sim.shared_state.get('error_message', 'Unknown error')}"
+                        )
+                        print(f"Waiting {RETRY_DELAY} seconds before retry {retries}/{MAX_RETRIES}...")
+                        sleep(RETRY_DELAY)
+                    else:
+                        print(
+                            f"Simulation {config.getName()} failed after {MAX_RETRIES} attempts. Skipping."
+                        )
+                else:
+                    success = True
+                    print(f"Simulation {config.getName()} completed successfully!")
+                    break
+
+    except KeyboardInterrupt:
+        print("\n⚠ Testing interrupted by user (Ctrl+C)")
+        print("Cleaning up and exiting...")
+        sys.exit(0)
 
     print("Successfully closed the program")
 

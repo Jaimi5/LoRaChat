@@ -22,7 +22,7 @@
 
 // #include "sensor/dht22/dht22.h"
 
-class Sim: public MessageService {
+class Sim : public MessageService {
 public:
     /**
      * @brief Construct a new GPSService object
@@ -33,7 +33,13 @@ public:
         return instance;
     }
 
-    SimCommandService* simCommandService = new SimCommandService();
+    ~Sim() {
+        if (simCommandService != nullptr) {
+            delete simCommandService;
+        }
+    }
+
+    SimCommandService* simCommandService = nullptr;
 
     SimulatorService* service = nullptr;
 
@@ -52,7 +58,8 @@ public:
     void sendPacketsToServer(size_t packetCount, size_t packetSize, size_t delayMs);
 
 private:
-    Sim(): MessageService(SimApp, "Sim") {
+    Sim() : MessageService(SimApp, "Sim") {
+        simCommandService = new SimCommandService();
         commandService = simCommandService;
     };
 

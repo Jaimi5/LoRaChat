@@ -7,8 +7,8 @@
 
 #pragma pack(1)
 
-//Message Ports
-enum messagePort: uint8_t {
+// Message Ports
+enum messagePort : uint8_t {
     LoRaMeshPort = 1,
     BluetoothPort = 2,
     WiFiPort = 3,
@@ -16,9 +16,10 @@ enum messagePort: uint8_t {
     InternalPort = 5,
 };
 
-//TODO: This should be defined by the user, all the apps that are available and their numbers should be the same
-//TODO: in all the nodes of the network.
-enum appPort: uint8_t {
+// TODO: This should be defined by the user, all the apps that are available and their numbers
+// should be the same
+// TODO: in all the nodes of the network.
+enum appPort : uint8_t {
     LoRaChat = 1,
     BluetoothApp = 2,
     WiFiApp = 3,
@@ -44,11 +45,9 @@ public:
     uint16_t addrSrc;
     uint16_t addrDst;
 
-    uint32_t messageSize; //Message Size of the payload no include header
+    uint32_t messageSize;  // Message Size of the payload no include header
 
-    uint32_t getDataMessageSize() {
-        return sizeof(DataMessageGeneric) + messageSize;
-    }
+    uint32_t getDataMessageSize() { return sizeof(DataMessageGeneric) + messageSize; }
 
     void serialize(JsonObject& doc) {
         // doc["appPortDst"] = appPortDst;
@@ -60,8 +59,8 @@ public:
     }
 
     void deserialize(JsonObject& doc) {
-        appPortDst = (appPort) doc["appPortDst"];
-        appPortSrc = (appPort) doc["appPortSrc"];
+        appPortDst = (appPort)doc["appPortDst"];
+        appPortSrc = (appPort)doc["appPortSrc"];
         messageId = doc["messageId"];
         addrSrc = doc["addrSrc"];
         addrDst = doc["addrDst"];
@@ -69,7 +68,7 @@ public:
     }
 };
 
-class DataMessage: public DataMessageGeneric {
+class DataMessage : public DataMessageGeneric {
 public:
     uint8_t message[];
 };

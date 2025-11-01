@@ -2,14 +2,13 @@
 #include "images.h"
 
 void DisplayService::createDisplayTask() {
-    xTaskCreatePinnedToCore(
-        displayTask, /* Task function. */
-        "DisplayTask", /* name of task. */
-        2048, /* Stack size of task */
-        this, /* parameter of the task */
-        3, /* priority of the task */
-        &display_TaskHandle, /* Task handle to keep track of created task */
-        0); /* pin task to core 0 */
+    xTaskCreatePinnedToCore(displayTask,         /* Task function. */
+                            "DisplayTask",       /* name of task. */
+                            2048,                /* Stack size of task */
+                            this,                /* parameter of the task */
+                            3,                   /* priority of the task */
+                            &display_TaskHandle, /* Task handle to keep track of created task */
+                            0);                  /* pin task to core 0 */
 }
 
 void DisplayService::init() {
@@ -35,7 +34,7 @@ void DisplayService::init() {
 
     display.clearDisplay();
 
-    display.setTextColor(WHITE); // Draw white text
+    display.setTextColor(WHITE);  // Draw white text
 
     display.setTextWrap(false);
 
@@ -125,7 +124,8 @@ String DisplayService::displayBlink(uint16_t dst) {
         displayService.display.fillRect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK);
         displayService.display.display();
 
-        if (i == 4) break;
+        if (i == 4)
+            break;
         vTaskDelay(500 / portTICK_PERIOD_MS);
     }
 
@@ -162,7 +162,8 @@ String DisplayService::clearDisplay(uint16_t dst) {
 
 void DisplayService::displayTask(void* pvParameters) {
     DisplayService& displayService = DisplayService::getInstance();
-    ESP_LOGV(DISPLAY_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+    ESP_LOGV(DISPLAY_TAG, "Stack space unused after entering the task: %d",
+             uxTaskGetStackHighWaterMark(NULL));
 
     // Display the initial logo
     displayService.displayLogo(0);
@@ -210,7 +211,8 @@ String DisplayService::displayLogo(uint16_t dst, uint16_t src) {
 
     // displayTest.drawXBitmap(0, 0, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, WHITE);
     // Draw a bitmap icon in the middle of the screen
-    display.drawXBitmap((DISPLAY_WIDTH - LOGO_WIDTH) / 2, 15, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, WHITE);
+    display.drawXBitmap((DISPLAY_WIDTH - LOGO_WIDTH) / 2, 15, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT,
+                        WHITE);
 
     display.display();
 
@@ -249,7 +251,7 @@ DataMessage* DisplayService::getDataMessage(JsonObject data) {
 
     displayMessage->deserialize(data);
 
-    return ((DataMessage*) displayMessage);
+    return ((DataMessage*)displayMessage);
 }
 
 DataMessage* DisplayService::getDisplayMessage(DisplayCommand command, uint16_t dst, String text) {
@@ -261,14 +263,14 @@ DataMessage* DisplayService::getDisplayMessage(DisplayCommand command, uint16_t 
 
     switch (command) {
         case DisplayCommand::DisplayText: {
-                displayTextSize = text.length();
-                if (displayTextSize > 128) {
-                    ESP_LOGE(DISPLAY_TAG, "displayText is too long");
-                    return nullptr;
-                }
-                strcpy(displayMessage->displayText, text.c_str());
-                break;
+            displayTextSize = text.length();
+            if (displayTextSize > 128) {
+                ESP_LOGE(DISPLAY_TAG, "displayText is too long");
+                return nullptr;
             }
+            strcpy(displayMessage->displayText, text.c_str());
+            break;
+        }
         default:
             break;
     }
@@ -281,12 +283,12 @@ DataMessage* DisplayService::getDisplayMessage(DisplayCommand command, uint16_t 
     displayMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
     displayMessage->addrDst = dst;
 
-    return ((DataMessage*) displayMessage);
+    return ((DataMessage*)displayMessage);
 }
 
 void DisplayService::processReceivedMessage(messagePort port, DataMessage* message) {
     DisplayService& displayService = DisplayService::getInstance();
-    DisplayMessage* displayMessage = (DisplayMessage*) message;
+    DisplayMessage* displayMessage = (DisplayMessage*)message;
 
     switch (displayMessage->displayCommand) {
         case DisplayCommand::DisplayOn:
@@ -343,7 +345,8 @@ void DisplayService::printLine(const String& str, int& x, int y, int size, int m
 
     if (move) {
         x -= 2;
-        if (x < minX) x = display.width();
+        if (x < minX)
+            x = display.width();
     }
 }
 
@@ -360,9 +363,10 @@ void DisplayService::addText(String text) {
         setupTextMovement(i, displayTextVector[i]);
     }
 
-    if (staticLines < displayTextVector.size()) { // Check to prevent access to non-existent vector elements
-        displayTextVector[staticLines] = text; // Add new text to the first dynamic line
-        setupTextMovement(staticLines, text); // Set up movement only if necessary
+    if (staticLines <
+        displayTextVector.size()) {  // Check to prevent access to non-existent vector elements
+        displayTextVector[staticLines] = text;  // Add new text to the first dynamic line
+        setupTextMovement(staticLines, text);   // Set up movement only if necessary
     }
 
     if (displayTextVector.size() > maxLines) {
@@ -378,8 +382,7 @@ void DisplayService::setupTextMovement(int line, const String& text) {
         xPos[line] = display.width();
         minXPos[line] = -6 * text.length();
         moveStatus[line] = true;
-    }
-    else {
+    } else {
         xPos[line] = 0;
         minXPos[line] = 0;
         moveStatus[line] = false;
@@ -388,13 +391,15 @@ void DisplayService::setupTextMovement(int line, const String& text) {
 
 void DisplayService::setTitle() {
     String title = "LoRaMesher - v0.0.8";
-    String device_id = "Device ID: " + String(LoRaMeshService::getInstance().getLocalAddress(), HEX);
+    String device_id =
+        "Device ID: " + String(LoRaMeshService::getInstance().getLocalAddress(), HEX);
 
     // Method to update the title
     displayTextVector[0] = title;
-    setupTextMovement(0, title); // Ensure title settings are correct, but typically no scroll
+    setupTextMovement(0, title);  // Ensure title settings are correct, but typically no scroll
 
     // Method to update the device ID
     displayTextVector[1] = device_id;
-    setupTextMovement(1, device_id); // Ensure device ID settings are correct, but typically no scroll
+    setupTextMovement(1,
+                      device_id);  // Ensure device ID settings are correct, but typically no scroll
 }

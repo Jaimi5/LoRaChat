@@ -44,11 +44,11 @@ SHT4xAirSensorMessage SHT4xAirSensor::read() {
     // error = sht4x.measureHighPrecision(temp, humidity);
     // if (error) {
     //     errorToString(error, errorMessage, 256);
-    //     ESP_LOGE(AIR_SENSOR_TAG, "Error trying to execute measureHighPrecision(): %s", errorMessage);
+    //     ESP_LOGE(AIR_SENSOR_TAG, "Error trying to execute measureHighPrecision(): %s",
+    //     errorMessage);
     // }
     // else
     //     ESP_LOGI(AIR_SENSOR_TAG, "Temperature: %f, Humidity: %f", temp, humidity);
 
     // return SHT4xAirSensorMessage(temp, humidity);
 }
-

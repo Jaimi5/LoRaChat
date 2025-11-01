@@ -6,10 +6,7 @@
 
 #pragma pack(1)
 
-enum GPSMessageType: uint8_t {
-    reqGPS = 1,
-    getGPS = 2
-};
+enum GPSMessageType : uint8_t { reqGPS = 1, getGPS = 2 };
 
 class GPSMessage {
 public:
@@ -25,7 +22,6 @@ public:
     uint16_t year;
 
     void serialize(JsonObject& doc) {
-
         JsonObject gps = doc.createNestedObject("gps");
         gps["latitude"] = latitude;
         gps["longitude"] = longitude;
@@ -40,9 +36,10 @@ public:
             month = 1;
         }
 
-        char isoTime[27]; // Increased size to accommodate the maximum possible length of the formatted string
-        snprintf(isoTime, sizeof(isoTime), "%04d-%02d-%02dT%02d:%02d:%02dZ",
-            year, month, day, hour, minute, second);
+        char isoTime[27];  // Increased size to accommodate the maximum possible length of the
+                           // formatted string
+        snprintf(isoTime, sizeof(isoTime), "%04d-%02d-%02dT%02d:%02d:%02dZ", year, month, day, hour,
+                 minute, second);
 
         doc["timestamp"] = isoTime;
     }
@@ -58,12 +55,12 @@ public:
     // }
 };
 
-class GPSMessageGeneric: public DataMessageGeneric {
+class GPSMessageGeneric : public DataMessageGeneric {
 public:
     GPSMessageType type;
 };
 
-class GPSMessageResponse: public GPSMessageGeneric {
+class GPSMessageResponse : public GPSMessageGeneric {
 public:
     GPSMessage gps;
 };

@@ -2,8 +2,8 @@
 
 #include <Arduino.h>
 
-#include "message/messageService.h"
 #include "message/messageManager.h"
+#include "message/messageService.h"
 
 #include "sensorCommandService.h"
 #include "sensorServiceMessage.h"
@@ -25,7 +25,7 @@
 // Services
 #include "gps/gpsService.h"
 
-class SensorService: public MessageService {
+class SensorService : public MessageService {
 public:
     /**
      * @brief Construct a new GPSService object
@@ -34,6 +34,12 @@ public:
     static SensorService& getInstance() {
         static SensorService instance;
         return instance;
+    }
+
+    ~SensorService() {
+        if (sensorCommandService != nullptr) {
+            delete sensorCommandService;
+        }
     }
 
     void init();
@@ -48,10 +54,11 @@ public:
 
     void sensorsOff();
 
-    SensorCommandService* sensorCommandService = new SensorCommandService();
+    SensorCommandService* sensorCommandService = nullptr;
 
 private:
-    SensorService(): MessageService(SensorApp, "Sensor") {
+    SensorService() : MessageService(SensorApp, "Sensor") {
+        sensorCommandService = new SensorCommandService();
         commandService = sensorCommandService;
     };
 

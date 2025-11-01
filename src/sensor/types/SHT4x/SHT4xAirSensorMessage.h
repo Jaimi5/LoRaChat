@@ -12,7 +12,8 @@ public:
 
     SHT4xAirSensorMessage() {}
 
-    SHT4xAirSensorMessage(float temperature, float humidity): temperature(temperature), humidity(humidity) {}
+    SHT4xAirSensorMessage(float temperature, float humidity)
+        : temperature(temperature), humidity(humidity) {}
 
     void serialize(JsonArray& doc) {
         JsonObject humObj = doc.createNestedObject();

@@ -72,10 +72,9 @@
 //         metadataMessage->type = serviceId;
 //         metadataMessage->variance = getVariance();
 //         metadataMessage->stDev = getStandardDeviation();
-//         metadataMessage->sampleSize = readValues > STORED_SENSOR_DATA ? STORED_SENSOR_DATA : readValues;
-//         metadataMessage->sendTimeInterval = readEveryMs;
-//         metadataMessage->calibration = 0;
-//         metadataMessage->missingValues = 0;
+//         metadataMessage->sampleSize = readValues > STORED_SENSOR_DATA ? STORED_SENSOR_DATA :
+//         readValues; metadataMessage->sendTimeInterval = readEveryMs; metadataMessage->calibration
+//         = 0; metadataMessage->missingValues = 0;
 
 //         return metadataMessage;
 //     };

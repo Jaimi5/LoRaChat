@@ -1,25 +1,25 @@
 #include <Arduino.h>
 
-//Configuration
+// Configuration
 #include "config.h"
 
-//Log
-#include "esp_log.h"
+// Log
 #include "esp32-hal-log.h"
+#include "esp_log.h"
 
-//Manager
+// Manager
 #include "message/messageManager.h"
 
-//LoRaMesh
+// LoRaMesh
 #include "loramesh/loraMeshService.h"
 
-//WiFi
+// WiFi
 #include "wifi/wifiServerService.h"
 
-//Sensors
+// Sensors
 #include "sensor/sensorService.h"
 
-//Metadata
+// Metadata
 #include "sensor/metadata/metadata.h"
 
 // Display
@@ -122,7 +122,7 @@ void initWiFi() {
 LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
 
 void initLoRaMesher() {
-    //Init LoRaMesher
+    // Init LoRaMesher
     loraMeshService.initLoraMesherService();
 }
 
@@ -148,7 +148,7 @@ void initMQTT() {
 GPSService& gpsService = GPSService::getInstance();
 
 void initGPS() {
-    //Initialize GPS
+    // Initialize GPS
     gpsService.initGPS();
 }
 
@@ -222,8 +222,10 @@ void initWire() {
 
 #pragma endregion
 
-// TODO: The following line could be removed if we add the files in /src to /lib. However, at this moment, it generates a lot of errors
-// TODO: https://docs.platformio.org/en/stable/advanced/unit-testing/structure/shared-code.html#unit-testing-shared-code
+// TODO: The following line could be removed if we add the files in /src to /lib. However, at this
+// moment, it generates a lot of errors
+// TODO:
+// https://docs.platformio.org/en/stable/advanced/unit-testing/structure/shared-code.html#unit-testing-shared-code
 
 #ifndef PIO_UNIT_TESTING
 
@@ -232,9 +234,9 @@ void setup() {
     Serial.begin(115200);
 
     // Set log level
-    esp_log_level_set("*", ESP_LOG_VERBOSE);
+    esp_log_level_set("*", ESP_LOG_INFO);
 
-    ESP_LOGV(TAG, "Build environment name: %s", BUILD_ENV_NAME);
+    ESP_LOGI(TAG, "Build environment name: %s", BUILD_ENV_NAME);
 
     // Initialize Wire
     initWire();
@@ -351,6 +353,6 @@ void loop() {
     //     ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
     //     ESP.restart();
     // }
-    }
+}
 
 #endif

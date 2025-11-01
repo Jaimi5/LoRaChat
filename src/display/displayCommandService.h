@@ -6,7 +6,7 @@
 
 #include "displayMessage.h"
 
-class DisplayCommandService: public CommandService {
+class DisplayCommandService : public CommandService {
 public:
     DisplayCommandService();
 };

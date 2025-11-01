@@ -29,16 +29,16 @@ void WaterLevelSensor::init() {
     // ESP_LOGV(WATER_LEVEL_SENSOR_TAG, "Sensor ID: 0x %X", vl53.sensorID());
 
     // if (!vl53.startRanging()) {
-    //     ESP_LOGE(WATER_LEVEL_SENSOR_TAG, "Error on start ranging of VL sensor: %d", vl53.vl_status);
-    //     return;
+    //     ESP_LOGE(WATER_LEVEL_SENSOR_TAG, "Error on start ranging of VL sensor: %d",
+    //     vl53.vl_status); return;
     // }
 
     // ESP_LOGV(WATER_LEVEL_SENSOR_TAG, "Ranging started");
 
     // // Valid timing budgets: 15, 20, 33, 50, 100, 200 and 500ms!
     // if (!vl53.setTimingBudget(500)) {
-    //     ESP_LOGE(WATER_LEVEL_SENSOR_TAG, "Error on set timing budget of VL sensor: %d", vl53.vl_status);
-    //     return;
+    //     ESP_LOGE(WATER_LEVEL_SENSOR_TAG, "Error on set timing budget of VL sensor: %d",
+    //     vl53.vl_status); return;
     // }
 
     // ESP_LOGV(WATER_LEVEL_SENSOR_TAG, "Timing budget set to %dms", vl53.getTimingBudget());

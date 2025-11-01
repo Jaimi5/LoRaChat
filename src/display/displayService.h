@@ -1,10 +1,10 @@
 #pragma once
 
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 
 #include "message/messageService.h"
 
@@ -18,14 +18,20 @@
 
 #include "LoraMesher.h"
 
-class DisplayService: public MessageService {
+class DisplayService : public MessageService {
 public:
     static DisplayService& getInstance() {
         static DisplayService instance;
         return instance;
     }
 
-    DisplayCommandService* displayCommandService = new DisplayCommandService();
+    ~DisplayService() {
+        if (displayCommandService != nullptr) {
+            delete displayCommandService;
+        }
+    }
+
+    DisplayCommandService* displayCommandService = nullptr;
 
     void init();
 
@@ -53,7 +59,8 @@ public:
 
 
 private:
-    DisplayService(): MessageService(DisplayApp, "Display") {
+    DisplayService() : MessageService(DisplayApp, "Display") {
+        displayCommandService = new DisplayCommandService();
         commandService = displayCommandService;
     };
 
@@ -69,9 +76,9 @@ private:
     std::vector<int> xPos;
     std::vector<int> minXPos;
     std::vector<bool> moveStatus;
-    const int maxLines = 7; // Maximum number of lines the display can handle
-    const int lineHeight = 9; // Height of each line of text
-    const int staticLines = 3; // Number of static lines at the top
+    const int maxLines = 7;     // Maximum number of lines the display can handle
+    const int lineHeight = 9;   // Height of each line of text
+    const int staticLines = 3;  // Number of static lines at the top
 
     void drawDisplay();
     void printLine(const String& str, int& x, int y, int size, int minX, bool move);

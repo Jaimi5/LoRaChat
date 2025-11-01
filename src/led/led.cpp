@@ -56,8 +56,7 @@ String Led::ledBlink() {
         ledOff();
         delay(200);
         ledOn();
-    }
-    else {
+    } else {
         ledOn();
         delay(200);
         ledOff();
@@ -70,7 +69,7 @@ String Led::ledBlink() {
 }
 
 String Led::getJSON(DataMessage* message) {
-    LedMessage* ledMessage = (LedMessage*) message;
+    LedMessage* ledMessage = (LedMessage*)message;
 
     StaticJsonDocument<200> doc;
 
@@ -91,7 +90,7 @@ DataMessage* Led::getDataMessage(JsonObject data) {
 
     ledMessage->messageSize = sizeof(LedMessage) - sizeof(DataMessageGeneric);
 
-    return ((DataMessage*) ledMessage);
+    return ((DataMessage*)ledMessage);
 }
 
 DataMessage* Led::getLedMessage(LedCommand command, uint16_t dst) {
@@ -107,11 +106,11 @@ DataMessage* Led::getLedMessage(LedCommand command, uint16_t dst) {
     ledMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
     ledMessage->addrDst = dst;
 
-    return (DataMessage*) ledMessage;
+    return (DataMessage*)ledMessage;
 }
 
 void Led::processReceivedMessage(messagePort port, DataMessage* message) {
-    LedMessage* ledMessage = (LedMessage*) message;
+    LedMessage* ledMessage = (LedMessage*)message;
 
     switch (ledMessage->ledCommand) {
         case LedCommand::On:

@@ -6,7 +6,7 @@
 
 #include "ledMessage.h"
 
-class LedCommandService: public CommandService {
+class LedCommandService : public CommandService {
 public:
     LedCommandService();
 };

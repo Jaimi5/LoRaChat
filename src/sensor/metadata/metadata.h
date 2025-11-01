@@ -16,11 +16,17 @@
 
 #include "battery/battery.h"
 
-class Metadata: public MessageService {
+class Metadata : public MessageService {
 public:
     static Metadata& getInstance() {
         static Metadata instance;
         return instance;
+    }
+
+    ~Metadata() {
+        if (metadataCommandService != nullptr) {
+            delete metadataCommandService;
+        }
     }
 
     void initMetadata();
@@ -33,10 +39,11 @@ public:
 
     String getJSON(DataMessage* message);
 
-    MetadataCommandService* metadataCommandService = new MetadataCommandService();
+    MetadataCommandService* metadataCommandService = nullptr;
 
 private:
-    Metadata(): MessageService(MetadataApp, "Metadata") {
+    Metadata() : MessageService(MetadataApp, "Metadata") {
+        metadataCommandService = new MetadataCommandService();
         commandService = metadataCommandService;
     };
 

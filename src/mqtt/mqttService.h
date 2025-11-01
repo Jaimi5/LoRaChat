@@ -10,22 +10,22 @@
 
 #include "message/messageManager.h"
 
-#include <stdio.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
-#include "esp_wifi.h"
-#include "esp_system.h"
 #include "esp_event.h"
+#include "esp_system.h"
+#include "esp_wifi.h"
 
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 
-#include "lwip/sockets.h"
 #include "lwip/dns.h"
 #include "lwip/netdb.h"
+#include "lwip/sockets.h"
 
 #include "esp_log.h"
 #include "mqtt_client.h"
@@ -35,7 +35,7 @@
 // TODO: Check for wake from sleep mode.
 // TODO: Check for max characters in a message to avoid buffer overflow.
 
-class MqttService: public MessageService {
+class MqttService : public MessageService {
 public:
     /**
      * @brief Construct a new BluetoothService object
@@ -46,11 +46,15 @@ public:
         return instance;
     }
 
+    ~MqttService() {
+        if (mqttCommandService != nullptr) {
+            delete mqttCommandService;
+        }
+    }
+
     void initMqtt(String localName);
 
-    bool isInitialized() {
-        return initialized;
-    }
+    bool isInitialized() { return initialized; }
 
     bool connect();
 
@@ -61,7 +65,7 @@ public:
     bool writeToMqtt(DataMessage* message);
     bool writeToMqtt(String message);
 
-    MqttCommandService* mqttCommandService = new MqttCommandService();
+    MqttCommandService* mqttCommandService = nullptr;
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
@@ -74,7 +78,8 @@ public:
     String localName = "";
 
 private:
-    MqttService(): MessageService(appPort::MQTTApp, String("MQTT")) {
+    MqttService() : MessageService(appPort::MQTTApp, String("MQTT")) {
+        mqttCommandService = new MqttCommandService();
         commandService = mqttCommandService;
     };
 

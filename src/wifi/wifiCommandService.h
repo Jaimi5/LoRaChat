@@ -6,8 +6,7 @@
 
 #include "wifiMessage.h"
 
-class WiFiCommandService: public CommandService {
+class WiFiCommandService : public CommandService {
 public:
-
     WiFiCommandService();
 };

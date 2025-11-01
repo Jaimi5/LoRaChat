@@ -26,13 +26,7 @@ static esp_mqtt_client_handle_t client;
 bool mqtt_connected = false;
 
 void MqttService::createMqttTask() {
-    int res = xTaskCreate(
-        MqttLoop,
-        "Mqtt Task",
-        4096,
-        (void*) 1,
-        2,
-        &mqtt_TaskHandle);
+    int res = xTaskCreate(MqttLoop, "Mqtt Task", 4096, (void*)1, 2, &mqtt_TaskHandle);
     if (res != pdPASS)
         ESP_LOGE(MQTT_TAG, "Mqtt task handle error: %d", res);
 }
@@ -42,7 +36,8 @@ void MqttService::MqttLoop(void*) {
     MqttService& mqttService = MqttService::getInstance();
 
     for (;;) {
-        ESP_LOGV(MQTT_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+        ESP_LOGV(MQTT_TAG, "Stack space unused after entering the task: %d",
+                 uxTaskGetStackHighWaterMark(NULL));
 
         mqttService.processMQTTMessage();
         vTaskDelay(20 / portTICK_PERIOD_MS);
@@ -88,7 +83,7 @@ bool MqttService::connect() {
     int tries = 0;
     while (!isDeviceConnected() && tries++ < MAX_CONNECTION_TRY) {
         ESP_LOGV(MQTT_TAG, ".");
-        vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
+        vTaskDelay(1000 / portTICK_PERIOD_MS);  // Wait 1 second
     }
 
     if (!isDeviceConnected()) {
@@ -136,7 +131,6 @@ bool MqttService::writeToMqtt(String message) {
 }
 
 void MqttService::processReceivedMessageFromMQTT(String& topic, String& payload) {
-
     ESP_LOGI(MQTT_TAG, "Message arrived on topic: %s", topic.c_str());
     DataMessage* message = MessageManager::getInstance().getDataMessage(payload);
 
@@ -168,19 +162,18 @@ void MqttService::processReceivedMessage(messagePort port, DataMessage* message)
     writeToMqtt(message);
 }
 
-static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data) {
+static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id,
+                               void* event_data) {
     ESP_LOGV(MQTT_TAG, "MQTT event handler");
     esp_mqtt_event_handle_t event = static_cast<esp_mqtt_event_handle_t>(event_data);
 
-    switch ((esp_mqtt_event_id_t) event_id) {
-        case MQTT_EVENT_CONNECTED:
-            {
-                ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
-                mqtt_connected = true;
-                String topic = String(MQTT_TOPIC_SUB) + MqttService::getInstance().localName;
-                esp_mqtt_client_subscribe(client, topic.c_str(), 2);
-            }
-            break;
+    switch ((esp_mqtt_event_id_t)event_id) {
+        case MQTT_EVENT_CONNECTED: {
+            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
+            mqtt_connected = true;
+            String topic = String(MQTT_TOPIC_SUB) + MqttService::getInstance().localName;
+            esp_mqtt_client_subscribe(client, topic.c_str(), 2);
+        } break;
         case MQTT_EVENT_DISCONNECTED:
             mqtt_connected = false;
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DISCONNECTED");
@@ -194,17 +187,16 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_PUBLISHED:
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
             break;
-        case MQTT_EVENT_DATA:
-            {
-                ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA");
-                MqttService& mqttService = MqttService::getInstance();
-                mqttService.process_message(event->topic, event->data);
-            }
-            break;
+        case MQTT_EVENT_DATA: {
+            ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA");
+            MqttService& mqttService = MqttService::getInstance();
+            mqttService.process_message(event->topic, event->data);
+        } break;
         case MQTT_EVENT_ERROR:
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_ERROR");
             if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-                ESP_LOGI(MQTT_TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+                ESP_LOGI(MQTT_TAG, "Last errno string (%s)",
+                         strerror(event->error_handle->esp_transport_sock_errno));
             }
             if (WiFiServerService::getInstance().isConnected() && mqtt_connected) {
                 ESP_LOGI(MQTT_TAG, "MQTT restart (rebooting)");
@@ -228,8 +220,10 @@ void MqttService::mqtt_app_start(const char* client_id) {
     mqtt_cfg.buffer_size = 2048;
 
     client = esp_mqtt_client_init(&mqtt_cfg);
-    /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
-    esp_mqtt_client_register_event(client, esp_mqtt_event_id_t::MQTT_EVENT_ANY, mqtt_event_handler, NULL);
+    /* The last argument may be used to pass data to the event handler, in this example
+     * mqtt_event_handler */
+    esp_mqtt_client_register_event(client, esp_mqtt_event_id_t::MQTT_EVENT_ANY, mqtt_event_handler,
+                                   NULL);
 
 
     ESP_ERROR_CHECK(esp_mqtt_client_start(client));

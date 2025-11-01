@@ -29,7 +29,7 @@ String Sim::stop() {
 }
 
 String Sim::getJSON(DataMessage* message) {
-    SimMessage* simMessage = (SimMessage*) message;
+    SimMessage* simMessage = (SimMessage*)message;
 
     StaticJsonDocument<2048> doc;
 
@@ -50,11 +50,11 @@ DataMessage* Sim::getDataMessage(JsonObject data) {
 
     simMessage->messageSize = sizeof(SimMessage) - sizeof(DataMessageGeneric);
 
-    return ((DataMessage*) simMessage);
+    return ((DataMessage*)simMessage);
 }
 
 void Sim::processReceivedMessage(messagePort port, DataMessage* message) {
-    SimMessage* simMessage = (SimMessage*) message;
+    SimMessage* simMessage = (SimMessage*)message;
 
     switch (simMessage->simCommand) {
         case SimCommand::StartSim:
@@ -69,37 +69,36 @@ void Sim::processReceivedMessage(messagePort port, DataMessage* message) {
 }
 
 void Sim::createSimTask() {
-    xTaskCreate(
-        simLoop, /* Task function. */
-        "SimTask", /* name of task. */
-        8192, /* Stack size of task */
-        (void*) 1, /* parameter of the task */
-        2, /* priority of the task */
-        &sim_TaskHandle); /* Task handle to keep track of created task */
+    xTaskCreate(simLoop,          /* Task function. */
+                "SimTask",        /* name of task. */
+                8192,             /* Stack size of task */
+                (void*)1,         /* parameter of the task */
+                2,                /* priority of the task */
+                &sim_TaskHandle); /* Task handle to keep track of created task */
 }
 
 void Sim::simLoop(void* pvParameters) {
-    ESP_LOGV(SIM_TAG, "Simulator started");
+    ESP_LOGI(SIM_TAG, "Simulator started");
     Sim sim = Sim::getInstance();
 
     for (;;) {
         sim.sendStartSimMessage();
 
-        vTaskDelay(HELLO_PACKETS_DELAY * 15 * 1000 / portTICK_PERIOD_MS); // Wait 4 minutes to propagate all the network status
+        vTaskDelay(HELLO_PACKETS_DELAY * SIM_NETWORK_PROPAGATION_MULTIPLIER * 1000 /
+                   portTICK_PERIOD_MS);  // Wait to propagate all the network status
 
-        ESP_LOGV(SIM_TAG, "Heap size start sim: %d", ESP.getFreeHeap());
+        ESP_LOGI(SIM_TAG, "Heap size start sim: %d", ESP.getFreeHeap());
 
 
 #if ONE_SENDER != 0
         if (LoraMesher::getInstance().getLocalAddress() == ONE_SENDER) {
-
             while (LoraMesher::getInstance().getClosestGateway() == nullptr) {
-                vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 1 second
+                vTaskDelay(1000 / portTICK_PERIOD_MS);  // Wait 1 second
             }
             sim.sendPacketsToServer(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
-        }
-        else {
-            vTaskDelay(60000 * 10 / portTICK_PERIOD_MS); // Wait 10 minutes to avoid other messages to propagate
+        } else {
+            vTaskDelay(SIM_NON_SENDER_WAIT /
+                       portTICK_PERIOD_MS);  // Wait to avoid other messages to propagate
             vTaskDelay(PACKET_DELAY * PACKET_COUNT / portTICK_PERIOD_MS);
         }
 #else
@@ -107,20 +106,21 @@ void Sim::simLoop(void* pvParameters) {
 #endif
 
 
-        ESP_LOGV(SIM_TAG, "Simulator stopped");
+        ESP_LOGI(SIM_TAG, "Simulator stopped");
 
         while (LoRaMeshService::getInstance().hasActiveConnections()) {
-            ESP_LOGV(SIM_TAG, "Simulator waiting for connections to be closed");
-            vTaskDelay(PACKET_DELAY * 1.5 / portTICK_PERIOD_MS); // Wait PACKET_DELAY * 1.5 milliseconds
+            ESP_LOGI(SIM_TAG, "Simulator waiting for connections to be closed");
+            vTaskDelay(PACKET_DELAY * 1.5 /
+                       portTICK_PERIOD_MS);  // Wait PACKET_DELAY * 1.5 milliseconds
         }
 
         sim.stop();
 
-        ESP_LOGV(SIM_TAG, "Heap size finished sim: %d", ESP.getFreeHeap());
+        ESP_LOGI(SIM_TAG, "Heap size finished sim: %d", ESP.getFreeHeap());
 
         // LoRaMeshService::getInstance().standby();
 
-        ESP_LOGV(SIM_TAG, "Simulator connecting to WiFi");
+        ESP_LOGI(SIM_TAG, "Simulator connecting to WiFi");
 
         WiFiServerService::getInstance().addSSID(WIFI_SSID);
         WiFiServerService::getInstance().addPassword(WIFI_PASSWORD);
@@ -129,7 +129,8 @@ void Sim::simLoop(void* pvParameters) {
 
         MqttService::getInstance().connect();
 
-        vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait 5 minutes to propagate through the network
+        vTaskDelay(SIM_POST_MQTT_DELAY /
+                   portTICK_PERIOD_MS);  // Wait for MQTT connection to stabilize
 
         sim.sendAllData();
 
@@ -138,19 +139,18 @@ void Sim::simLoop(void* pvParameters) {
 }
 
 void Sim::sendAllData() {
-
-    ESP_LOGV(SIM_TAG, "Simulator sending data");
+    ESP_LOGI(SIM_TAG, "Simulator sending data");
 
     SimMessage* simMessage = createSimMessage(SimCommand::EndedSimulation);
 
-    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simMessage);
+    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*)simMessage);
 
     delete simMessage;
 
     service->statesList->setInUse();
 
     if (service->statesList->moveToStart()) {
-        ESP_LOGV(SIM_TAG, "Simulator sending data, n. %d", service->statesList->getLength());
+        ESP_LOGI(SIM_TAG, "Simulator sending data, n. %d", service->statesList->getLength());
         do {
             LM_State* state = service->statesList->Pop();
             if (state == nullptr) {
@@ -159,26 +159,29 @@ void Sim::sendAllData() {
 
             simMessage = createSimMessage(state);
 
-            MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simMessage);
+            MessageManager::getInstance().sendMessage(messagePort::MqttPort,
+                                                      (DataMessage*)simMessage);
             delete state;
             vPortFree(simMessage);
 
-            // If wifi connected wait 1 second, else wait 40 seconds
+            // If wifi connected wait configured delay, else wait longer to avoid flooding
             if (WiFi.status() == WL_CONNECTED)
-                vTaskDelay(2000 / portTICK_PERIOD_MS); // Wait 10 milliseconds
+                vTaskDelay(SIM_UPLOAD_DELAY_CONNECTED /
+                           portTICK_PERIOD_MS);  // Wait between uploads when connected
             else
-                vTaskDelay(40000 / portTICK_PERIOD_MS); // Wait 40 seconds (to avoid flooding the network
+                vTaskDelay(SIM_UPLOAD_DELAY_DISCONNECTED /
+                           portTICK_PERIOD_MS);  // Wait longer when disconnected to avoid flooding
 
         } while (service->statesList->getLength() > 0);
     }
 
     service->statesList->releaseInUse();
 
-    ESP_LOGV(SIM_TAG, "Simulator Finished sending data");
+    ESP_LOGI(SIM_TAG, "Simulator Finished sending data");
 
     simMessage = createSimMessage(SimCommand::EndedSimulationStatus);
 
-    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simMessage);
+    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*)simMessage);
 
     delete simMessage;
 }
@@ -186,7 +189,7 @@ void Sim::sendAllData() {
 SimMessage* Sim::createSimMessage(LM_State* state) {
     uint32_t messageSize = sizeof(SimMessage) + sizeof(SimMessageState);
 
-    SimMessage* simMessage = (SimMessage*) pvPortMalloc(messageSize);
+    SimMessage* simMessage = (SimMessage*)pvPortMalloc(messageSize);
 
     simMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
     simMessage->simCommand = SimCommand::Message;
@@ -206,18 +209,21 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
     SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
     for (size_t i = 0; i < packetCount; i++) {
         simPayloadMessage->messageId = i;
-        ESP_LOGV(SIM_TAG, "Simulator sending packet %d", i);
-        MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simPayloadMessage);
+        ESP_LOGI(SIM_TAG, "Simulator sending packet %d", i);
+        MessageManager::getInstance().sendMessage(messagePort::MqttPort,
+                                                  (DataMessage*)simPayloadMessage);
 
-        vTaskDelay(delayMs / portTICK_PERIOD_MS); // Wait delayMs milliseconds
+        vTaskDelay(delayMs / portTICK_PERIOD_MS);  // Wait delayMs milliseconds
 
         // Wait until the previous packet has been sent
         while (LoRaMeshService::getInstance().queueWaitingSendPacketsLength() > 3) {
-            ESP_LOGV(SIM_TAG, "Simulator waiting for packet to be sent");
-            vTaskDelay(20000 / portTICK_PERIOD_MS); // Wait 20 additional seconds before sending the next packet
+            ESP_LOGI(SIM_TAG, "Simulator waiting for packet to be sent");
+            vTaskDelay(
+                SIM_QUEUE_CONGESTION_DELAY /
+                portTICK_PERIOD_MS);  // Wait when queue is congested before sending next packet
         }
 
-        ESP_LOGV(SIM_TAG, "FREE HEAP: %d", ESP.getFreeHeap());
+        ESP_LOGI(SIM_TAG, "FREE HEAP: %d", ESP.getFreeHeap());
     }
 
     vPortFree(simPayloadMessage);
@@ -226,7 +232,7 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
 SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
     uint32_t messageSize = sizeof(SimMessage) + sizeof(SimPayloadMessage) + packetSize;
 
-    SimMessage* simMessage = (SimMessage*) pvPortMalloc(messageSize);
+    SimMessage* simMessage = (SimMessage*)pvPortMalloc(messageSize);
     simMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
 
     simMessage->simCommand = SimCommand::Payload;
@@ -235,14 +241,14 @@ SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
     simMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
     simMessage->addrDst = 0;
     simMessage->messageId = 0;
-    SimPayloadMessage* simPayloadMessage = (SimPayloadMessage*) simMessage->payload;
+    SimPayloadMessage* simPayloadMessage = (SimPayloadMessage*)simMessage->payload;
     simPayloadMessage->packetSize = packetSize;
 
     // Add 0, 1, 2, 3... packetSize to the payload
     for (size_t i = 0; i < packetSize; i++) {
         simPayloadMessage->payload[i] = i;
         if (i % 100 == 0) {
-            vTaskDelay(1 / portTICK_PERIOD_MS); // Wait 1 milliseconds
+            vTaskDelay(1 / portTICK_PERIOD_MS);  // Wait 1 milliseconds
         }
     }
 
@@ -270,21 +276,22 @@ void Sim::sendStartSimMessage() {
 
     WiFiServerService::getInstance().connectWiFi();
 
-    vTaskDelay(30000 / portTICK_PERIOD_MS); // Wait 30 second
+    vTaskDelay(SIM_INITIAL_WIFI_DELAY /
+               portTICK_PERIOD_MS);  // Wait for WiFi connection to establish
 
     MqttService::getInstance().connect();
 
-    ESP_LOGV(SIM_TAG, "Simulator MQTT connected");
+    ESP_LOGI(SIM_TAG, "Simulator MQTT connected");
 
-    ESP_LOGV(SIM_TAG, "Simulator sending start message");
+    ESP_LOGI(SIM_TAG, "Simulator sending start message");
 
     SimMessage* simMessage = createSimMessage(SimCommand::StartingSimulation);
 
-    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*) simMessage);
+    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*)simMessage);
 
     delete simMessage;
 
-    vTaskDelay(30000 / portTICK_PERIOD_MS); // Wait 30 second
+    vTaskDelay(SIM_POST_START_DELAY / portTICK_PERIOD_MS);  // Wait after sending start message
 
 #if WIFI_ADDR_CONNECTED == 0
     return;
@@ -298,4 +305,3 @@ void Sim::sendStartSimMessage() {
     WiFiServerService::getInstance().disconnectWiFi();
     WiFiServerService::getInstance().resetWiFiData();
 }
-

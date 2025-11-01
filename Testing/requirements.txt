@@ -2,3 +2,6 @@ platformio
 paho-mqtt
 networkx
 matplotlib
+colorama
+numpy
+pandas

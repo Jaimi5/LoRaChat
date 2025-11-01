@@ -2,6 +2,7 @@ import os
 import json
 import graph
 import numpy as np
+from platformio import util
 
 
 class SimConfiguration:
@@ -53,12 +54,91 @@ class SimConfiguration:
                 if value != "":
                     json_data[key] = value
 
+        # Add the device mapping (port to environment)
+        json_data["DeviceMapping"] = self.getDeviceMapping()
+
         # Add the adjacency graph
         json_data["LoRaMesherAdjacencyGraph"] = self.getAdjacencyGraph().tolist()
 
         # Save the file
         with open(self.fileName, "w") as file:
             file.write(json.dumps(json_data, indent=4))
+
+    def getDeviceMapping(self):
+        """Interactively detect devices one by one as they're connected"""
+        print("\n=== Device Port Mapping Configuration ===")
+        print("Connect devices one by one. The system will detect each new port.")
+
+        # Available environments (from platformio.ini)
+        available_envs = [
+            "ttgo-t-beam",
+            "ttgo-t-beam-v1-2",
+            "ttgo-lora32-v1",
+            "esp-wrover-kitNAYAD_V1R2",
+            "MAKERFABS_SENSELORA_MOISTURE"
+        ]
+
+        print("\nAvailable PlatformIO environments:")
+        for i, env in enumerate(available_envs):
+            print(f"  {i+1}. {env}")
+
+        device_mapping = {}
+
+        # Get initial ports (baseline)
+        current_ports = set([port['port'] for port in util.get_serial_ports()])
+        print(f"\nCurrently connected ports: {list(current_ports) if current_ports else 'None'}")
+
+        while True:
+            response = input("\nConnect a device and press Enter (or type 'done' to finish): ").strip().lower()
+
+            if response == 'done':
+                break
+
+            # Detect new ports
+            new_ports_list = util.get_serial_ports()
+            new_ports = set([port['port'] for port in new_ports_list])
+
+            detected = new_ports - current_ports
+
+            if len(detected) == 0:
+                print("  No new device detected. Make sure the device is properly connected.")
+                continue
+            elif len(detected) > 1:
+                print(f"  Warning: Multiple new ports detected: {list(detected)}")
+                print(f"  Using the first one: {list(detected)[0]}")
+                new_port = list(detected)[0]
+            else:
+                new_port = list(detected)[0]
+
+            # Get device info
+            port_info = next((p for p in new_ports_list if p['port'] == new_port), None)
+            description = port_info.get('description', 'Unknown') if port_info else 'Unknown'
+
+            print(f"\n✓ Detected: {new_port} ({description})")
+
+            # Ask for environment
+            while True:
+                env_response = input(f"  Select environment (1-{len(available_envs)}): ").strip()
+
+                try:
+                    env_index = int(env_response) - 1
+                    if 0 <= env_index < len(available_envs):
+                        device_mapping[new_port] = available_envs[env_index]
+                        print(f"  ✓ Mapped {new_port} -> {available_envs[env_index]}")
+                        current_ports.add(new_port)
+                        break
+                    else:
+                        print(f"  Invalid number. Please enter 1-{len(available_envs)}")
+                except ValueError:
+                    print("  Invalid input. Please enter a number")
+
+        print(f"\n✓ Device mapping complete: {len(device_mapping)} device(s) configured")
+        if device_mapping:
+            print("Configured devices:")
+            for port, env in device_mapping.items():
+                print(f"  {port} -> {env}")
+
+        return device_mapping
 
     def getAdjacencyGraph(self):
         # Ask the user if he wants to add a an adjacency graph

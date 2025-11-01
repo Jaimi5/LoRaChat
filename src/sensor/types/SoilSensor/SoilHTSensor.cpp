@@ -51,11 +51,11 @@ SoilSensorMessage SoilHTSensor::read() {
     //     moisture = makeWord(scratchpad[2], scratchpad[3]) / 100;
     //     conductivity = makeWord(scratchpad[4], scratchpad[5]);
 
-    //     ESP_LOGV(SOIL_SENSOR_TAG, "Temperature: %.2f, Moisture: %.2f, Conductivity: %d", temperature, moisture, conductivity);
+    //     ESP_LOGV(SOIL_SENSOR_TAG, "Temperature: %.2f, Moisture: %.2f, Conductivity: %d",
+    //     temperature, moisture, conductivity);
     // }
     // else
     //     ESP_LOGE(SOIL_SENSOR_TAG, "CRC Error");
 
     // return SoilSensorMessage(temperature, moisture, conductivity);
 }
-

@@ -108,7 +108,6 @@
 // #endif // T3_V1_3_SX1276
 
 
-
 // #define I2C_SDA                     21
 // #define I2C_SCL                     22
 // #define OLED_RST                    UNUSED_PIN
@@ -217,7 +216,6 @@
 // #define BOARD_VARIANT_NAME          "T3 V1.6 TCXO"
 
 
-
 // #elif defined(T3_V3_0_SX1276_TCXO)
 
 // #ifndef USING_SX1276
@@ -260,14 +258,14 @@
 //         defined(T3_S3_V1_2_SX1278)    ||   defined(ARDUINO_LILYGO_T3S3_SX1278)   ||    \
 //         defined(T3_S3_V1_2_SX1280)    ||   defined(ARDUINO_LILYGO_T3S3_SX1280)   ||    \
 //         defined(T3_S3_V1_2_SX1280_PA) ||   defined(ARDUINO_LILYGO_T3S3_SX1280PA) ||      \
-//         defined(T3_S3_V1_2_LR1121)    ||   defined(ARDUINO_LILYGO_T3S3_LR1121) 
+//         defined(T3_S3_V1_2_LR1121)    ||   defined(ARDUINO_LILYGO_T3S3_LR1121)
 
 
-// #if   defined(T3_S3_V1_2_SX1262) ||   defined(ARDUINO_LILYGO_T3S3_SX1262)  
+// #if   defined(T3_S3_V1_2_SX1262) ||   defined(ARDUINO_LILYGO_T3S3_SX1262)
 // #ifndef USING_SX1262
 // #define USING_SX1262
 // #endif
-// #elif defined(T3_S3_V1_2_SX1276) ||   defined(ARDUINO_LILYGO_T3S3_SX1276) 
+// #elif defined(T3_S3_V1_2_SX1276) ||   defined(ARDUINO_LILYGO_T3S3_SX1276)
 // #ifndef USING_SX1276
 // #define USING_SX1276
 // #endif
@@ -494,11 +492,3 @@
 // #else
 // #error "When using it for the first time, please define the board model in <utilities.h>"
 // #endif
-
-
-
-
-
-
-
-

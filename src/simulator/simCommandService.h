@@ -6,7 +6,7 @@
 
 #include "simMessage.h"
 
-class SimCommandService: public CommandService {
+class SimCommandService : public CommandService {
 public:
     SimCommandService();
 };

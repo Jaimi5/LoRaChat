@@ -11,7 +11,7 @@ public:
 
     WaterLevelSensorMessage() {}
 
-    WaterLevelSensorMessage(float distance): distance(distance) {}
+    WaterLevelSensorMessage(float distance) : distance(distance) {}
 
     void serialize(JsonArray& doc) {
         JsonObject distObj = doc.createNestedObject();

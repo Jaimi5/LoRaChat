@@ -2,15 +2,24 @@ import tkinter as tk
 import os
 import tkinter.filedialog as filedialog
 from drawLossMessagesByDevice import draw_loss_messages_by_device
+from drawLossMessagesByExperimentsWithCI import draw_loss_messages_by_experiments_with_ci
 from drawMessageByDevice import draw_messages_by_device
 from drawPlotAndSummary import draw_plot_and_summary
 from drawEEDByDevice import draw_eed_by_device
 from drawTimeoutsByDevice import draw_timeouts_by_device
 from drawTimeoutsByExperiments import draw_timeouts_by_experiments
+from drawTimeoutsByExperimentsWithCI import draw_timeouts_by_experiments_with_ci
 from drawRTTByDevices import draw_rtt_by_devices
 from drawRTTByExperiments import draw_rtt_by_experiments
 from drawOverheadByExperiments import draw_overhead_by_experiments
 from Testing.ui.drawFreeHeapByDevices import draw_free_heap_by_devices
+from drawExperimentComparisonCI import (
+    draw_experiment_comparison_bar_ci,
+    draw_experiment_comparison_box,
+)
+from drawExperimentComparisonWithTheoretical import (
+    draw_experiment_comparison_with_theoretical,
+)
 
 
 initialDirectory = "./"
@@ -220,5 +229,60 @@ button_messages_by_device = tk.Button(
 )
 
 button_messages_by_device.grid(row=6, column=0, sticky="ew")
+
+# Create a button to draw experiment comparison with confidence intervals (bar chart)
+button_experiment_comparison_bar = tk.Button(
+    root,
+    text="Experiment Comparison (Bar + CI)",
+    command=lambda: find_file_and_execute_function(
+        function=draw_experiment_comparison_bar_ci
+    ),
+)
+
+button_experiment_comparison_bar.grid(row=6, column=1, sticky="ew")
+
+# Create a button to draw experiment comparison (box plot)
+button_experiment_comparison_box = tk.Button(
+    root,
+    text="Experiment Comparison (Box Plot)",
+    command=lambda: find_file_and_execute_function(
+        function=draw_experiment_comparison_box
+    ),
+)
+
+button_experiment_comparison_box.grid(row=7, column=0, sticky="ew")
+
+# Create a button to draw experiment comparison with theoretical overhead
+button_experiment_comparison_theoretical = tk.Button(
+    root,
+    text="Experiment Comparison (With Theoretical)",
+    command=lambda: find_file_and_execute_function(
+        function=draw_experiment_comparison_with_theoretical
+    ),
+)
+
+button_experiment_comparison_theoretical.grid(row=7, column=1, sticky="ew")
+
+# Create a button to draw timeouts by experiments with confidence intervals
+button_timeouts_by_experiments_ci = tk.Button(
+    root,
+    text="Timeouts By Experiments (With CI)",
+    command=lambda: find_file_and_execute_function(
+        function=draw_timeouts_by_experiments_with_ci
+    ),
+)
+
+button_timeouts_by_experiments_ci.grid(row=8, column=0, sticky="ew")
+
+# Create a button to draw loss messages by experiments with confidence intervals
+button_loss_messages_by_experiments_ci = tk.Button(
+    root,
+    text="Loss Messages By Experiments (With CI)",
+    command=lambda: find_file_and_execute_function(
+        function=draw_loss_messages_by_experiments_with_ci
+    ),
+)
+
+button_loss_messages_by_experiments_ci.grid(row=8, column=1, sticky="ew")
 
 root.mainloop()

@@ -38,7 +38,8 @@ PHSensorMessage PHSensor::read() {
 
 //     ESP_LOGV(PH_SENSOR_TAG, "Receiving reading from %s", board.get_name());
 
-//     board.receive_read_cmd();  //get the response data and put it into the [board].reading variable if successful
+//     board.receive_read_cmd();  //get the response data and put it into the [board].reading
+//     variable if successful
 
 //     switch (board.get_error())  //switch case based on what the response code is.
 //     {

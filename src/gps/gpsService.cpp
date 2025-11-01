@@ -7,6 +7,11 @@ static const char* GPS_TAG = "GPSService";
 HardwareSerial GPS(1);
 #elif defined(NAYAD_V1) || defined(NAYAD_V1R2)
 SoftwareSerial GPS(GPS_RX, GPS_TX);
+#elif defined(MAKERFABS_SENSELORA_MOISTURE)
+// The devices does not have a GPS module
+HardwareSerial GPS(0);  // Use Serial0 for Makerfabs SenseLora Moisture
+#else
+HardwareSerial GPS(0);  // Default to Serial0 if no specific board is defined
 #endif
 
 void GPSService::initGPS() {
@@ -23,8 +28,8 @@ void GPSService::initGPS() {
     do {
         if (myGPS.begin(GPS)) {
             ESP_LOGV(GPS_TAG, "Connected to GPS");
-            myGPS.setUART1Output(COM_TYPE_NMEA); //Set the UART port to output NMEA only
-            myGPS.saveConfiguration(); //Save the current settings to flash and BBR
+            myGPS.setUART1Output(COM_TYPE_NMEA);  // Set the UART port to output NMEA only
+            myGPS.saveConfiguration();            // Save the current settings to flash and BBR
             ESP_LOGV(GPS_TAG, "GPS serial connected, output set to NMEA");
             myGPS.disableNMEAMessage(UBX_NMEA_GLL, COM_PORT_UART1);
             myGPS.disableNMEAMessage(UBX_NMEA_GSA, COM_PORT_UART1);
@@ -32,7 +37,7 @@ void GPSService::initGPS() {
             myGPS.disableNMEAMessage(UBX_NMEA_VTG, COM_PORT_UART1);
             myGPS.enableNMEAMessage(UBX_NMEA_RMC, COM_PORT_UART1);
             myGPS.enableNMEAMessage(UBX_NMEA_GGA, COM_PORT_UART1);
-            myGPS.saveConfiguration(); //Save the current settings to flash and BBR
+            myGPS.saveConfiguration();  // Save the current settings to flash and BBR
             ESP_LOGV(GPS_TAG, "Enabled/disabled NMEA sentences");
             break;
         }
@@ -40,7 +45,7 @@ void GPSService::initGPS() {
     } while (1);
 #endif
 
-#ifdef defined(NAYAD_V1) || defined(NAYAD_V1R2)
+#if defined(NAYAD_V1) || defined(NAYAD_V1R2)
     GPS.begin(GPS_BAUD, SWSERIAL_8N1, GPS_RX, GPS_TX);
 #endif
 
@@ -54,13 +59,7 @@ void GPSService::initGPS() {
  *
  */
 void GPSService::createGPSTask() {
-    int res = xTaskCreate(
-        GPSLoop,
-        "GPS Task",
-        2048,
-        (void*) 1,
-        2,
-        &gps_TaskHandle);
+    int res = xTaskCreate(GPSLoop, "GPS Task", 2048, (void*)1, 2, &gps_TaskHandle);
     if (res != pdPASS) {
         ESP_LOGE(GPS_TAG, "GPS task handle error: %d", res);
     }
@@ -70,7 +69,8 @@ void GPSService::GPSLoop(void*) {
     GPSService& gpsService = GPSService::getInstance();
     DisplayService& displayService = DisplayService::getInstance();
 
-    ESP_LOGV(GPS_TAG, "Stack space unused after entering gps task: %d", uxTaskGetStackHighWaterMark(NULL));
+    ESP_LOGV(GPS_TAG, "Stack space unused after entering gps task: %d",
+             uxTaskGetStackHighWaterMark(NULL));
     for (;;) {
         // ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         String gpsString = gpsService.getGPSUpdatedWait();
@@ -83,7 +83,7 @@ void GPSService::GPSLoop(void*) {
 }
 
 void GPSService::processReceivedMessage(messagePort port, DataMessage* message) {
-    GPSMessageGeneric* gpsMessage = (GPSMessageGeneric*) message;
+    GPSMessageGeneric* gpsMessage = (GPSMessageGeneric*)message;
 
     switch (gpsMessage->type) {
         case GPSMessageType::reqGPS:
@@ -96,7 +96,7 @@ void GPSService::processReceivedMessage(messagePort port, DataMessage* message) 
 
 
 String GPSService::gpsResponse(messagePort port, DataMessage* message) {
-    DataMessage* msg = (DataMessage*) getGPSMessageResponse(message);
+    DataMessage* msg = (DataMessage*)getGPSMessageResponse(message);
     MessageManager::getInstance().sendMessage(port, msg);
 
     delete msg;
@@ -167,22 +167,20 @@ void GPSService::updateGPS() {
 
 String GPSService::getGPSString() {
     if (isGPSValid()) {
-        String lat = String(gps.location.lat(), 7); // Latitude
-        String lng = String(gps.location.lng(), 7); // Longitude
-        String alt = String(gps.altitude.meters()); // Altitude in meters
-        String sat = String(gps.satellites.value()); // Number of satellites
+        String lat = String(gps.location.lat(), 7);   // Latitude
+        String lng = String(gps.location.lng(), 7);   // Longitude
+        String alt = String(gps.altitude.meters());   // Altitude in meters
+        String sat = String(gps.satellites.value());  // Number of satellites
 
-        String readableTime = TimeHelper::getReadableTime(gps.time.second(), gps.time.minute(), gps.time.hour());
+        String readableTime =
+            TimeHelper::getReadableTime(gps.time.second(), gps.time.minute(), gps.time.hour());
 
-        String readableDate = TimeHelper::getReadableDate(gps.date.day(), gps.date.month(), gps.date.year());
+        String readableDate =
+            TimeHelper::getReadableDate(gps.date.day(), gps.date.month(), gps.date.year());
 
-        return "( " + readableDate + " - " + readableTime + " ) GPS: "
-            + "Lat: " + lat
-            + " Lon: " + lng
-            + " Alt: " + alt
-            + " N. SAT: " + sat;
-    }
-    else {
+        return "( " + readableDate + " - " + readableTime + " ) GPS: " + "Lat: " + lat +
+               " Lon: " + lng + " Alt: " + alt + " N. SAT: " + sat;
+    } else {
         return String("GPS not valid, try again later");
     }
 }
@@ -217,4 +215,3 @@ String GPSService::getGPSUpdatedWait(uint8_t maxTries) {
 
     return getGPSString();
 }
-

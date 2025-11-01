@@ -4,7 +4,7 @@
 
 #include "commands/commandService.h"
 
-class SensorCommandService: public CommandService {
+class SensorCommandService : public CommandService {
 public:
     SensorCommandService();
 };

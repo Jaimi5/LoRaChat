@@ -1,4 +1,5 @@
-// This file initializes the device that is enabled by the config.h file or using the platformio.ini file.
+// This file initializes the device that is enabled by the config.h file or using the platformio.ini
+// file.
 
 class InitDevices {
 public:
@@ -7,4 +8,5 @@ public:
 private:
     static void initTBeam();
     static bool beginPower();
+    static void initMakerfabsSenseLoraMoisture();
 };

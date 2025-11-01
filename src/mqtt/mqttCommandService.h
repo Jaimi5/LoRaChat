@@ -6,8 +6,7 @@
 
 #include "mqttMessage.h"
 
-class MqttCommandService: public CommandService {
+class MqttCommandService : public CommandService {
 public:
-
     MqttCommandService();
 };

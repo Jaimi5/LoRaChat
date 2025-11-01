@@ -7,7 +7,6 @@
 
 class Battery {
 public:
-
     static Battery& getInstance() {
         static Battery instance;
         return instance;
@@ -18,7 +17,7 @@ public:
     float getVoltagePercentage();
 
 private:
-    Battery() {};
+    Battery(){};
 };
 
 #endif

@@ -13,7 +13,8 @@ public:
 
     SoilSensorMessage() {}
 
-    SoilSensorMessage(int16_t temperature, int16_t moisture, int16_t conductivity): temperature(temperature), moisture(moisture), conductivity(conductivity) {}
+    SoilSensorMessage(int16_t temperature, int16_t moisture, int16_t conductivity)
+        : temperature(temperature), moisture(moisture), conductivity(conductivity) {}
 
     void serialize(JsonArray& doc) {
         JsonObject tempObj = doc.createNestedObject();

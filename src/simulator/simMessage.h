@@ -10,13 +10,13 @@
 
 #pragma pack(1)
 
-enum SimCommand: uint8_t {
+enum SimCommand : uint8_t {
     StartSim = 0,
     StopSim = 1,
     Message = 2,
     Payload = 3,
     StartingSimulation = 4,
-    EndedSimulation = 5, // StartedSimulationStatus
+    EndedSimulation = 5,  // StartedSimulationStatus
     EndedSimulationStatus = 6,
 };
 
@@ -71,14 +71,13 @@ public:
             for (uint32_t i = 0; i < packetSize; i++) {
                 payloadArray.add(payload[i]);
             }
-        }
-        else {
+        } else {
             doc["payload"] = payload[packetSize - 1];
         }
     }
 };
 
-class SimMessage: public DataMessageGeneric {
+class SimMessage : public DataMessageGeneric {
 public:
     SimCommand simCommand;
 
@@ -86,24 +85,22 @@ public:
 
     void serialize(JsonObject& doc) {
         // Call the base class serialize function
-        ((DataMessageGeneric*) (this))->serialize(doc);
+        ((DataMessageGeneric*)(this))->serialize(doc);
 
         // Add the derived class data to the JSON object
         doc["simCommand"] = simCommand;
 
         switch (simCommand) {
-            case::SimCommand::Message:
-                {
-                    SimMessageState* message = (SimMessageState*) this->payload;
-                    message->serializeState(doc);
-                    break;
-                }
-            case::SimCommand::Payload:
-                {
-                    SimPayloadMessage* payloadMessage = (SimPayloadMessage*) this->payload;
-                    payloadMessage->serializePayload(doc);
-                    break;
-                }
+            case ::SimCommand::Message: {
+                SimMessageState* message = (SimMessageState*)this->payload;
+                message->serializeState(doc);
+                break;
+            }
+            case ::SimCommand::Payload: {
+                SimPayloadMessage* payloadMessage = (SimPayloadMessage*)this->payload;
+                payloadMessage->serializePayload(doc);
+                break;
+            }
             default:
                 break;
         }
@@ -111,10 +108,10 @@ public:
 
     void deserialize(JsonObject& doc) {
         // Call the base class deserialize function
-        ((DataMessageGeneric*) (this))->deserialize(doc);
+        ((DataMessageGeneric*)(this))->deserialize(doc);
 
         // Add the derived class data to the JSON object
-        simCommand = (SimCommand) doc["simCommand"];
+        simCommand = (SimCommand)doc["simCommand"];
     }
 };
 

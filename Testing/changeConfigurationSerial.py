@@ -27,6 +27,28 @@ class ChangeConfigurationSerial:
 
         return json_data["SimulationTimeoutMinutes"]
 
+    def getDeviceMapping(self):
+        """Get the DeviceMapping (port to environment mapping) from config"""
+        # Read the file
+        with open(self.fileName, "r") as file:
+            data = file.read()
+
+        # Parse the file
+        json_data = json.loads(data)
+
+        return json_data.get("DeviceMapping", {})
+
+    def getEnvironments(self):
+        """Extract unique environments from DeviceMapping"""
+        device_mapping = self.getDeviceMapping()
+
+        if not device_mapping:
+            # Fallback to the environments passed in constructor
+            return self.environments
+
+        # Get unique environments from the mapping
+        return list(set(device_mapping.values()))
+
     def changeSimulatorApp(self):
         # Read the file
         with open(self.fileName, "r") as file:
@@ -66,7 +88,7 @@ class ChangeConfigurationSerial:
         # Parse the file
         json_data = json.loads(data)
 
-        for environment in self.environments:
+        for environment in self.getEnvironments():
             srcFile = os.path.join(os.path.dirname(__file__))
 
             pathName = os.path.dirname(__file__)
@@ -173,7 +195,7 @@ class ChangeConfigurationSerial:
         # Parse the file
         json_data = json.loads(data)
 
-        for environment in self.environments:
+        for environment in self.getEnvironments():
             # Find the LoRaMesher src file given the environment.
             srcFile = os.path.join(
                 os.path.dirname(__file__),
@@ -205,7 +227,7 @@ class ChangeConfigurationSerial:
             with open(srcFile, "w") as file:
                 file.write(srcData)
 
-        for environment in self.environments:
+        for environment in self.getEnvironments():
             # Find the LoRaMesher src file given the environment.
             srcFile = os.path.join(
                 os.path.dirname(__file__),
@@ -245,7 +267,6 @@ class ChangeConfigurationSerial:
 
                 if json_data["LoRaMesherAdjacencyGraph"] == []:
                     adjacencyGraphInCpp = "\treturn true;\n"
-                    print("No adjacency graph found")
 
                 else:
                     string_matrix = json_data["LoRaMesherAdjacencyGraph"]

@@ -12,7 +12,7 @@ public:
 
     PHSensorMessage() {}
 
-    PHSensorMessage(float temperature, float ph): temperature(temperature), ph(ph) {}
+    PHSensorMessage(float temperature, float ph) : temperature(temperature), ph(ph) {}
 
     void serialize(JsonArray& doc) {
         JsonObject tempObj = doc.createNestedObject();
