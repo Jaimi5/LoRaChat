@@ -1,0 +1,13 @@
+# Git blame ignore revisions
+# This file contains commit hashes that should be ignored by git blame
+# to preserve meaningful history by skipping mass formatting/style changes.
+#
+# To use this file automatically:
+# git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Normalize line endings (CRLF→LF) and apply clang-format
+# Date: 2025-11-01
+# Description: Mass formatting change - converted all line endings from CRLF to LF
+#              and applied clang-format with Google-inspired style across the entire
+#              codebase (122 files). No functional changes.
+7c6676a
