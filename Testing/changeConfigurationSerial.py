@@ -173,16 +173,35 @@ class ChangeConfigurationSerial:
         matrix = np.delete(matrix, 0, 1)
 
         # Create the C++ matrix excluding the headers
+        # Use float for loss rate support (0.0 = no loss, 1.0 = 100% loss)
         cpp_matrix = ",\n    ".join(
-            "{ " + ", ".join(str(cell) for cell in row) + " }" for row in matrix
+            "{ " + ", ".join(f"{float(cell):.3f}f" for cell in row) + " }" for row in matrix
         )
 
         adjacencyGraphInCpp += f"""
-    uint16_t const matrix[adjacencyGraphSize][adjacencyGraphSize] = {{
+    float const lossRateMatrix[adjacencyGraphSize][adjacencyGraphSize] = {{
     {cpp_matrix}
     }};
 
-    return matrix[localAddressIndex][sourceIndex] != 0;
+    // Get loss rate for this link (probability of packet DROP)
+    float lossRate = lossRateMatrix[localAddressIndex][sourceIndex];
+
+    // If loss rate is 1.0, no connectivity
+    if (lossRate >= 1.0f) {{
+        return false;
+    }}
+
+    // If loss rate is 0.0, perfect connectivity
+    if (lossRate <= 0.0f) {{
+        return true;
+    }}
+
+    // Probabilistic packet loss based on loss rate
+    // Generate random number [0.0, 1.0)
+    float randomValue = (float)esp_random() / (float)UINT32_MAX;
+
+    // Drop packet if random value is less than loss rate
+    return randomValue >= lossRate;
     """
         return adjacencyGraphInCpp
 
