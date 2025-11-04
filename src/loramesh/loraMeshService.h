@@ -40,6 +40,10 @@ public:
 
     String getRoutingTable();
 
+    RoutingTableMessage* createRoutingTableMessage();
+
+    void sendRoutingTableMessage(uint16_t destination);
+
     void send(DataMessage* message);
 
     bool sendClosestGateway(DataMessage* message);

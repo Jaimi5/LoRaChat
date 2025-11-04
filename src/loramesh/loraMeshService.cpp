@@ -175,6 +175,86 @@ String LoRaMeshService::getRoutingTable() {
     return routingTable;
 }
 
+RoutingTableMessage* LoRaMeshService::createRoutingTableMessage() {
+    // Get a copy of the routing table
+    LM_LinkedList<RouteNode>* routingTableList = radio.routingTableListCopy();
+    routingTableList->setInUse();
+
+    // Count the number of entries
+    uint32_t count = 0;
+    if (routingTableList->moveToStart()) {
+        do {
+            count++;
+        } while (routingTableList->next());
+    }
+
+    // Calculate the size needed for the message
+    size_t messageSize = sizeof(RoutingTableMessage) + (count * sizeof(RoutingTableEntry));
+
+    // Allocate memory for the message
+    RoutingTableMessage* message = (RoutingTableMessage*)pvPortMalloc(messageSize);
+
+    if (message) {
+        // Initialize the message
+        message->appPortDst = appPort::LoRaMesherApp;
+        message->appPortSrc = appPort::LoRaMesherApp;
+        message->messageId = LoRaMeshMessageType::routingTableMessage;
+        message->addrSrc = getLocalAddress();
+        message->addrDst = 0;  // Will be set when sending
+        message->messageSize = messageSize - sizeof(DataMessageGeneric);
+        message->numberOfEntries = count;
+
+        // Fill in the routing table entries
+        if (count > 0 && routingTableList->moveToStart()) {
+            uint32_t index = 0;
+            do {
+                RouteNode* routeNode = routingTableList->getCurrent();
+                NetworkNode node = routeNode->networkNode;
+
+                message->entries[index].address = node.address;
+                message->entries[index].via = routeNode->via;
+
+                // TODO: Update these fields based on your RouteNode structure
+                // The current LoraMesher version may not have reverseETX, forwardETX, and role
+                // These are placeholder values - update when using newer loramesh library
+                message->entries[index].reverseETX = 0;  // Replace with actual reverseETX if available
+                message->entries[index].forwardETX = 0;  // Replace with actual forwardETX if available
+
+                // Determine role based on available information
+                // You may need to update this based on your RouteNode structure
+                message->entries[index].role = NodeRole::Unknown;  // Replace with actual role if available
+
+                index++;
+            } while (routingTableList->next());
+        }
+    }
+
+    // Release and cleanup
+    routingTableList->releaseInUse();
+    routingTableList->Clear();
+
+    return message;
+}
+
+void LoRaMeshService::sendRoutingTableMessage(uint16_t destination) {
+    RoutingTableMessage* message = createRoutingTableMessage();
+
+    if (message) {
+        message->addrDst = destination;
+
+        ESP_LOGI(LMS_TAG, "Sending routing table message to %X with %lu entries",
+                 destination, message->numberOfEntries);
+
+        // Send the message
+        send((DataMessage*)message);
+
+        // Free the message
+        vPortFree(message);
+    } else {
+        ESP_LOGE(LMS_TAG, "Failed to create routing table message");
+    }
+}
+
 void LoRaMeshService::send(DataMessage* message) {
     ESP_LOGV(LMS_TAG, "Heap size send: %d", ESP.getFreeHeap());
 
