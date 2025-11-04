@@ -220,9 +220,9 @@ RoutingTableMessage* LoRaMeshService::createRoutingTableMessage() {
                 message->entries[index].reverseETX = 0;  // Replace with actual reverseETX if available
                 message->entries[index].forwardETX = 0;  // Replace with actual forwardETX if available
 
-                // Determine role based on available information
+                // Determine role: 0 = Default, 1 = Gateway
                 // You may need to update this based on your RouteNode structure
-                message->entries[index].role = NodeRole::Unknown;  // Replace with actual role if available
+                message->entries[index].role = NodeRole::Default;  // Replace with actual role if available
 
                 index++;
             } while (routingTableList->next());

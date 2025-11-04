@@ -15,9 +15,8 @@ enum LoRaMeshMessageType : uint8_t {
 };
 
 enum NodeRole : uint8_t {
-    Unknown = 0,
-    Node = 1,
-    Gateway = 2,
+    Default = 0,
+    Gateway = 1,
 };
 
 class LoRaMeshMessage {
