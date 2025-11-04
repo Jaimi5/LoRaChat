@@ -213,16 +213,9 @@ RoutingTableMessage* LoRaMeshService::createRoutingTableMessage() {
 
                 message->entries[index].address = node.address;
                 message->entries[index].via = routeNode->via;
-
-                // TODO: Update these fields based on your RouteNode structure
-                // The current LoraMesher version may not have reverseETX, forwardETX, and role
-                // These are placeholder values - update when using newer loramesh library
-                message->entries[index].reverseETX = 0;  // Replace with actual reverseETX if available
-                message->entries[index].forwardETX = 0;  // Replace with actual forwardETX if available
-
-                // Determine role: 0 = Default, 1 = Gateway
-                // You may need to update this based on your RouteNode structure
-                message->entries[index].role = NodeRole::Default;  // Replace with actual role if available
+                message->entries[index].reverseETX = node.reverseETX;  // Scaled by 10
+                message->entries[index].forwardETX = node.forwardETX;  // Scaled by 10
+                message->entries[index].role = node.role;  // 0 = Default, 1 = Gateway
 
                 index++;
             } while (routingTableList->next());

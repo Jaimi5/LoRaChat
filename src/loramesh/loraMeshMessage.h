@@ -30,9 +30,9 @@ public:
 struct RoutingTableEntry {
     uint16_t address;
     uint16_t via;
-    uint16_t reverseETX;
-    uint16_t forwardETX;
-    NodeRole role;
+    uint8_t reverseETX;  // Scaled by 10 (e.g., 10 = ETX 1.0, 20 = ETX 2.0)
+    uint8_t forwardETX;  // Scaled by 10 (e.g., 10 = ETX 1.0, 20 = ETX 2.0)
+    uint8_t role;        // 0 = Default, 1 = Gateway
 };
 
 class RoutingTableMessage : public DataMessageGeneric {
@@ -73,7 +73,7 @@ public:
             entries[i].via = entriesArray[i]["via"];
             entries[i].reverseETX = entriesArray[i]["reverseETX"];
             entries[i].forwardETX = entriesArray[i]["forwardETX"];
-            entries[i].role = (NodeRole)(uint8_t)entriesArray[i]["role"];
+            entries[i].role = entriesArray[i]["role"];
         }
     }
 };
