@@ -160,8 +160,8 @@ String LoRaMeshService::getRoutingTable() {
         do {
             RouteNode* routeNode = routingTableList->getCurrent();
             NetworkNode node = routeNode->networkNode;
-            routingTable += String(node.address) + " (" + String(node.metric) +
-                            ") - Via: " + String(routeNode->via) + "\n";
+            routingTable += String(node.address) + " (<-" + String(node.forwardETX) +
+                            ", ->" + String(node.reverseETX) + ") - Via: " + String(routeNode->via) + "\n";
         } while (routingTableList->next());
     } else {
         routingTable += "No routes";
