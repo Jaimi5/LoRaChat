@@ -285,4 +285,26 @@ button_loss_messages_by_experiments_ci = tk.Button(
 
 button_loss_messages_by_experiments_ci.grid(row=8, column=1, sticky="ew")
 
+# Create a button to launch the Routing Table Monitor
+def launch_routing_table_monitor():
+    """Launch the routing table monitor in a new window"""
+    try:
+        from routingTableMonitor import RoutingTableMonitor
+        monitor = RoutingTableMonitor()
+        monitor.run()
+    except Exception as e:
+        import tkinter.messagebox as messagebox
+        messagebox.showerror("Error", f"Failed to launch Routing Table Monitor:\n{str(e)}")
+
+button_routing_table_monitor = tk.Button(
+    root,
+    text="📡 Routing Table Monitor (Real-Time ETX)",
+    command=launch_routing_table_monitor,
+    bg="#4CAF50",
+    fg="white",
+    font=("Arial", 10, "bold"),
+)
+
+button_routing_table_monitor.grid(row=9, column=0, columnspan=2, sticky="ew", pady=5)
+
 root.mainloop()
