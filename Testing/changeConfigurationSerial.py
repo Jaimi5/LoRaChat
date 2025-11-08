@@ -238,8 +238,8 @@ class ChangeConfigurationSerial:
             # Define that we are in a test environment
             # Find the line where the LoRaMesher is defined and change it
             for line in srcData.splitlines():
-                if line.find("#define TESTING") != -1:
-                    srcData = srcData.replace(line, "#define TESTING")
+                if line.find("#define LM_TESTING") != -1:
+                    srcData = srcData.replace(line, "#define LM_TESTING")
                     break
 
             # Save the file

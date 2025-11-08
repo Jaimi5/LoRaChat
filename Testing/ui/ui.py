@@ -307,4 +307,26 @@ button_routing_table_monitor = tk.Button(
 
 button_routing_table_monitor.grid(row=9, column=0, columnspan=2, sticky="ew", pady=5)
 
+# Create a button to launch the Message Periodicity Analyzer
+def launch_periodicity_analyzer():
+    """Launch the message periodicity analyzer in a new window"""
+    try:
+        from drawPeriodicityAnalysis import MessagePeriodicityAnalyzer
+        analyzer = MessagePeriodicityAnalyzer()
+        analyzer.run()
+    except Exception as e:
+        import tkinter.messagebox as messagebox
+        messagebox.showerror("Error", f"Failed to launch Message Periodicity Analyzer:\n{str(e)}")
+
+button_periodicity_analyzer = tk.Button(
+    root,
+    text="📊 Message Periodicity Analyzer",
+    command=launch_periodicity_analyzer,
+    bg="#2196F3",
+    fg="white",
+    font=("Arial", 10, "bold"),
+)
+
+button_periodicity_analyzer.grid(row=10, column=0, columnspan=2, sticky="ew", pady=5)
+
 root.mainloop()
