@@ -235,7 +235,7 @@ void LoRaMeshService::sendRoutingTableMessage(uint16_t destination) {
     if (message) {
         message->addrDst = destination;
 
-        ESP_LOGI(LMS_TAG, "Sending routing table message to %X with %lu entries",
+        ESP_LOGI(LMS_TAG, "Sending routing table message to %X with %u entries",
                  destination, message->numberOfEntries);
 
         // Send the message
