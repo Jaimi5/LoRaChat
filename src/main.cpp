@@ -234,7 +234,7 @@ void setup() {
     Serial.begin(115200);
 
     // Set log level
-    esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     ESP_LOGI(TAG, "Build environment name: %s", BUILD_ENV_NAME);
 
