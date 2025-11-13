@@ -69,7 +69,16 @@ bool InitDevices::beginPower() {
         return false;
     }
 
-    PMU->setChargingLedMode(XPOWERS_CHG_LED_BLINK_1HZ);
+    // Disable charging LED
+    /*
+      The default setting is CHGLED is automatically controlled by the PMU.
+    - XPOWERS_CHG_LED_OFF,
+    - XPOWERS_CHG_LED_BLINK_1HZ,
+    - XPOWERS_CHG_LED_BLINK_4HZ,
+    - XPOWERS_CHG_LED_ON,
+    - XPOWERS_CHG_LED_CTRL_CHG,
+    * */
+    PMU->setChargingLedMode(XPOWERS_CHG_LED_OFF);
 
     pinMode(PMU_IRQ, INPUT_PULLUP);
     attachInterrupt(PMU_IRQ, setPmuFlag, FALLING);
