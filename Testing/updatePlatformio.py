@@ -370,7 +370,14 @@ class _MonitorPhase:
                 init_failed = False
 
                 # Activity monitoring (50 lines per minute check)
-                line_count = 0
+                # Get the number of lines of the file
+                # if the file does not exist, line_count is 0
+                if os.path.exists(log_file):
+                    with open(log_file, "r", encoding="utf-8") as f:
+                        line_count = sum(1 for _ in f)
+                else:
+                    line_count = 0
+
                 activity_timeout = False
 
                 def check_activity():
