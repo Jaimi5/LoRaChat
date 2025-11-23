@@ -4,6 +4,17 @@ LoRaChat Firmware is a versatile communication system that utilizes LoRa technol
 
 We are using the [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher), which implements a LoRa Mesh communication protocol to establish routing tables and contact lists. This protocol allows our system to dynamically adjust to changes in the network topology, ensuring reliable communication over long distances. Additionally, our system supports large messages thanks to the LargePayloads feature, enabling you to transmit data of any size with ease.
 
+## Organizations & Contributors Using This Project
+
+- [Hacking Ecology (Nayad)](https://hackingecology.com/) - Hacking Ecology transforms water monitoring with accessible and open-source systems.
+
+[<img src="https://github.com/Jaimi5/Jaimi5.github.io/blob/master/logos/enclosure%20logo.png" height="60">](https://hackingecology.com/)
+
+- [Universitat Politècnica de Catalunya](https://www.upc.edu/) and [CNDS research group](https://www.ac.upc.edu/en/research/research-groups/cnds) - Community networks seek an open, free and neutral network by applying the principle of reciprocity to the interconnection of nodes for the circulation of content and services. The group investigates Community Networks, Community Clouds, and Community Wireless Sensor Networks.
+
+[<img src="https://github.com/Jaimi5/Jaimi5.github.io/blob/master/logos/upc-positiu-p3005-interior-blanc.png" height="60">](https://www.upc.edu/)
+
+
 ## Installation
 
 We are using platformio to compile and upload the code to the device. You can install it from [here](https://platformio.org/install/ide?install=vscode).
