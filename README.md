@@ -4,6 +4,9 @@ LoRaChat Firmware is a versatile communication system that utilizes LoRa technol
 
 We are using [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher), which implements a LoRa Mesh communication protocol to establish routing tables and contact lists. This protocol allows our system to dynamically adjust to changes in the network topology, ensuring reliable communication over long distances with multi-hop. Additionally, our system supports large messages thanks to the LargePayloads feature, enabling you to transmit data of any size with ease.
 
+
+You can join LoRaMesher's developers and users on **[Discord](https://discord.gg/SSaZhsChjQ)**, if you like. 
+
 ## Organizations & Contributors Using This Project
 
 - [Hacking Ecology (Nayad)](https://hackingecology.com/) - Hacking Ecology transforms water monitoring with accessible and open-source systems.
