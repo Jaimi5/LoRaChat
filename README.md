@@ -1,8 +1,8 @@
 # LoRaChat Firmware
 
-LoRaChat Firmware is a versatile communication system that utilizes LoRa technology and ESP32 LoRa boards to facilitate long-distance communication. With the convenience of a Bluetooth Serial Terminal, you can easily connect to your devices through your phone. Our implementation includes MQTT support, allowing for communication between the device and the LoRaChat Firmware system.
+LoRaChat Firmware is a versatile communication system that utilizes LoRa technology and ESP32 LoRa boards to facilitate long-distance communication. With the convenience of a Bluetooth Serial Terminal, you can easily connect to your devices through your phone. Our implementation includes MQTT support, allowing for communication between a device in Internet and the LoRaChat Firmware system.
 
-We are using the [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher), which implements a LoRa Mesh communication protocol to establish routing tables and contact lists. This protocol allows our system to dynamically adjust to changes in the network topology, ensuring reliable communication over long distances. Additionally, our system supports large messages thanks to the LargePayloads feature, enabling you to transmit data of any size with ease.
+We are using [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher), which implements a LoRa Mesh communication protocol to establish routing tables and contact lists. This protocol allows our system to dynamically adjust to changes in the network topology, ensuring reliable communication over long distances with multi-hop. Additionally, our system supports large messages thanks to the LargePayloads feature, enabling you to transmit data of any size with ease.
 
 ## Organizations & Contributors Using This Project
 
@@ -10,16 +10,20 @@ We are using the [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher), which i
 
 [<img src="https://github.com/Jaimi5/Jaimi5.github.io/blob/master/logos/enclosure%20logo.png" height="60">](https://hackingecology.com/)
 
-- [Universitat Politècnica de Catalunya](https://www.upc.edu/) and [CNDS research group](https://www.ac.upc.edu/en/research/research-groups/cnds) - Community networks seek an open, free and neutral network by applying the principle of reciprocity to the interconnection of nodes for the circulation of content and services. The group investigates Community Networks, Community Clouds, and Community Wireless Sensor Networks.
+- [Universitat Politècnica de Catalunya](https://www.upc.edu/) and [CNDS research group](https://www.ac.upc.edu/en/research/research-groups/cnds) - The group investigates AI/ML in the IoT, Community Networks, and LoRa Mesh Networks.
 
 [<img src="https://github.com/Jaimi5/Jaimi5.github.io/blob/master/logos/upc-positiu-p3005-interior-blanc.png" height="60">](https://www.upc.edu/)
 
 
+## Demonstrator
+
+A live demonstration of an operation LoRaChat application is [here](https://tomir.ac.upc.edu/loraupc/index.php).
+
 ## Installation
 
-We are using platformio to compile and upload the code to the device. You can install it from [here](https://platformio.org/install/ide?install=vscode).
+We use platformio to compile and upload the code to the device. You can install it from [here](https://platformio.org/install/ide?install=vscode).
 
-We are using EMQX as our MQTT broker. You can install it from [here](https://www.emqx.io/downloads).
+We use EMQX as our MQTT broker. You can install it from [here](https://www.emqx.io/downloads).
 
 To test the MQTT communication you can use the [MQTTX](https://mqttx.app/) application.
 
@@ -107,6 +111,30 @@ With this example we are using a Heltec WIFI LoRa 32 (V3) board. You can use any
 Be aware that when changing the board, if it is not from the default ones, you will need to change the module in the `loramesh/LoRaMeshService.cpp` file and other configuration pins in the `src/config.h` file.
 
 As we are using the Heltec WIFI LoRa 32 (V3) we needed to use a custom board configuration. [Here is why](http://community.heltec.cn/t/heltec-board-migration-from-v2-to-v3/12667).
+
+## More information on the design and evaluation of LoRaChat
+Please see our open access paper ["Middleware for Distributed Applications in a LoRa Mesh Network"]([https://ieeexplore.ieee.org/document/9930341](https://dl.acm.org/doi/10.1145/3747295)) for a detailed description. If you use the LoRaChat, in academic work, please cite the following:
+```
+@article{10.1145/3747295,
+author = {Miquel Sol\'{e}, Joan and Pueyo Centelles, Roger and Freitag, Felix and Meseguer, Roc and Baig, Roger},
+title = {Middleware for Distributed Applications in a LoRa Mesh Network},
+year = {2025},
+issue_date = {July 2025},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {24},
+number = {4},
+issn = {1539-9087},
+url = {https://doi.org/10.1145/3747295},
+doi = {10.1145/3747295},
+abstract = {Recently, LoRa mesh networks have gained increasing interest as a communication layer for sending data between IoT nodes. However, the network service of the firmware on the microcontroller-based nodes is typically limited to sending and receiving LoRa packets through the LoRa radio. Therefore, the packet processing by the node has to be done using an application-specific implementation. In this article, we present the design and implementation of a middleware that facilitates the development and operation of multiple distributed applications on LoRa mesh network nodes. The components we propose leverage the routing capacity of a LoRa mesh network enabled by the LoRaMesher library and provide a service for applications to send and receive messages from each other. Running several applications concurrently is also supported. We experiment with the middleware implemented in the node firmware with distributed applications that span from the LoRa mesh network to the Internet over MQTT. Our results show the support of bidirectional application-level communication, which can be used to build cross-network distributed applications that integrate services on LoRa mesh network nodes.},
+journal = {ACM Trans. Embed. Comput. Syst.},
+month = jul,
+articleno = {60},
+numpages = {26},
+keywords = {LoRa, mesh network, IoT, distributed application}
+}
+```
 
 
 # Testing the library
