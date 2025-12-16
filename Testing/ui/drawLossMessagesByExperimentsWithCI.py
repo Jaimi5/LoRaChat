@@ -162,8 +162,8 @@ def calculate_loss_metrics_with_ci(experiment_paths, config, confidence_level=0.
     Uses enhanced statistics with normality testing.
 
     Returns: {
-        'Packet Delivery Ratio': { 'mean': X, 'ci_lower': Y, 'ci_upper': Z, ... },
-        'Packet Loss': { 'mean': X, 'ci_lower': Y, 'ci_upper': Z, ... }
+        'Message Delivery Ratio': { 'mean': X, 'ci_lower': Y, 'ci_upper': Z, ... },
+        'Message Loss': { 'mean': X, 'ci_lower': Y, 'ci_upper': Z, ... }
     }
     """
     pdr_values = []
@@ -181,8 +181,8 @@ def calculate_loss_metrics_with_ci(experiment_paths, config, confidence_level=0.
 
     # Calculate statistics for each metric using enhanced CI module
     for metric_name, values in [
-        ("Packet Delivery Ratio", pdr_values),
-        ("Packet Loss", loss_values)
+        ("Message Delivery Ratio", pdr_values),
+        ("Message Loss", loss_values)
     ]:
         if len(values) == 0:
             results[metric_name] = None
@@ -210,7 +210,7 @@ def print_loss_metrics_values(all_results, confidence_level=0.95):
     This function logs all data to console/terminal.
     """
     print("\n" + "="*80)
-    print("PACKET LOSS METRICS - VALUES FOR plotLossByExperiments.py")
+    print("MESSAGE LOSS METRICS - VALUES FOR plotLossByExperiments.py")
     print("="*80)
     print(f"Confidence Level: {int(confidence_level*100)}%")
     print(f"Method: Student's t-distribution")
@@ -230,7 +230,7 @@ def print_loss_metrics_values(all_results, confidence_level=0.95):
 
         metrics = result.get('metrics', {})
 
-        for metric_name in ["Packet Delivery Ratio", "Packet Loss"]:
+        for metric_name in ["Message Delivery Ratio", "Message Loss"]:
             metric_data = metrics.get(metric_name)
 
             if metric_data:
@@ -255,14 +255,14 @@ def print_loss_metrics_values(all_results, confidence_level=0.95):
         config_label = result['label']
         metrics = result.get('metrics', {})
 
-        pdr_data = metrics.get("Packet Delivery Ratio")
+        pdr_data = metrics.get("Message Delivery Ratio")
         if pdr_data and 'values' in pdr_data:
             values_str = ', '.join([f"{v:.2f}" for v in pdr_data['values']])
             print(f"    \"{config_label} - PDR\": {{")
             print(f"        'values': [{values_str}],")
             print(f"    }},")
 
-        loss_data = metrics.get("Packet Loss")
+        loss_data = metrics.get("Message Loss")
         if loss_data and 'values' in loss_data:
             values_str = ', '.join([f"{v:.2f}" for v in loss_data['values']])
             print(f"    \"{config_label} - Loss\": {{")
@@ -331,7 +331,7 @@ def draw_loss_messages_by_experiments_with_ci(frame: Frame, directory, confidenc
     plt.rc("font", size=20)
 
     # Prepare data for plotting
-    metric_names = ["Packet Delivery Ratio", "Packet Loss"]
+    metric_names = ["Message Delivery Ratio", "Message Loss"]
     x = np.arange(len(all_results))  # X-axis positions for each configuration
     width = 0.35  # Width of bars (2 bars per group)
 
@@ -372,7 +372,7 @@ def draw_loss_messages_by_experiments_with_ci(frame: Frame, directory, confidenc
     # Add labels and title
     ax.set_xlabel("Experiment Configuration", fontsize=24, fontstyle='normal')
     ax.set_ylabel("Percentage [%]", fontsize=24)
-    ax.set_title(f"Packet Loss Statistics by Experiment ({int(confidence_level*100)}% CI)", fontsize=24)
+    ax.set_title(f"Message Loss Statistics by Experiment ({int(confidence_level*100)}% CI)", fontsize=24)
     ax.set_xticks(x)
 
     # Set y-axis tick label font size
@@ -442,7 +442,7 @@ def draw_loss_messages_by_experiments_with_ci(frame: Frame, directory, confidenc
                 output_dir=directory,
                 base_filename='loss_messages_by_experiments',
                 confidence_level=confidence_level,
-                table_caption='Packet Loss and Delivery Ratio Statistics'
+                table_caption='Message Loss and Delivery Ratio Statistics'
             )
             print_export_summary(output_files)
             messagebox.showinfo("Export Complete",
