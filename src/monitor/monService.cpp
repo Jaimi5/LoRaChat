@@ -1,8 +1,11 @@
 #include "monService.h"
 #include <Arduino.h>
 #include "loramesh/loraMeshService.h"
+#ifndef USE_LORAMESHER_V2
 #include "LoraMesher.h"
+#endif
 #include "monServiceMessage.h"
+#include "esp_heap_caps.h"
 
 #if defined(MON_MQTT_ONE_MESSAGE)
 static const char* MON_TAG = "MonOMService";
@@ -86,12 +89,17 @@ monOneMessage* MonService::createMONPayloadMessage(int number_of_neighbors) {
     MONMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
     MONMessage->RTcount = MONCOUNT_MONONEMESSAGE;
     MONMessage->uptime = millis();
+#ifdef USE_LORAMESHER_V2
+    MONMessage->TxQ = 0;
+    MONMessage->RxQ = 0;
+#else
     MONMessage->TxQ = LoraMesher::getInstance().getSendQueueSize();
     MONMessage->RxQ = LoraMesher::getInstance().getReceivedQueueSize();
+#endif
     MONMessage->number_of_neighbors = number_of_neighbors;
     MONMessage->appPortDst = appPort::MQTTApp;
     MONMessage->appPortSrc = appPort::MonApp;
-    MONMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    MONMessage->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     MONMessage->addrDst = 0;
     MONMessage->messageId = monMessageId;
     return MONMessage;
@@ -110,6 +118,44 @@ void MonService::sendingLoopOneMessage(void* parameter) {
         } else {
             uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
             ESP_LOGD(MON_TAG, "Stack space unused after entering the task: %d", uxHighWaterMark);
+
+#ifdef USE_LORAMESHER_V2
+            LoRaMeshService::getInstance().updateRoutingTable();
+            auto routes = LoRaMeshService::getInstance().getRoutingTableEntries();
+
+            // Count direct neighbors (destination == next_hop, i.e. 1 hop)
+            uint16_t monMessagecount = 0;
+            for (const auto& route : routes) {
+                if (route.destination == route.next_hop) {
+                    ++monMessagecount;
+                }
+            }
+
+            if (monMessagecount > 0) {
+                MonService::getInstance().monMessageId++;
+                heap_caps_check_integrity_all(true);
+                monOneMessage* MONMessage =
+                    getInstance().createMONPayloadMessage(monMessagecount);
+                heap_caps_check_integrity_all(true);
+                int i = 0;
+                for (const auto& route : routes) {
+                    if (route.destination == route.next_hop) {
+                        routing_entry entry;
+                        entry.neighbor = route.destination;
+                        // Approximate SNR from link_quality: lq/2 - 64
+                        // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
+                        // entry.SRTT = route.last_seen_ms;
+                        MONMessage->rt[i++] = entry;
+                    }
+                }
+                ESP_LOGV(MON_TAG, "sending monOneMessage");
+                MessageManager::getInstance().sendMessage(messagePort::MqttPort,
+                                                          (DataMessage*)MONMessage);
+                vPortFree(MONMessage);
+            } else {
+                ESP_LOGD(MON_TAG, "sendingLoopOneMessage: no neighbors?");
+            }
+#else
             RoutingTableService::printRoutingTable();
             LoRaMeshService::getInstance().updateRoutingTable();
             LM_LinkedList<RouteNode>* routingTableList =
@@ -149,6 +195,7 @@ void MonService::sendingLoopOneMessage(void* parameter) {
             } else {
                 ESP_LOGD(MON_TAG, "No routes");
             }
+#endif
             // end send MON
             vTaskDelay(MON_SENDING_EVERY / portTICK_PERIOD_MS);
             // Print the free heap memory
@@ -172,10 +219,21 @@ void MonService::sendingLoop(void* parameter) {
         } else {
             uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
             ESP_LOGD(MON_TAG, "Stack space unused after entering the task: %d", uxHighWaterMark);
-            // send MON, one entri per mqtt message
-            // from RoutingTableService::printRoutingTable
-            // LM_LinkedList<RouteNode> *routingTableList =
-            // LoRaMeshService::getInstance().get_routingTableList();
+            // send MON, one entry per mqtt message
+
+#ifdef USE_LORAMESHER_V2
+            LoRaMeshService::getInstance().updateRoutingTable();
+            auto routes = LoRaMeshService::getInstance().getRoutingTableEntries();
+            if (!routes.empty()) {
+                MonService::getInstance().monMessageId++;
+                uint16_t monMessagecount = 0;
+                for (const auto& route : routes) {
+                    getInstance().createAndSendMessage(++monMessagecount, route);
+                }
+            } else {
+                ESP_LOGD(MON_TAG, "No routes");
+            }
+#else
             RoutingTableService::printRoutingTable();
             LM_LinkedList<RouteNode>* routingTableList =
                 LoRaMeshService::getInstance().radio.routingTableListCopy();
@@ -193,6 +251,7 @@ void MonService::sendingLoop(void* parameter) {
             // Release routing table list usage.
             routingTableList->releaseInUse();
             routingTableList->Clear();
+#endif
             // end send MON
             vTaskDelay(MON_SENDING_EVERY / portTICK_PERIOD_MS);
             // Print the free heap memory
@@ -201,6 +260,33 @@ void MonService::sendingLoop(void* parameter) {
     }
 }
 
+#ifdef USE_LORAMESHER_V2
+void MonService::createAndSendMessage(uint16_t mcount, const loramesher::RouteEntry& route) {
+    ESP_LOGV(MON_TAG, "Sending mon data %d", MonService::getInstance().monMessageId);
+    monMessage* message = new monMessage();
+    message->appPortDst = appPort::MQTTApp;
+    message->appPortSrc = appPort::MonApp;
+    message->messageId = monMessageId;
+    message->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
+    message->addrDst = 0;
+    //
+    message->RTcount = mcount;
+    message->address = route.destination;
+    message->metric = route.hop_count;
+    message->via = route.next_hop;
+    // Approximate SNR from link_quality
+    message->receivedSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
+    message->sentSNR = 0;
+    message->SRTT = route.last_seen_ms;
+    message->RTTVAR = 0;
+    ESP_LOGV(MON_TAG, "routing table");
+    message->messageSize = sizeof(monMessage) - sizeof(DataMessageGeneric);
+    // Send the message
+    MessageManager::getInstance().sendMessage(messagePort::MqttPort, (DataMessage*)message);
+    // Delete the message
+    delete message;
+}
+#else
 void MonService::createAndSendMessage(uint16_t mcount, RouteNode* rtn) {
     ESP_LOGV(MON_TAG, "Sending mon data %d", MonService::getInstance().monMessageId);
     monMessage* message = new monMessage();
@@ -225,5 +311,6 @@ void MonService::createAndSendMessage(uint16_t mcount, RouteNode* rtn) {
     // Delete the message
     delete message;
 }
+#endif
 
 #endif

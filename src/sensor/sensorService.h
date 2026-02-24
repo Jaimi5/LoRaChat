@@ -10,7 +10,7 @@
 
 #include "config.h"
 
-#include "LoraMesher.h"
+#include "loramesh/loraMeshService.h"
 
 
 // Sensor types

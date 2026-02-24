@@ -2,7 +2,13 @@
 #include <Arduino.h>
 #include <cstdint>
 #include "config.h"
+
+#ifdef USE_LORAMESHER_V2
+#include "loramesher.hpp"
+#else
 #include "LoraMesher.h"
+#endif
+
 #include "message/messageManager.h"
 #include "message/messageService.h"
 #include "monCommandService.h"
@@ -34,7 +40,11 @@ private:
     monOneMessage* createMONPayloadMessage(int number_of_neighbors);
 #else
     static void sendingLoop(void*);
+#ifdef USE_LORAMESHER_V2
+    void createAndSendMessage(uint16_t mcount, const loramesher::RouteEntry& route);
+#else
     void createAndSendMessage(uint16_t mcount, RouteNode*);
+#endif
 #endif
     TaskHandle_t sending_TaskHandle = NULL;
     bool running = false;

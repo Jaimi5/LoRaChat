@@ -1,4 +1,5 @@
 #include "metadata.h"
+#include "loramesh/loraMeshService.h"
 
 static const char* METADATA_TAG = "MetadataService";
 
@@ -76,7 +77,7 @@ void Metadata::createAndSendMetadata() {
 
     message->appPortDst = appPort::MQTTApp;
     message->appPortSrc = appPort::MetadataApp;
-    message->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    message->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     message->addrDst = 0;
     message->messageId = metadataId;
 

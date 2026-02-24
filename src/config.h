@@ -1,11 +1,15 @@
 #pragma once
 
+// USE_LORAMESHER_V2 is set via platformio.ini build_flags (in base_v2 / *-v2 envs)
+// Defined: uses LoRaMesher v1.0.0 (Builder pattern, callbacks)
+// Not defined: uses LoRaMesher v0.0.11 (singleton, task-based)
+
 // Choose the device, choose it directly in the platformio.ini file
 // #define T_BEAM_V10 // ttgo-t-beam
 // #define T_BEAM_LORA_32 // ttgo-lora32-v1
 // #define NAYAD_V1
 // #define NAYAD_V1R2
-#define MAKERFABS_SENSELORA_MOISTURE
+// #define MAKERFABS_SENSELORA_MOISTURE
 
 #if defined(NAYAD_V1) || defined(NAYAD_V1R2)
 // #define GPS_ENABLED
@@ -26,10 +30,10 @@
 #define LORA_ENABLED
 #define WIFI_ENABLED
 #define MQTT_ENABLED
-// #define MQTT_MON_ENABLED
-// #define BLUETOOTH_ENABLED
+#define MQTT_MON_ENABLED
+#define BLUETOOTH_ENABLED
 // #define GPS_ENABLED
-#define SIMULATION_ENABLED
+// #define SIMULATION_ENABLED
 // #define NO_SENSOR_DATA // If the sensors are not connected
 #elif defined(T_BEAM_LORA_32)
 #define DISPLAY_ENABLED
@@ -105,8 +109,8 @@
 #define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID "*********"
-#define WIFI_PASSWORD "*********"
+#define WIFI_SSID "Vera_98BFAB"
+#define WIFI_PASSWORD "5dfafbbcef"
 #define WIFI_OVERRIDE_CREDENTIALS //If defined, every time the device is reset it will set the wifi credentials.
 
 // MQTT configuration
@@ -129,7 +133,7 @@
 #define METADATA_UPDATE_DELAY 300000  // ms
 
 // MQTT_MON configuration
-#define MON_SENDING_EVERY 30000  // ms
+#define MON_SENDING_EVERY 60000  // ms
 
 
 // Battery configuration
@@ -289,6 +293,8 @@
 #define LORA_IO1 33
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_IO1 7
+#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#define LORA_IO1 33
 #else
 #ifndef LORA_MODULE_SX1276
 #warning "LORA_IO1 not defined"
@@ -296,6 +302,8 @@
 #define LORA_IO1 255U
 #endif
 #endif
+
+#define LORA_MANAGER_ID 0x3ADF
 
 
 // PMU configuration
@@ -309,9 +317,9 @@
 // The address of the device that will connect at the beginning of the simulation
 #define WIFI_ADDR_CONNECTED 20056
 
-#define PACKET_COUNT 200
+#define PACKET_COUNT 20
 #define PACKET_DELAY 120000
-#define PACKET_SIZE 50
+#define PACKET_SIZE 500
 #define UPLOAD_PAYLOAD 0
 #define LOG_MESHER 0
 
@@ -319,7 +327,7 @@
 #define ONE_SENDER 35872
 
 // If defined 0 the packets will be sent unreliably
-#define SEND_RELIABLE 0
+#define SEND_RELIABLE 1
 
 // Simulator Delay Configuration (all times in milliseconds unless specified)
 #define SIM_NETWORK_PROPAGATION_MULTIPLIER 15

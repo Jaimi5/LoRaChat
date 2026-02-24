@@ -16,7 +16,7 @@ String Led::ledOn() {
 
 String Led::ledOn(uint16_t dst) {
     ESP_LOGV(LED_TAG, "Led On to %X", dst);
-    if (dst == LoraMesher::getInstance().getLocalAddress())
+    if (dst == LoRaMeshService::getInstance().getLocalAddress())
         return ledOn();
 
     DataMessage* msg = getLedMessage(LedCommand::On, dst);
@@ -36,7 +36,7 @@ String Led::ledOff() {
 
 String Led::ledOff(uint16_t dst) {
     ESP_LOGV(LED_TAG, "Led Off to %X", dst);
-    if (dst == LoraMesher::getInstance().getLocalAddress())
+    if (dst == LoRaMeshService::getInstance().getLocalAddress())
         return ledOff();
 
     DataMessage* msg = getLedMessage(LedCommand::Off, dst);
@@ -103,7 +103,7 @@ DataMessage* Led::getLedMessage(LedCommand command, uint16_t dst) {
     ledMessage->appPortSrc = appPort::LedApp;
     ledMessage->appPortDst = appPort::LedApp;
 
-    ledMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    ledMessage->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     ledMessage->addrDst = dst;
 
     return (DataMessage*)ledMessage;

@@ -1,30 +1,41 @@
 #include "sim.h"
 
+// HELLO_PACKETS_DELAY is defined in the v1 LoRaMesher library; provide a default for v2
+#ifndef HELLO_PACKETS_DELAY
+#define HELLO_PACKETS_DELAY 120
+#endif
+
 static const char* SIM_TAG = "Sim";
 
 void Sim::init() {
+#ifndef USE_LORAMESHER_V2
     service = new SimulatorService();
+#endif
     createSimTask();
     start();
 }
 
 String Sim::start() {
+#ifndef USE_LORAMESHER_V2
     if (LOG_MESHER == true) {
         if (service != nullptr) {
             service->startSimulation();
         }
         LoraMesher::getInstance().setSimulatorService(service);
     }
+#endif
     return "Sim On";
 }
 
 String Sim::stop() {
+#ifndef USE_LORAMESHER_V2
     if (LOG_MESHER == true) {
         if (service != nullptr) {
             service->stopSimulation();
         }
         LoraMesher::getInstance().removeSimulatorService();
     }
+#endif
     return "Sim Off";
 }
 
@@ -91,8 +102,8 @@ void Sim::simLoop(void* pvParameters) {
 
 
 #if ONE_SENDER != 0
-        if (LoraMesher::getInstance().getLocalAddress() == ONE_SENDER) {
-            while (LoraMesher::getInstance().getClosestGateway() == nullptr) {
+        if (LoRaMeshService::getInstance().getLocalAddress() == ONE_SENDER) {
+            while (!LoRaMeshService::getInstance().hasGateway()) {
                 vTaskDelay(1000 / portTICK_PERIOD_MS);  // Wait 1 second
             }
             sim.sendPacketsToServer(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
@@ -147,6 +158,7 @@ void Sim::sendAllData() {
 
     delete simMessage;
 
+#ifndef USE_LORAMESHER_V2
     service->statesList->setInUse();
 
     if (service->statesList->moveToStart()) {
@@ -176,6 +188,7 @@ void Sim::sendAllData() {
     }
 
     service->statesList->releaseInUse();
+#endif
 
     ESP_LOGI(SIM_TAG, "Simulator Finished sending data");
 
@@ -186,6 +199,7 @@ void Sim::sendAllData() {
     delete simMessage;
 }
 
+#ifndef USE_LORAMESHER_V2
 SimMessage* Sim::createSimMessage(LM_State* state) {
     uint32_t messageSize = sizeof(SimMessage) + sizeof(SimMessageState);
 
@@ -198,12 +212,13 @@ SimMessage* Sim::createSimMessage(LM_State* state) {
 
     simMessage->appPortDst = appPort::MQTTApp;
     simMessage->appPortSrc = appPort::SimApp;
-    simMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    simMessage->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     simMessage->addrDst = 0;
     simMessage->messageId = state->id;
 
     return simMessage;
 }
+#endif
 
 void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t delayMs) {
     SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
@@ -238,7 +253,7 @@ SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
     simMessage->simCommand = SimCommand::Payload;
     simMessage->appPortDst = appPort::MQTTApp;
     simMessage->appPortSrc = appPort::SimApp;
-    simMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    simMessage->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     simMessage->addrDst = 0;
     simMessage->messageId = 0;
     SimPayloadMessage* simPayloadMessage = (SimPayloadMessage*)simMessage->payload;
@@ -263,7 +278,7 @@ SimMessage* Sim::createSimMessage(SimCommand command) {
 
     simMessage->appPortDst = appPort::MQTTApp;
     simMessage->appPortSrc = appPort::SimApp;
-    simMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    simMessage->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     simMessage->addrDst = 0;
     simMessage->messageId = 0;
 
@@ -298,7 +313,7 @@ void Sim::sendStartSimMessage() {
 #endif
 
     // Delete WiFi and MQTT
-    if (LoraMesher::getInstance().getLocalAddress() == WIFI_ADDR_CONNECTED)
+    if (LoRaMeshService::getInstance().getLocalAddress() == WIFI_ADDR_CONNECTED)
         return;
 
     MqttService::getInstance().disconnect();

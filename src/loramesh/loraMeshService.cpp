@@ -1,6 +1,247 @@
 #include "loraMeshService.h"
+#include "esp_heap_caps.h"
 
 static const char* LMS_TAG = "LoRaMeshService";
+
+// #define LORA_CS 18    // SPI Chip Select (NSS)
+// #define LORA_RST 23   // Radio Reset pin
+// #define LORA_IRQ 26   // DIO0 - Primary interrupt
+// #define LORA_IO1 33   // DIO1 - Secondary interrupt
+
+#define LORA_RADIO_TYPE loramesher::RadioType::kSx1276
+#define LORA_FREQUENCY 869.900F       // MHz - EU868 band
+#define LORA_SPREADING_FACTOR 7U      // SF7-SF12: higher = more range, slower
+#define LORA_BANDWITH 125.0           // kHz - 125/250/500
+#define LORA_CODING_RATE 7U           // 5-8: higher = more error correction
+#define LORA_POWER 6                  // dBm - transmit power
+#define LORA_SYNC_WORD 20U            // Network identifier (0-255)
+#define LORA_CRC true                 // Enable CRC checking
+#define LORA_PREAMBLE_LENGTH 8U       // Preamble symbols
+
+#ifdef USE_LORAMESHER_V2
+// ============================================================
+// LoRaMesher v2 (Builder pattern, callback-based)
+// ============================================================
+
+void LoRaMeshService::initLoraMesherService() {
+#ifdef LORA_ENABLED
+    loramesher::PinConfig pinConfig(LORA_CS, LORA_RST, LORA_IRQ, LORA_IO1, LORA_SCK, LORA_MISO, LORA_MOSI);
+
+        // Step 2: Configure radio parameters
+    loramesher::RadioConfig radioConfig(LORA_RADIO_TYPE, LORA_FREQUENCY,
+                            LORA_SPREADING_FACTOR, LORA_BANDWITH,
+                            LORA_CODING_RATE, LORA_POWER, LORA_SYNC_WORD,
+                            LORA_CRC, LORA_PREAMBLE_LENGTH);
+
+// #ifdef LORA_MODULE_SX1276
+//     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1276);
+// #elif defined(LORA_MODULE_SX1278)
+//     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1278);
+// #else
+//     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1276);
+// #endif
+
+    loramesher::LoRaMeshProtocolConfig meshConfig;
+
+    loramesher::AddressType my_address = loramesher::LoraMesher::GenerateAddressFromHardware();
+
+#if defined(LORA_MANAGER_ID)
+    // Optional: Set role based on address
+    if (my_address == LORA_MANAGER_ID) {
+        meshConfig.setNodeRole(loramesher::NodeRole::NETWORK_MANAGER);
+    } else {
+        meshConfig.setNodeRole(loramesher::NodeRole::NODE_ONLY);
+    }
+#endif
+
+    mesher_ = loramesher::LoraMesher::Builder()
+                  .withRadioConfig(radioConfig)
+                  .withPinConfig(pinConfig)
+                  .withLoRaMeshProtocol(meshConfig)
+                  .Build();
+
+    mesher_->SetDataCallback([](loramesher::AddressType source, const std::vector<uint8_t>& data) {
+        ESP_LOGV(LMS_TAG, "v2 data callback from %04X, size=%d", source, data.size());
+
+        if (data.size() < sizeof(LoRaMeshMessage)) {
+            ESP_LOGW(LMS_TAG, "Received packet too small");
+            return;
+        }
+
+        const LoRaMeshMessage* lmMsg = reinterpret_cast<const LoRaMeshMessage*>(data.data());
+        uint32_t messagePayloadSize = data.size() - sizeof(LoRaMeshMessage);
+        uint32_t dataMessageSize = sizeof(DataMessage) + messagePayloadSize;
+
+        DataMessage* dataMessage = (DataMessage*)pvPortMalloc(dataMessageSize);
+        if (dataMessage) {
+            dataMessage->appPortDst = lmMsg->appPortDst;
+            dataMessage->appPortSrc = lmMsg->appPortSrc;
+            dataMessage->messageId = lmMsg->messageId;
+            dataMessage->addrSrc = source;
+            dataMessage->addrDst = LoRaMeshService::getInstance().getLocalAddress();
+            dataMessage->messageSize = messagePayloadSize;
+            memcpy(dataMessage->message, lmMsg->dataMessage, messagePayloadSize);
+
+            MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, dataMessage);
+
+            vPortFree(dataMessage);
+        }
+    });
+
+    heap_caps_check_integrity_all(true);
+    auto result = mesher_->Start();
+    heap_caps_check_integrity_all(true);
+    if (result) {
+        ESP_LOGI(LMS_TAG, "LoraMesher v2 initialized");
+    } else {
+        ESP_LOGE(LMS_TAG, "LoraMesher v2 Start failed");
+    }
+#endif
+}
+
+uint16_t LoRaMeshService::getLocalAddress() {
+    return mesher_ ? mesher_->GetNodeAddress() : loramesher::LoraMesher::GenerateAddressFromHardware();
+}
+
+String LoRaMeshService::getRoutingTable() {
+    String routingTable = "--- Routing Table ---\n";
+
+    if (!mesher_) {
+        routingTable += "No mesher";
+        return routingTable;
+    }
+
+    auto routes = mesher_->GetRoutingTable();
+    if (routes.empty()) {
+        routingTable += "No routes";
+    } else {
+        for (const auto& route : routes) {
+            routingTable += String(route.destination) + " (hops:" + String(route.hop_count) +
+                            " lq:" + String(route.link_quality) +
+                            ") - Via: " + String(route.next_hop) + "\n";
+        }
+    }
+
+    return routingTable;
+}
+
+void LoRaMeshService::send(DataMessage* message) {
+    if (!mesher_)
+        return;
+
+    ESP_LOGV(LMS_TAG, "Heap size send: %d", ESP.getFreeHeap());
+
+    LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
+    if (!loraMeshMessage)
+        return;
+
+    size_t totalSize = sizeof(LoRaMeshMessage) + message->messageSize;
+    heap_caps_check_integrity_all(true);
+    std::vector<uint8_t> payload(reinterpret_cast<uint8_t*>(loraMeshMessage),
+                                 reinterpret_cast<uint8_t*>(loraMeshMessage) + totalSize);
+
+    auto result = mesher_->Send(message->addrDst, payload);
+    if (!result) {
+        ESP_LOGW(LMS_TAG, "v2 Send failed");
+    }
+
+    vPortFree(loraMeshMessage);
+    heap_caps_check_integrity_all(true);
+    ESP_LOGV(LMS_TAG, "Heap size send 2: %d", ESP.getFreeHeap());
+}
+
+bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
+    if (!mesher_)
+        return false;
+
+    auto gateway = mesher_->GetClosestGateway();
+    if (!gateway.has_value()) {
+        ESP_LOGE(LMS_TAG, "No gateway found");
+        return false;
+    }
+
+    message->addrDst = gateway->destination;
+    ESP_LOGI(LMS_TAG, "Sending message to gateway %X", message->addrDst);
+    send(message);
+    return true;
+}
+
+void LoRaMeshService::setGateway() {
+    if (mesher_) {
+        mesher_->SetNodeCapabilities(loramesher::NodeCapabilities::GATEWAY);
+    }
+}
+
+void LoRaMeshService::removeGateway() {
+    if (mesher_) {
+        mesher_->SetNodeCapabilities(loramesher::NodeCapabilities::NONE);
+    }
+}
+
+bool LoRaMeshService::hasActiveConnections() {
+    if (!mesher_)
+        return false;
+    return mesher_->GetNetworkStatus().connected_nodes > 0;
+}
+
+bool LoRaMeshService::hasActiveSentConnections() {
+    // v2 doesn't distinguish sent/received connections
+    return hasActiveConnections();
+}
+
+bool LoRaMeshService::hasActiveReceivedConnections() {
+    // v2 doesn't distinguish sent/received connections
+    return hasActiveConnections();
+}
+
+size_t LoRaMeshService::queueWaitingSendPacketsLength() {
+    // v2 doesn't expose queue sizes directly
+    return 0;
+}
+
+void LoRaMeshService::standby() {
+    if (mesher_) {
+        mesher_->Stop();
+    }
+}
+
+bool LoRaMeshService::hasGateway() {
+    if (!mesher_)
+        return false;
+    return mesher_->GetClosestGateway().has_value();
+}
+
+void LoRaMeshService::updateRoutingTable() {
+    // v2 routing table is always fresh from GetRoutingTable()
+    if (mesher_ && mesher_->GetRoutingTable().empty()) {
+        ESP_LOGW(LMS_TAG, "No routes in the routing table");
+    }
+}
+
+std::vector<loramesher::RouteEntry> LoRaMeshService::getRoutingTableEntries() {
+    if (!mesher_)
+        return {};
+    return mesher_->GetRoutingTable();
+}
+
+LoRaMeshMessage* LoRaMeshService::createLoRaMeshMessage(DataMessage* message) {
+    LoRaMeshMessage* loraMeshMessage =
+        (LoRaMeshMessage*)pvPortMalloc(sizeof(LoRaMeshMessage) + message->messageSize);
+
+    if (loraMeshMessage) {
+        loraMeshMessage->appPortDst = message->appPortDst;
+        loraMeshMessage->appPortSrc = message->appPortSrc;
+        loraMeshMessage->messageId = message->messageId;
+        memcpy(loraMeshMessage->dataMessage, message->message, message->messageSize);
+    }
+
+    return loraMeshMessage;
+}
+
+#else
+// ============================================================
+// LoRaMesher v1 (singleton, task-notification API)
+// ============================================================
 
 #if defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_LORA_32) || defined(T_BEAM_V10) || \
     defined(T_BEAM_V12)
@@ -209,6 +450,14 @@ bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
     return true;
 }
 
+void LoRaMeshService::setGateway() {
+    LoraMesher::getInstance().addGatewayRole();
+}
+
+void LoRaMeshService::removeGateway() {
+    LoraMesher::getInstance().removeGatewayRole();
+}
+
 bool LoRaMeshService::hasActiveConnections() {
     return radio.hasActiveConnections();
 }
@@ -219,6 +468,10 @@ bool LoRaMeshService::hasActiveSentConnections() {
 
 bool LoRaMeshService::hasActiveReceivedConnections() {
     return radio.hasActiveReceivedConnections();
+}
+
+size_t LoRaMeshService::queueWaitingSendPacketsLength() {
+    return radio.queueWaitingSendPacketsLength();
 }
 
 void LoRaMeshService::standby() {
@@ -243,3 +496,5 @@ void LoRaMeshService::updateRoutingTable() {
 
     routingTableList = radio.routingTableListCopy();
 }
+
+#endif  // USE_LORAMESHER_V2

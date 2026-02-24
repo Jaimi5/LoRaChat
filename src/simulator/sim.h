@@ -14,13 +14,9 @@
 
 #include "simMessage.h"
 
-#include "LoraMesher.h"
+#include "loramesh/loraMeshService.h"
 
 #include "WiFi.h"
-
-// #include "sensor/temperature-onewire/temperature.h"
-
-// #include "sensor/dht22/dht22.h"
 
 class Sim : public MessageService {
 public:
@@ -41,7 +37,9 @@ public:
 
     SimCommandService* simCommandService = nullptr;
 
+#ifndef USE_LORAMESHER_V2
     SimulatorService* service = nullptr;
+#endif
 
     void init();
 
@@ -73,7 +71,9 @@ private:
 
     void sendAllData();
 
+#ifndef USE_LORAMESHER_V2
     SimMessage* createSimMessage(LM_State* state);
+#endif
 
     SimMessage* createSimPayloadMessage(size_t packetSize);
 

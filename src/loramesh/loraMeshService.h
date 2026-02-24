@@ -4,7 +4,11 @@
 
 #include "config.h"
 
+#ifdef USE_LORAMESHER_V2
+#include "loramesher.hpp"
+#else
 #include "LoraMesher.h"
+#endif
 
 #include "loraMeshMessage.h"
 
@@ -17,10 +21,6 @@
 
 class LoRaMeshService : public MessageService {
 public:
-    /**
-     * @brief Construct a new LoRaMeshService object
-     *
-     */
     static LoRaMeshService& getInstance() {
         static LoRaMeshService instance;
         return instance;
@@ -36,17 +36,15 @@ public:
 
     uint16_t getLocalAddress();
 
-    void loopReceivedPackets();
-
     String getRoutingTable();
 
     void send(DataMessage* message);
 
     bool sendClosestGateway(DataMessage* message);
 
-    static inline void setGateway() { LoraMesher::getInstance().addGatewayRole(); }
+    void setGateway();
 
-    static inline void removeGateway() { LoraMesher::getInstance().removeGatewayRole(); }
+    void removeGateway();
 
     LoRaMeshCommandService* loraMesherCommandService = nullptr;
 
@@ -56,35 +54,39 @@ public:
 
     bool hasActiveReceivedConnections();
 
-    size_t queueWaitingSendPacketsLength() { return radio.queueWaitingSendPacketsLength(); }
+    size_t queueWaitingSendPacketsLength();
 
     void standby();
 
-    /**
-     * @brief If the device Routing table contains a gateway
-     *
-     * @return true
-     * @return false
-     */
     bool hasGateway();
-
-    LM_LinkedList<RouteNode>* routingTableList = NULL;
 
     void updateRoutingTable();
 
+#ifdef USE_LORAMESHER_V2
+    std::vector<loramesher::RouteEntry> getRoutingTableEntries();
+#else
+    void loopReceivedPackets();
+
+    LM_LinkedList<RouteNode>* routingTableList = NULL;
+#endif
+
 private:
+#ifdef USE_LORAMESHER_V2
+    std::unique_ptr<loramesher::LoraMesher> mesher_;
+#else
     LoraMesher& radio = LoraMesher::getInstance();
 
     TaskHandle_t receiveLoRaMessage_Handle = NULL;
+
+    void createReceiveMessages();
+
+    DataMessage* createDataMessage(AppPacket<LoRaMeshMessage>* message);
+#endif
 
     LoRaMeshService() : MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
         loraMesherCommandService = new LoRaMeshCommandService();
         commandService = loraMesherCommandService;
     };
 
-    void createReceiveMessages();
-
     LoRaMeshMessage* createLoRaMeshMessage(DataMessage* message);
-
-    DataMessage* createDataMessage(AppPacket<LoRaMeshMessage>* message);
 };

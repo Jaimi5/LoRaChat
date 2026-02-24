@@ -14,7 +14,10 @@ class MQTT:
         MQTT_TOPIC_IN = "to-server/#"
 
         try:
-            self.client = mqtt.Client(protocol=mqtt.MQTTv311)
+            self.client = mqtt.Client(
+                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                protocol=mqtt.MQTTv311
+            )
             self.client.connect(host, port)
 
             self.client.loop_start()

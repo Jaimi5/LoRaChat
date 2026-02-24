@@ -166,7 +166,7 @@ void SensorService::createAndSendMessage() {
 
     message->appPortDst = appPort::MQTTApp;
     message->appPortSrc = appPort::SensorApp;
-    message->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    message->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     message->addrDst = 0;
     message->messageId = sensorMessageId;
 
