@@ -390,7 +390,7 @@ void DisplayService::setupTextMovement(int line, const String& text) {
 }
 
 void DisplayService::setTitle() {
-    String title = "LoRaMesher - v0.0.8";
+    String title = "LoRaMesher - v1.0.0";
     String device_id =
         "Device ID: " + String(LoRaMeshService::getInstance().getLocalAddress(), HEX);
 
