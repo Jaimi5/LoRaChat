@@ -140,6 +140,15 @@ void Sim::simLoop(void* pvParameters) {
 
         MqttService::getInstance().connect();
 
+        int retries = 0;
+        while (!MqttService::getInstance().isDeviceConnected() && retries < MAX_CONNECTION_TRY) {
+            ESP_LOGW(SIM_TAG, "Waiting for MQTT connection before sending data, retry %d/%d",
+                     retries + 1, MAX_CONNECTION_TRY);
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            MqttService::getInstance().connect();
+            retries++;
+        }
+
         vTaskDelay(SIM_POST_MQTT_DELAY /
                    portTICK_PERIOD_MS);  // Wait for MQTT connection to stabilize
 
@@ -295,6 +304,19 @@ void Sim::sendStartSimMessage() {
                portTICK_PERIOD_MS);  // Wait for WiFi connection to establish
 
     MqttService::getInstance().connect();
+
+    int retries = 0;
+    while (!MqttService::getInstance().isDeviceConnected() && retries < MAX_CONNECTION_TRY) {
+        ESP_LOGW(SIM_TAG, "Waiting for MQTT connection, retry %d/%d", retries + 1, MAX_CONNECTION_TRY);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        MqttService::getInstance().connect();
+        retries++;
+    }
+
+    if (!MqttService::getInstance().isDeviceConnected()) {
+        ESP_LOGE(SIM_TAG, "Failed to connect to MQTT after %d retries, skipping start message", MAX_CONNECTION_TRY);
+        return;
+    }
 
     ESP_LOGI(SIM_TAG, "Simulator MQTT connected");
 

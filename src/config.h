@@ -23,17 +23,17 @@
 #define MQTT_MON_ENABLED
 #define BLUETOOTH_ENABLED
 #define LORA_ENABLED
-// #define SIMULATION_ENABLED
+#define SIMULATION_ENABLED
 #elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define DISPLAY_ENABLED
 // #define LED_ENABLED
 #define LORA_ENABLED
 #define WIFI_ENABLED
 #define MQTT_ENABLED
-#define MQTT_MON_ENABLED
+// #define MQTT_MON_ENABLED
 #define BLUETOOTH_ENABLED
 // #define GPS_ENABLED
-// #define SIMULATION_ENABLED
+#define SIMULATION_ENABLED
 // #define NO_SENSOR_DATA // If the sensors are not connected
 #elif defined(T_BEAM_LORA_32)
 #define DISPLAY_ENABLED
@@ -109,8 +109,8 @@
 #define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID "Vera_98BFAB"
-#define WIFI_PASSWORD "5dfafbbcef"
+#define WIFI_SSID "your_ssid"
+#define WIFI_PASSWORD "your_password"
 #define WIFI_OVERRIDE_CREDENTIALS //If defined, every time the device is reset it will set the wifi credentials.
 
 // MQTT configuration
@@ -315,22 +315,22 @@
 
 // Simulation Configuration
 // The address of the device that will connect at the beginning of the simulation
-#define WIFI_ADDR_CONNECTED 20056
+#define WIFI_ADDR_CONNECTED 0x3ADF
 
-#define PACKET_COUNT 20
+#define PACKET_COUNT 100
 #define PACKET_DELAY 120000
-#define PACKET_SIZE 500
+#define PACKET_SIZE 100
 #define UPLOAD_PAYLOAD 0
 #define LOG_MESHER 0
 
 // If defined, there only be one sender
-#define ONE_SENDER 35872
+#define ONE_SENDER 0
 
 // If defined 0 the packets will be sent unreliably
-#define SEND_RELIABLE 1
+#define SEND_RELIABLE 0
 
 // Simulator Delay Configuration (all times in milliseconds unless specified)
-#define SIM_NETWORK_PROPAGATION_MULTIPLIER 15
+#define SIM_NETWORK_PROPAGATION_MULTIPLIER 5
 #define SIM_INITIAL_WIFI_DELAY 30000
 #define SIM_POST_START_DELAY 30000
 #define SIM_UPLOAD_DELAY_CONNECTED 2000
