@@ -4,8 +4,8 @@
 #ifndef USE_LORAMESHER_V2
 #include "LoraMesher.h"
 #endif
-#include "monServiceMessage.h"
 #include "esp_heap_caps.h"
+#include "monServiceMessage.h"
 
 #if defined(MON_MQTT_ONE_MESSAGE)
 static const char* MON_TAG = "MonOMService";
@@ -124,29 +124,25 @@ void MonService::sendingLoopOneMessage(void* parameter) {
             auto routes = LoRaMeshService::getInstance().getRoutingTableEntries();
 
             // Count direct neighbors (destination == next_hop, i.e. 1 hop)
-            uint16_t monMessagecount = 0;
-            for (const auto& route : routes) {
-                if (route.destination == route.next_hop) {
-                    ++monMessagecount;
-                }
-            }
-
+            uint16_t monMessagecount = routes.size();
             if (monMessagecount > 0) {
                 MonService::getInstance().monMessageId++;
                 heap_caps_check_integrity_all(true);
-                monOneMessage* MONMessage =
-                    getInstance().createMONPayloadMessage(monMessagecount);
+                monOneMessage* MONMessage = getInstance().createMONPayloadMessage(monMessagecount);
                 heap_caps_check_integrity_all(true);
                 int i = 0;
                 for (const auto& route : routes) {
-                    if (route.destination == route.next_hop) {
-                        routing_entry entry;
-                        entry.neighbor = route.destination;
-                        // Approximate SNR from link_quality: lq/2 - 64
-                        // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
-                        // entry.SRTT = route.last_seen_ms;
-                        MONMessage->rt[i++] = entry;
-                    }
+                    routing_entry entry;
+                    entry.neighbor = route.destination;
+                    entry.next_hop = route.next_hop;
+                    entry.link_quality = route.link_quality;
+                    entry.hop_count = route.hop_count;
+                    // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
+                    // entry.SRTT = route.last_seen_ms;
+                    // Approximate SNR from link_quality: lq/2 - 64
+                    // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
+                    // entry.SRTT = route.last_seen_ms;
+                    MONMessage->rt[i++] = entry;
                 }
                 ESP_LOGV(MON_TAG, "sending monOneMessage");
                 MessageManager::getInstance().sendMessage(messagePort::MqttPort,
