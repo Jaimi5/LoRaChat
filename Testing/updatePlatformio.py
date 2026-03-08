@@ -107,7 +107,27 @@ class _BuildPhase:
         return self.success
 
     def _build_environment(self, env: str) -> bool:
-        """Build a single environment"""
+        """Build a single environment, auto-cleaning on stale CMake cache error."""
+        for attempt in range(2):  # attempt 0 = normal, attempt 1 = after clean
+            if attempt == 1:
+                print(f"\n{Fore.YELLOW}Stale CMake cache detected for {env}, cleaning and retrying...{Fore.RESET}")
+                subprocess.run(
+                    ["pio", "run", "-e", env, "--target", "clean"],
+                    capture_output=True,
+                    timeout=120,
+                )
+            result, needs_clean = self._attempt_build(env)
+            if result:
+                return True
+            if not needs_clean or attempt == 1:
+                return False
+        return False
+
+    def _attempt_build(self, env: str) -> tuple:
+        """
+        Attempt to build env. Returns (success, needs_clean).
+        needs_clean=True means a stale CMake cache error was detected.
+        """
         print(f"\nStart building env: {env}")
 
         log_file = os.path.join(self.build_log_dir, f"{env}.ans")
@@ -131,6 +151,11 @@ class _BuildPhase:
                 with open(log_file, "a", encoding="utf-8") as f:
                     f.write(decoded)
 
+                # Stale CMake API reply — need a clean before retry
+                if "Couldn't find target config" in decoded:
+                    self._cleanup_process(process)
+                    return False, True
+
                 # Check for build failure
                 if "[FAILED]" in decoded or "error occurred" in decoded:
                     set_error(
@@ -139,7 +164,7 @@ class _BuildPhase:
                         f"Build failed {Fore.YELLOW}{env}{Fore.RESET}",
                     )
                     self._cleanup_process(process)
-                    return False
+                    return False, False
 
                 # Check for successful build completion
                 if "Successfully created esp32 image." in decoded:
@@ -160,10 +185,10 @@ class _BuildPhase:
                     self.shared_state_change,
                     f"Build failed for {env} with exit code {return_code}",
                 )
-                return False
+                return False, False
 
             self.processes.remove(process)
-            return True
+            return True, False
 
         except subprocess.TimeoutExpired:
             set_error(
@@ -172,14 +197,14 @@ class _BuildPhase:
                 f"Build timeout for environment {env}",
             )
             self._cleanup_process(process)
-            return False
+            return False, False
         except Exception as e:
             set_error(
                 self.shared_state,
                 self.shared_state_change,
                 f"Build error for {env}: {str(e)}",
             )
-            return False
+            return False, False
 
     def _cleanup_process(self, process: subprocess.Popen):
         """Clean up a process safely"""

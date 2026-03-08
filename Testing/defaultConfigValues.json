@@ -3,6 +3,7 @@
     "_comment_timeout": "Total simulation timeout in minutes. Additional phase timeouts: 10 min for devices to start, 15 min for devices to end, 5 min for monitor startup.",
     "DeviceMapping": {},
     "_comment_devicemapping": "Maps COM ports to PlatformIO environments. Will be auto-populated during configuration. Example: {'COM7': 'ttgo-t-beam', 'COM9': 'ttgo-lora32-v1'}",
+    "LoRaMesher_Version": "1.0.0",
     "Simulator": {
         "PACKET_COUNT": "1",
         "PACKET_DELAY": "120000",
@@ -34,6 +35,8 @@
         "LM_POWER": "6",
         "LM_DUTY_CYCLE": "100",
         "LM_MAX_PACKET_SIZE": "100",
+        "LORA_MIN_SLEEP_FRACTION": "0.30",
+        "_comment_v1_only": "Parameters below apply to v1 (LoRaMesher v0.0.11) only",
         "HELLO_PACKETS_DELAY": "120",
         "DEFAULT_TIMEOUT": "HELLO_PACKETS_DELAY*5",
         "MIN_TIMEOUT": "20",

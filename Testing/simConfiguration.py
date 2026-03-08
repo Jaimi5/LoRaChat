@@ -75,7 +75,12 @@ class SimConfiguration:
             "ttgo-t-beam-v1-2",
             "ttgo-lora32-v1",
             "esp-wrover-kitNAYAD_V1R2",
-            "MAKERFABS_SENSELORA_MOISTURE"
+            "MAKERFABS_SENSELORA_MOISTURE",
+            # LoRaMesher v2 environments (USE_LORAMESHER_V2)
+            "ttgo-t-beam-v2",
+            "ttgo-t-beam-v1-2-v2",
+            "ttgo-lora32-v1-v2",
+            "MAKERFABS_SENSELORA_MOISTURE-v2",
         ]
 
         print("\nAvailable PlatformIO environments:")
