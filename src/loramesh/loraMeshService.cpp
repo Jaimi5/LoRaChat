@@ -9,14 +9,17 @@ static const char* LMS_TAG = "LoRaMeshService";
 // #define LORA_IO1 33   // DIO1 - Secondary interrupt
 
 #define LORA_RADIO_TYPE loramesher::RadioType::kSx1276
-#define LORA_FREQUENCY 869.900F       // MHz - EU868 band
-#define LORA_SPREADING_FACTOR 7U      // SF7-SF12: higher = more range, slower
-#define LORA_BANDWITH 125.0           // kHz - 125/250/500
-#define LORA_CODING_RATE 7U           // 5-8: higher = more error correction
-#define LORA_POWER 6                  // dBm - transmit power
+#define LORA_FREQUENCY 869.900F
+#define LORA_SPREADING_FACTOR 7U
+#define LORA_BANDWIDTH 125.0
+#define LORA_CODING_RATE 7U
+#define LORA_POWER 6
 #define LORA_SYNC_WORD 20U            // Network identifier (0-255)
 #define LORA_CRC true                 // Enable CRC checking
-#define LORA_PREAMBLE_LENGTH 8U       // Preamble symbols
+#define LORA_PREAMBLE_LENGTH 8U
+#define LORA_DUTY_CYCLE 0.01f
+#define LORA_MAX_PACKET_SIZE 255
+#define LORA_MIN_SLEEP_FRACTION 0
 
 #ifdef USE_LORAMESHER_V2
 // ============================================================
@@ -29,7 +32,7 @@ void LoRaMeshService::initLoraMesherService() {
 
         // Step 2: Configure radio parameters
     loramesher::RadioConfig radioConfig(LORA_RADIO_TYPE, LORA_FREQUENCY,
-                            LORA_SPREADING_FACTOR, LORA_BANDWITH,
+                            LORA_SPREADING_FACTOR, LORA_BANDWIDTH,
                             LORA_CODING_RATE, LORA_POWER, LORA_SYNC_WORD,
                             LORA_CRC, LORA_PREAMBLE_LENGTH);
 
@@ -53,6 +56,10 @@ void LoRaMeshService::initLoraMesherService() {
         meshConfig.setNodeRole(loramesher::NodeRole::NODE_ONLY);
     }
 #endif
+
+    meshConfig.setTargetDutyCycle(LORA_DUTY_CYCLE);
+    meshConfig.setMaxPacketSize(LORA_MAX_PACKET_SIZE);
+    meshConfig.setMinSleepFraction(LORA_MIN_SLEEP_FRACTION);
 
     mesher_ = loramesher::LoraMesher::Builder()
                   .withRadioConfig(radioConfig)
@@ -181,7 +188,10 @@ void LoRaMeshService::removeGateway() {
 bool LoRaMeshService::hasActiveConnections() {
     if (!mesher_)
         return false;
-    return mesher_->GetNetworkStatus().connected_nodes > 0;
+
+    //TODO: Implement this.
+    // return mesher_->GetPendingTXPackets();
+    return false;
 }
 
 bool LoRaMeshService::hasActiveSentConnections() {
