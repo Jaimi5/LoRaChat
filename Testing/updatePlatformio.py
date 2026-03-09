@@ -346,7 +346,7 @@ class _MonitorPhase:
         self.shared_state_change = shared_state_change
         self.processes: List[subprocess.Popen] = []
 
-    def monitor_port(self, port: str) -> bool:
+    def monitor_port(self, port: str, env: str = "") -> bool:
         """
         Monitor a specific port for output and errors (runs indefinitely).
 
@@ -368,18 +368,12 @@ class _MonitorPhase:
             activity_timer = None
 
             try:
+                cmd = ["pio", "device", "monitor", "--port", port]
+                if env:
+                    cmd += ["-e", env]
+                cmd += ["-f", "esp32_exception_decoder", "-f", "time"]
                 process = subprocess.Popen(
-                    [
-                        "pio",
-                        "device",
-                        "monitor",
-                        "--port",
-                        port,
-                        "-f",
-                        "esp32_exception_decoder",
-                        "-f",
-                        "time",
-                    ],
+                    cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,  # Merge stderr into stdout to prevent deadlock
                 )
@@ -436,7 +430,12 @@ class _MonitorPhase:
                     is_filter_error = (
                         "Esp32ExceptionDecoder:" in decoded_line or
                         decoded_line.strip().startswith("[WinError") or
-                        decoded_line.strip().startswith("Please manually remove")
+                        decoded_line.strip().startswith("Please manually remove") or
+                        "Couldn't find target config" in decoded_line or
+                        "[FAILED] Took" in decoded_line or
+                        "Reading CMake configuration" in decoded_line or
+                        "Please build project in debug configuration" in decoded_line or
+                        decoded_line.strip().startswith("---")
                     )
 
                     # Check for critical errors
@@ -457,7 +456,10 @@ class _MonitorPhase:
 
                     # Check for proper initialization (skip filter error lines)
                     if not initialized:
-                        if "POWERON_RESET" in decoded_line:
+                        if ("POWERON_RESET" in decoded_line or
+                                "cpu_start" in decoded_line or
+                                "app_main" in decoded_line or
+                                "Starting scheduler" in decoded_line):
                             initialized = True
                         elif not is_filter_error:
                             # Only count non-filter-error lines toward timeout
@@ -727,7 +729,7 @@ class UpdatePlatformIO:
 
             # Monitor phase
             if self.monitor_phase:
-                self.monitor_phase.monitor_port(port)
+                self.monitor_phase.monitor_port(port, env)
 
     def _mark_port_uploaded(self, port: str):
         """Mark a port as successfully uploaded"""
