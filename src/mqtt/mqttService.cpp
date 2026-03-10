@@ -24,6 +24,7 @@ void MqttService::initMqtt(String lclName) {
 
 static esp_mqtt_client_handle_t client;
 bool mqtt_connected = false;
+static int mqtt_error_count = 0;
 
 void MqttService::createMqttTask() {
     int res = xTaskCreate(MqttLoop, "Mqtt Task", 4096, (void*)1, 2, &mqtt_TaskHandle);
@@ -171,6 +172,7 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED: {
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
             mqtt_connected = true;
+            mqtt_error_count = 0;
             String topic = String(MQTT_TOPIC_SUB) + MqttService::getInstance().localName;
             esp_mqtt_client_subscribe(client, topic.c_str(), 2);
         } break;
@@ -199,9 +201,17 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
                          strerror(event->error_handle->esp_transport_sock_errno));
             }
             if (WiFiServerService::getInstance().isConnected() && mqtt_connected) {
-                ESP_LOGI(MQTT_TAG, "MQTT restart (rebooting)");
-                esp_restart();
+                mqtt_connected = false;
+                mqtt_error_count++;
+                if (mqtt_error_count >= 3) {
+                    ESP_LOGI(MQTT_TAG, "MQTT restart (rebooting) after %d errors", mqtt_error_count);
+                    esp_restart();
+                } else {
+                    ESP_LOGI(MQTT_TAG, "MQTT error #%d — reconnecting (no reboot)", mqtt_error_count);
+                    esp_mqtt_client_reconnect(client);
+                }
             }
+            break;
         default:
             // ESP_LOGI(MQTT_TAG, "Other event id:%d", event->event_id);
             break;
@@ -240,7 +250,7 @@ void MqttService::mqtt_service_subscribe(const char* topic) {
 
 void MqttService::mqtt_service_send(const char* topic, const char* data, int len) {
     int msg_id;
-    msg_id = esp_mqtt_client_publish(client, topic, data, len, 2, 0);
+    msg_id = esp_mqtt_client_publish(client, topic, data, len, 1, 0);
     if (msg_id == -1) {
         ESP_LOGE(MQTT_TAG, "Error sending message to MQTT");
         return;
