@@ -64,6 +64,10 @@ public:
 
 #ifdef USE_LORAMESHER_V2
     std::vector<loramesher::RouteEntry> getRoutingTableEntries();
+
+    size_t GetRxQueueSize() const;
+
+    size_t GetTxQueueSize() const;
 #else
     void loopReceivedPackets();
 

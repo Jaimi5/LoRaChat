@@ -14,8 +14,8 @@ static const char* LMS_TAG = "LoRaMeshService";
 #define LORA_BANDWIDTH 125.0
 #define LORA_CODING_RATE 7U
 #define LORA_POWER 6
-#define LORA_SYNC_WORD 20U            // Network identifier (0-255)
-#define LORA_CRC true                 // Enable CRC checking
+#define LORA_SYNC_WORD 20U  // Network identifier (0-255)
+#define LORA_CRC true       // Enable CRC checking
 #define LORA_PREAMBLE_LENGTH 8U
 #define LORA_DUTY_CYCLE 0.01f
 #define LORA_MAX_PACKET_SIZE 255
@@ -28,21 +28,21 @@ static const char* LMS_TAG = "LoRaMeshService";
 
 void LoRaMeshService::initLoraMesherService() {
 #ifdef LORA_ENABLED
-    loramesher::PinConfig pinConfig(LORA_CS, LORA_RST, LORA_IRQ, LORA_IO1, LORA_SCK, LORA_MISO, LORA_MOSI);
+    loramesher::PinConfig pinConfig(LORA_CS, LORA_RST, LORA_IRQ, LORA_IO1, LORA_SCK, LORA_MISO,
+                                    LORA_MOSI);
 
-        // Step 2: Configure radio parameters
-    loramesher::RadioConfig radioConfig(LORA_RADIO_TYPE, LORA_FREQUENCY,
-                            LORA_SPREADING_FACTOR, LORA_BANDWIDTH,
-                            LORA_CODING_RATE, LORA_POWER, LORA_SYNC_WORD,
-                            LORA_CRC, LORA_PREAMBLE_LENGTH);
+    // Step 2: Configure radio parameters
+    loramesher::RadioConfig radioConfig(LORA_RADIO_TYPE, LORA_FREQUENCY, LORA_SPREADING_FACTOR,
+                                        LORA_BANDWIDTH, LORA_CODING_RATE, LORA_POWER,
+                                        LORA_SYNC_WORD, LORA_CRC, LORA_PREAMBLE_LENGTH);
 
-// #ifdef LORA_MODULE_SX1276
-//     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1276);
-// #elif defined(LORA_MODULE_SX1278)
-//     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1278);
-// #else
-//     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1276);
-// #endif
+    // #ifdef LORA_MODULE_SX1276
+    //     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1276);
+    // #elif defined(LORA_MODULE_SX1278)
+    //     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1278);
+    // #else
+    //     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1276);
+    // #endif
 
     loramesher::LoRaMeshProtocolConfig meshConfig;
 
@@ -107,7 +107,8 @@ void LoRaMeshService::initLoraMesherService() {
 }
 
 uint16_t LoRaMeshService::getLocalAddress() {
-    return mesher_ ? mesher_->GetNodeAddress() : loramesher::LoraMesher::GenerateAddressFromHardware();
+    return mesher_ ? mesher_->GetNodeAddress()
+                   : loramesher::LoraMesher::GenerateAddressFromHardware();
 }
 
 String LoRaMeshService::getRoutingTable() {
@@ -189,8 +190,8 @@ bool LoRaMeshService::hasActiveConnections() {
     if (!mesher_)
         return false;
 
-    //TODO: Implement this.
-    // return mesher_->GetPendingTXPackets();
+    // TODO: Implement this.
+    //  return mesher_->GetPendingTXPackets();
     return false;
 }
 
@@ -246,6 +247,15 @@ LoRaMeshMessage* LoRaMeshService::createLoRaMeshMessage(DataMessage* message) {
     }
 
     return loraMeshMessage;
+}
+
+
+size_t LoRaMeshService::GetRxQueueSize() const {
+    return mesher_->GetRxQueueSize();
+}
+
+size_t LoRaMeshService::GetTxQueueSize() const {
+    return mesher_->GetTxQueueSize();
 }
 
 #else

@@ -90,8 +90,8 @@ monOneMessage* MonService::createMONPayloadMessage(int number_of_neighbors) {
     MONMessage->RTcount = MONCOUNT_MONONEMESSAGE;
     MONMessage->uptime = millis();
 #ifdef USE_LORAMESHER_V2
-    MONMessage->TxQ = 0;
-    MONMessage->RxQ = 0;
+    MONMessage->TxQ = LoRaMeshService::getInstance().GetTxQueueSize();
+    MONMessage->RxQ = LoRaMeshService::getInstance().GetRxQueueSize();
 #else
     MONMessage->TxQ = LoraMesher::getInstance().getSendQueueSize();
     MONMessage->RxQ = LoraMesher::getInstance().getReceivedQueueSize();
