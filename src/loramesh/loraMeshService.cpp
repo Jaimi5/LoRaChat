@@ -8,18 +8,6 @@ static const char* LMS_TAG = "LoRaMeshService";
 // #define LORA_IRQ 26   // DIO0 - Primary interrupt
 // #define LORA_IO1 33   // DIO1 - Secondary interrupt
 
-#define LORA_RADIO_TYPE loramesher::RadioType::kSx1276
-#define LORA_FREQUENCY 869.900F
-#define LORA_SPREADING_FACTOR 7U
-#define LORA_BANDWIDTH 125.0
-#define LORA_CODING_RATE 7U
-#define LORA_POWER 6
-#define LORA_SYNC_WORD 20U  // Network identifier (0-255)
-#define LORA_CRC true       // Enable CRC checking
-#define LORA_PREAMBLE_LENGTH 8U
-#define LORA_DUTY_CYCLE 0.01f
-#define LORA_MAX_PACKET_SIZE 255
-#define LORA_MIN_SLEEP_FRACTION 0
 
 #ifdef USE_LORAMESHER_V2
 // ============================================================
