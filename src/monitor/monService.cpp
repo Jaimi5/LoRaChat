@@ -126,50 +126,53 @@ void MonService::sendingLoopOneMessage(void* parameter) {
             LoRaMeshService::getInstance().updateRoutingTable();
             auto routes = LoRaMeshService::getInstance().getRoutingTableEntries();
             // Count direct neighbors (destination == next_hop, i.e. 1 hop)
-            uint16_t routeCount = 0 ;
+            uint16_t routeCount = 0;
             for (const auto& route : routes) {
                 if (route.destination == route.next_hop) {
                     ++routeCount;
                 }
             }
-            if(routeCount > 0) {
-              monOneMessage* MONMessage ;
-              int routeSent = 0 ; // routes sent in previous messages
-              int routeNext = 0 ; // routes to put in next message
-              int i = 0 ;
-              MonService::getInstance().monMessageId++;
-              heap_caps_check_integrity_all(true);
-              for (const auto& route: routes) {
-                if(routeNext == 0) { // create a new message
-                  routeNext = 1 ;
-                  while ((MonService::getOneMessageSize(routeNext + 1) < MAX_MSG_SIZE) &&
-                         (routeNext < (routeCount-routeSent))) ++routeNext ;
-                  MONMessage = getInstance().createMONPayloadMessage(routeNext) ;
-                  heap_caps_check_integrity_all(true);
+            if (routeCount > 0) {
+                monOneMessage* MONMessage;
+                int routeSent = 0;  // routes sent in previous messages
+                int routeNext = 0;  // routes to put in next message
+                int i = 0;
+                MonService::getInstance().monMessageId++;
+                heap_caps_check_integrity_all(true);
+                for (const auto& route : routes) {
+                    if (routeNext == 0 && routeSent < routeCount) {  // create a new message
+                        routeNext = 1;
+                        while ((MonService::getOneMessageSize(routeNext + 1) < MAX_MSG_SIZE) &&
+                               (routeNext < (routeCount - routeSent)))
+                            ++routeNext;
+                        MONMessage = getInstance().createMONPayloadMessage(routeNext);
+                        heap_caps_check_integrity_all(true);
+                    }
+                    if (route.destination == route.next_hop) {
+                        routing_entry entry;
+                        entry.neighbor = route.destination;
+                        entry.next_hop = route.next_hop;
+                        entry.link_quality = route.link_quality;
+                        entry.hop_count = route.hop_count;
+                        // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
+                        // entry.SRTT = route.last_seen_ms;
+                        // Approximate SNR from link_quality: lq/2 - 64
+                        // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
+                        // entry.SRTT = route.last_seen_ms;
+                        MONMessage->rt[i] = entry;
+                        i += 1;
+                        routeSent += 1;
+                        if (i == routeNext) {  // send the message
+                            ESP_LOGV(MON_TAG, "sending monOneMessage (MessageId/routes): %d/%d",
+                                     MonService::getInstance().monMessageId, routeNext);
+                            routeNext = 0;
+                            i = 0;
+                            MessageManager::getInstance().sendMessage(messagePort::MqttPort,
+                                                                      (DataMessage*)MONMessage);
+                            vPortFree(MONMessage);
+                        }
+                    }
                 }
-                if (route.destination == route.next_hop) {
-                  routing_entry entry;
-                  entry.neighbor = route.destination;
-                  entry.next_hop = route.next_hop;
-                  entry.link_quality = route.link_quality;
-                  entry.hop_count = route.hop_count;
-                  // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
-                  // entry.SRTT = route.last_seen_ms;
-                  // Approximate SNR from link_quality: lq/2 - 64
-                  // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
-                  // entry.SRTT = route.last_seen_ms;
-                  MONMessage->rt[i] = entry;
-                  i += 1 ; routeSent += 1 ;
-                  if(i == routeNext) { // send the message
-                    ESP_LOGV(MON_TAG, "sending monOneMessage (MessageId/routes): %d/%d",
-                             MonService::getInstance().monMessageId, routeNext);
-                    routeNext = 0 ; i = 0 ;
-                    MessageManager::getInstance().sendMessage(messagePort::MqttPort,
-                                                              (DataMessage*)MONMessage);
-                    vPortFree(MONMessage);
-                  }
-                }
-              }
             } else {
                 ESP_LOGD(MON_TAG, "sendingLoopOneMessage: no neighbors?");
             }
