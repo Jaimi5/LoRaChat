@@ -37,6 +37,9 @@ private:
     void createSendingTask();
 #if defined(MON_MQTT_ONE_MESSAGE)
     static void sendingLoopOneMessage(void*);
+    static int getOneMessageSize(int neighbors) {
+        return sizeof(monOneMessage) + sizeof(routing_entry) * neighbors;
+    } ;
     monOneMessage* createMONPayloadMessage(int number_of_neighbors);
 #else
     static void sendingLoop(void*);

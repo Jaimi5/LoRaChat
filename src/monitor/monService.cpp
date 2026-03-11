@@ -1,3 +1,7 @@
+#define MAX_MSG_SIZE 240
+#if !defined(USE_LORAMESHER_V2)
+#define USE_LORAMESHER_V2
+#endif
 #include "monService.h"
 #include <Arduino.h>
 #include "loramesh/loraMeshService.h"
@@ -118,36 +122,54 @@ void MonService::sendingLoopOneMessage(void* parameter) {
         } else {
             uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
             ESP_LOGD(MON_TAG, "Stack space unused after entering the task: %d", uxHighWaterMark);
-
 #ifdef USE_LORAMESHER_V2
             LoRaMeshService::getInstance().updateRoutingTable();
             auto routes = LoRaMeshService::getInstance().getRoutingTableEntries();
-
             // Count direct neighbors (destination == next_hop, i.e. 1 hop)
-            uint16_t monMessagecount = routes.size();
-            if (monMessagecount > 0) {
-                MonService::getInstance().monMessageId++;
-                heap_caps_check_integrity_all(true);
-                monOneMessage* MONMessage = getInstance().createMONPayloadMessage(monMessagecount);
-                heap_caps_check_integrity_all(true);
-                int i = 0;
-                for (const auto& route : routes) {
-                    routing_entry entry;
-                    entry.neighbor = route.destination;
-                    entry.next_hop = route.next_hop;
-                    entry.link_quality = route.link_quality;
-                    entry.hop_count = route.hop_count;
-                    // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
-                    // entry.SRTT = route.last_seen_ms;
-                    // Approximate SNR from link_quality: lq/2 - 64
-                    // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
-                    // entry.SRTT = route.last_seen_ms;
-                    MONMessage->rt[i++] = entry;
+            uint16_t routeCount = 0 ;
+            for (const auto& route : routes) {
+                if (route.destination == route.next_hop) {
+                    ++routeCount;
                 }
-                ESP_LOGV(MON_TAG, "sending monOneMessage");
-                MessageManager::getInstance().sendMessage(messagePort::MqttPort,
-                                                          (DataMessage*)MONMessage);
-                vPortFree(MONMessage);
+            }
+            if(routeCount > 0) {
+              monOneMessage* MONMessage ;
+              int routeSent = 0 ; // routes sent in previous messages
+              int routeNext = 0 ; // routes to put in next message
+              int i = 0 ;
+              MonService::getInstance().monMessageId++;
+              heap_caps_check_integrity_all(true);
+              for (const auto& route: routes) {
+                if(routeNext == 0) { // create a new message
+                  routeNext = 1 ;
+                  while ((MonService::getOneMessageSize(routeNext + 1) < MAX_MSG_SIZE) &&
+                         (routeNext < (routeCount-routeSent))) ++routeNext ;
+                  MONMessage = getInstance().createMONPayloadMessage(routeNext) ;
+                  heap_caps_check_integrity_all(true);
+                }
+                if (route.destination == route.next_hop) {
+                  routing_entry entry;
+                  entry.neighbor = route.destination;
+                  entry.next_hop = route.next_hop;
+                  entry.link_quality = route.link_quality;
+                  entry.hop_count = route.hop_count;
+                  // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
+                  // entry.SRTT = route.last_seen_ms;
+                  // Approximate SNR from link_quality: lq/2 - 64
+                  // entry.RxSNR = static_cast<int8_t>(route.link_quality / 2 - 64);
+                  // entry.SRTT = route.last_seen_ms;
+                  MONMessage->rt[i] = entry;
+                  i += 1 ; routeSent += 1 ;
+                  if(i == routeNext) { // send the message
+                    routeNext = 0 ; i = 0 ;
+                    ESP_LOGV(MON_TAG, "sending monOneMessage (MessageId/routes): %d/%d",
+                             MonService::getInstance().monMessageId, routeNext);
+                    MessageManager::getInstance().sendMessage(messagePort::MqttPort,
+                                                              (DataMessage*)MONMessage);
+                    vPortFree(MONMessage);
+                  }
+                }
+              }
             } else {
                 ESP_LOGD(MON_TAG, "sendingLoopOneMessage: no neighbors?");
             }
