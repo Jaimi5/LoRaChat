@@ -133,14 +133,14 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                 }
             }
             if (routeCount > 0) {
-                monOneMessage* MONMessage;
+                monOneMessage* MONMessage = nullptr;
                 int routeSent = 0;  // routes sent in previous messages
                 int routeNext = 0;  // routes to put in next message
                 int i = 0;
                 MonService::getInstance().monMessageId++;
                 heap_caps_check_integrity_all(true);
                 for (const auto& route : routes) {
-                    if (routeNext == 0 && routeSent < routeCount) {  // create a new message
+                    if ((routeNext == 0 && routeSent < routeCount) || MONMessage == nullptr) {  // create a new message
                         routeNext = 1;
                         while ((MonService::getOneMessageSize(routeNext + 1) < MAX_MSG_SIZE) &&
                                (routeNext < (routeCount - routeSent)))
@@ -170,6 +170,7 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                             MessageManager::getInstance().sendMessage(messagePort::MqttPort,
                                                                       (DataMessage*)MONMessage);
                             vPortFree(MONMessage);
+                            MONMessage = nullptr;
                         }
                     }
                 }
