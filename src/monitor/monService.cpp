@@ -161,9 +161,9 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                   MONMessage->rt[i] = entry;
                   i += 1 ; routeSent += 1 ;
                   if(i == routeNext) { // send the message
-                    routeNext = 0 ; i = 0 ;
                     ESP_LOGV(MON_TAG, "sending monOneMessage (MessageId/routes): %d/%d",
                              MonService::getInstance().monMessageId, routeNext);
+                    routeNext = 0 ; i = 0 ;
                     MessageManager::getInstance().sendMessage(messagePort::MqttPort,
                                                               (DataMessage*)MONMessage);
                     vPortFree(MONMessage);
