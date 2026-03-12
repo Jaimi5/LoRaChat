@@ -37,12 +37,13 @@ import os
 import subprocess
 import threading
 import colorama
+import re
 from colorama import Fore
 from error import set_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Set, Optional
 from time import sleep
-
+                            
 # Timeouts in seconds
 TIMEOUT_BUILD = 60 * 20
 TIMEOUT_UPLOAD = 60 * 5
@@ -345,6 +346,7 @@ class _MonitorPhase:
         self.shared_state = shared_state
         self.shared_state_change = shared_state_change
         self.processes: List[subprocess.Popen] = []
+        self.stopped = threading.Event()
 
     def monitor_port(self, port: str, env: str = "") -> bool:
         """
@@ -362,6 +364,8 @@ class _MonitorPhase:
         max_retries = 3
 
         for attempt in range(1, max_retries + 1):
+            if self.stopped.is_set():
+                return False
             if attempt > 1:
                 print(f"{Fore.YELLOW}Retry {attempt}/{max_retries} for monitoring port: {port}{Fore.RESET}")
 
@@ -397,14 +401,20 @@ class _MonitorPhase:
                 else:
                     line_count = 0
 
+                initial_line_count = line_count
                 activity_timeout = False
 
                 def check_activity():
                     """Check if sufficient activity (50+ lines) occurred in first 60 seconds"""
                     nonlocal activity_timeout
-                    if line_count < 20:
+                    if line_count - initial_line_count < 20:
                         activity_timeout = True
-                        print(f"\n{Fore.YELLOW}Insufficient activity detected for {port} ({line_count} lines in 60s){Fore.RESET}")
+                        new_lines = line_count - initial_line_count
+                        print(f"\n{Fore.YELLOW}Insufficient activity detected for {port} ({new_lines} lines in 60s){Fore.RESET}")
+                        try:
+                            process.kill()
+                        except Exception:
+                            pass
 
                 # Start activity timer (60 seconds)
                 activity_timer = threading.Timer(60.0, check_activity)
@@ -421,8 +431,8 @@ class _MonitorPhase:
                     # Increment line count
                     line_count += 1
 
-                    # Cancel activity timer if we reached 50 lines
-                    if line_count >= 50 and activity_timer is not None:
+                    # Cancel activity timer if we reached 50 new lines
+                    if line_count - initial_line_count >= 50 and activity_timer is not None:
                         activity_timer.cancel()
                         activity_timer = None
 
@@ -484,13 +494,22 @@ class _MonitorPhase:
                             return False
 
                     # Extract LoRa address
-                    if not address_found and "Local LoRa address" in decoded_line:
+                    if not address_found and ("Local LoRa address" in decoded_line or "Generated address" in decoded_line):
                         address_found = True
                         try:
-                            # Extract hex address from line
-                            hex_address = decoded_line.split(" ")[-1].strip()[:4]
-                            self.shared_state["deviceAddressAndCOM"][port] = int(hex_address, 16)
-                            self.shared_state_change.set()
+                            # Extract hex address from line (handles both formats:
+                            # "Local LoRa address: 3ADF" and
+                            # "Generated address 0x3ADF from unique ID (...)")                                                                            
+                                                                                                                     
+                            match = re.search(r'(?:Generated address|Local LoRa address[:\s]+)\s*(?:0x)?([0-9A-Fa-f]{4})', decoded_line)
+                            if match:
+                                hex_address = match.group(1)
+                                self.shared_state["deviceAddressAndCOM"][port] = int(hex_address, 16)
+                                if activity_timer is not None:
+                                    activity_timer.cancel()
+                                self.shared_state_change.set()
+                            else:
+                                raise ValueError(f"Could not find hex address in: {decoded_line}")
                         except (ValueError, IndexError) as e:
                             # Cancel activity timer
                             if activity_timer is not None:
@@ -522,6 +541,8 @@ class _MonitorPhase:
 
                     # If this is not the last attempt, retry
                     if attempt < max_retries:
+                        if self.stopped.is_set():
+                            return False
                         if init_failed:
                             print(f"{Fore.YELLOW}Initialization timeout for {port}, retrying...{Fore.RESET}")
                         # activity_timeout message already printed
@@ -538,7 +559,7 @@ class _MonitorPhase:
                             set_error(
                                 self.shared_state,
                                 self.shared_state_change,
-                                f"Insufficient activity in port: {port} (only {line_count} lines in 60s)",
+                                f"Insufficient activity in port: {port} (only {line_count - initial_line_count} lines in 60s)",
                             )
                         return False
 
@@ -573,6 +594,7 @@ class _MonitorPhase:
 
     def kill_all(self):
         """Kill all monitor processes"""
+        self.stopped.set()
         for process in self.processes[:]:
             try:
                 process.kill()
