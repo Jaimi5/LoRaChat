@@ -138,6 +138,9 @@ void Sim::simLoop(void* pvParameters) {
 
         WiFiServerService::getInstance().connectWiFi();
 
+        vTaskDelay(SIM_INITIAL_WIFI_DELAY /
+                   portTICK_PERIOD_MS);  // Wait for WiFi connection to establish
+
         MqttService::getInstance().connect();
 
         int retries = 0;
@@ -254,7 +257,12 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
 }
 
 SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
-    uint32_t messageSize = sizeof(SimMessage) + sizeof(SimPayloadMessage) + packetSize;
+    // packetSize = desired LoRaMesher payload bytes.
+    // App overhead inside that payload: LoRaMeshMessage(3) + SimCommand(1) + packetSize field(4) = 8 bytes.
+    constexpr size_t kAppOverhead = sizeof(LoRaMeshMessage) + sizeof(SimCommand) + sizeof(uint32_t);
+    const size_t dataSize = (packetSize > kAppOverhead) ? (packetSize - kAppOverhead) : 0;
+
+    uint32_t messageSize = sizeof(SimMessage) + sizeof(SimPayloadMessage) + dataSize;
 
     SimMessage* simMessage = (SimMessage*)pvPortMalloc(messageSize);
     simMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
@@ -266,10 +274,10 @@ SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
     simMessage->addrDst = 0;
     simMessage->messageId = 0;
     SimPayloadMessage* simPayloadMessage = (SimPayloadMessage*)simMessage->payload;
-    simPayloadMessage->packetSize = packetSize;
+    simPayloadMessage->packetSize = dataSize;
 
-    // Add 0, 1, 2, 3... packetSize to the payload
-    for (size_t i = 0; i < packetSize; i++) {
+    // Add 0, 1, 2, 3... dataSize to the payload
+    for (size_t i = 0; i < dataSize; i++) {
         simPayloadMessage->payload[i] = i;
         if (i % 100 == 0) {
             vTaskDelay(1 / portTICK_PERIOD_MS);  // Wait 1 milliseconds
@@ -307,14 +315,16 @@ void Sim::sendStartSimMessage() {
 
     int retries = 0;
     while (!MqttService::getInstance().isDeviceConnected() && retries < MAX_CONNECTION_TRY) {
-        ESP_LOGW(SIM_TAG, "Waiting for MQTT connection, retry %d/%d", retries + 1, MAX_CONNECTION_TRY);
+        ESP_LOGW(SIM_TAG, "Waiting for MQTT connection, retry %d/%d", retries + 1,
+                 MAX_CONNECTION_TRY);
         vTaskDelay(2000 / portTICK_PERIOD_MS);
         MqttService::getInstance().connect();
         retries++;
     }
 
     if (!MqttService::getInstance().isDeviceConnected()) {
-        ESP_LOGE(SIM_TAG, "Failed to connect to MQTT after %d retries, skipping start message", MAX_CONNECTION_TRY);
+        ESP_LOGE(SIM_TAG, "Failed to connect to MQTT after %d retries, skipping start message",
+                 MAX_CONNECTION_TRY);
         return;
     }
 
