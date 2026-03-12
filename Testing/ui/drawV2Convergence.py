@@ -10,7 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from Testing.monitoringAnalysis.getV2OverheadData import get_v2_per_superframe_data
 
 _AREAS = [
-    ('data_count',        'DATA Messages',  '#2196F3'),
+    ('data_payload_bytes', 'DATA Payload B', '#2196F3'),
     ('route_table_bytes', 'ROUTE_TABLE B',  '#FF9800'),
     ('sync_beacon_bytes', 'SYNC_BEACON B',  '#4CAF50'),
     ('join_bytes',        'JOIN B',          '#9C27B0'),

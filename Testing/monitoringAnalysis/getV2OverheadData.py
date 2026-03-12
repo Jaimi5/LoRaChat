@@ -6,15 +6,12 @@ from collections import defaultdict
 _ANSI_RE      = re.compile(r'\x1b\[[0-9;]*[mGKHF]')
 _SEND_RE        = re.compile(r'PKT_TX dst=0x[0-9A-Fa-f]+ src=0x[0-9A-Fa-f]+ type=0x([0-9A-Fa-f]+) size=(\d+)')
 _RT_CREATE_RE   = re.compile(r'Created routing table message.*entry count: (\d+)')
-_DATA_RE        = re.compile(r'DATA message:.*payload_size=(\d+)')
-_DATA_RECV_RE   = re.compile(r'DATA message:.*src=0x([0-9A-Fa-f]+).*dest=0x([0-9A-Fa-f]+).*my_addr=0x([0-9A-Fa-f]+)')
-_SEND_DATA_RE   = re.compile(r'Sending DATA to 0x[0-9A-Fa-f]+.*payload_size=(\d+)')
 _DEVICE_ADDR_RE = re.compile(r'\[0x([0-9A-Fa-f]+)\]')
 _PKT_TX_RE = re.compile(
-    r'PKT_TX dst=0x([0-9A-Fa-f]+) src=0x([0-9A-Fa-f]+) '
+    r'\[0x([0-9A-Fa-f]+)\] PKT_TX dst=0x([0-9A-Fa-f]+) src=0x([0-9A-Fa-f]+) '
     r'type=0x([0-9A-Fa-f]+) size=(\d+)')
 _PKT_RX_RE = re.compile(
-    r'PKT_RX src=0x([0-9A-Fa-f]+) dst=0x([0-9A-Fa-f]+) '
+    r'\[0x([0-9A-Fa-f]+)\] PKT_RX src=0x([0-9A-Fa-f]+) dst=0x([0-9A-Fa-f]+) '
     r'type=0x([0-9A-Fa-f]+) size=(\d+) rssi=(-?\d+) snr=(-?\d+)')
 _SF_START_RE  = re.compile(r'Started superframe #(\d+)')
 _SLOT_RE      = re.compile(r'Slot \d+ transition: type=(\w+)')
@@ -24,7 +21,8 @@ _TYPE_SYNC_BEACON   = 0x46
 _TYPE_JOIN_REQUEST  = 0x42
 _TYPE_JOIN_RESPONSE = 0x43
 
-_DATA_HEADER_BYTES   = 9
+# TODO: confirmed from logs: PKT_TX size=66 − payload_size=58 = 8 bytes (was wrong: 9)
+_DATA_HEADER_BYTES   = 8
 _SYNC_BEACON_BYTES   = 22
 _JOIN_REQUEST_BYTES  = 14
 _JOIN_RESPONSE_BYTES = 15
@@ -260,17 +258,19 @@ def get_v2_per_device_data(monitoring_path) -> list:
                     if addr_m:
                         device_addr = addr_m.group(1).upper()
                         break
-        if device_addr:
+        if device_addr and device_addr.upper() != '0000':
             all_devices.add(device_addr)
 
     records = []
     for device in all_devices:
-        sent = sum(v['sent'] for (s, d), v in by_pair.items() if s == device)
-        received = sum(v['received'] for (s, d), v in by_pair.items() if d == device)
-        reception_rate = round(received / sent * 100, 2) if sent > 0 else 0.0
+        sent      = sum(v['sent']     for (s, d), v in by_pair.items() if s == device)
+        delivered = sum(v['received'] for (s, d), v in by_pair.items() if s == device)
+        received  = sum(v['received'] for (s, d), v in by_pair.items() if d == device)
+        reception_rate = round(delivered / sent * 100, 2) if sent > 0 else 0.0
         records.append({
             'device':         device,
             'sent':           sent,
+            'delivered':      delivered,
             'received':       received,
             'reception_rate': reception_rate,
         })
@@ -306,40 +306,35 @@ def parse_packet_trace(monitoring_path) -> dict:
     pair_received = defaultdict(int)
 
     for filepath in glob.glob(os.path.join(monitoring_path, 'monitor_COM*.ans')):
-        device_addr = None
-        lines = []
         with open(filepath, 'r', errors='replace') as f:
             for line in f:
                 line = _ANSI_RE.sub('', line)
-                lines.append(line)
-                if device_addr is None:
-                    m = _DEVICE_ADDR_RE.search(line)
-                    if m:
-                        device_addr = m.group(1).upper()
 
-        for line in lines:
-            m = _PKT_TX_RE.search(line)
-            if m:
-                dst = m.group(1).upper()
-                src = m.group(2).upper()
-                typ = m.group(3).upper()
-                size = int(m.group(4))
-                all_tx.append((src, dst, typ, size))
-                if typ == _DATA_TYPE and device_addr and src == device_addr:
-                    pair_sent[(src, dst)] += 1
-                continue
+                m = _PKT_TX_RE.search(line)
+                if m:
+                    logger = m.group(1).upper()  # device that logged the send
+                    dst    = m.group(2).upper()
+                    src    = m.group(3).upper()
+                    typ    = m.group(4).upper()
+                    size   = int(m.group(5))
+                    all_tx.append((src, dst, typ, size))
+                    if typ == _DATA_TYPE:
+                        pair_sent[(logger, dst)] += 1
+                    continue
 
-            m = _PKT_RX_RE.search(line)
-            if m:
-                src  = m.group(1).upper()
-                dst  = m.group(2).upper()
-                typ  = m.group(3).upper()
-                size = int(m.group(4))
-                rssi = int(m.group(5))
-                snr  = int(m.group(6))
-                all_rx.append((src, dst, typ, size, rssi, snr))
-                if typ == _DATA_TYPE and device_addr and dst == device_addr:
-                    pair_received[(src, dst)] += 1
+                m = _PKT_RX_RE.search(line)
+                if m:
+                    logger = m.group(1).upper()  # device that logged the receive
+                    src    = m.group(2).upper()
+                    dst    = m.group(3).upper()
+                    typ    = m.group(4).upper()
+                    size   = int(m.group(5))
+                    rssi   = int(m.group(6))
+                    snr    = int(m.group(7))
+                    all_rx.append((src, dst, typ, size, rssi, snr))
+                    if typ == _DATA_TYPE and logger == dst:
+                        # packet reached its intended destination
+                        pair_received[(src, logger)] += 1
 
     by_pair = {}
     for pair, sent in pair_sent.items():
