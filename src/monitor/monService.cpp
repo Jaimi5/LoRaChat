@@ -163,8 +163,8 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                         i += 1;
                         routeSent += 1;
                         if (i == routeNext) {  // send the message
-                            ESP_LOGV(MON_TAG, "sending monOneMessage (MessageId/routes): %d/%d",
-                                     MonService::getInstance().monMessageId, routeNext);
+                            ESP_LOGV(MON_TAG, "sending monOneMessage (MessageId/routes/bytes): %d/%d/%d",
+                                     MonService::getInstance().monMessageId, routeNext, MonService::getOneMessageSize(routeNext));
                             routeNext = 0;
                             i = 0;
                             MessageManager::getInstance().sendMessage(messagePort::MqttPort,
