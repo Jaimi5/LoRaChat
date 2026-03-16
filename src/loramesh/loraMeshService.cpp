@@ -246,6 +246,12 @@ size_t LoRaMeshService::GetTxQueueSize() const {
     return mesher_->GetTxQueueSize();
 }
 
+uint32_t LoRaMeshService::getTimeUntilNextDataSlot(uint32_t guard_time_ms) const {
+    if (!mesher_)
+        return 0;
+    return mesher_->GetTimeUntilNextDataSlot(guard_time_ms);
+}
+
 #else
 // ============================================================
 // LoRaMesher v1 (singleton, task-notification API)

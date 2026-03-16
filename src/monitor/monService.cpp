@@ -219,7 +219,17 @@ void MonService::sendingLoopOneMessage(void* parameter) {
             }
 #endif
             // end send MON
+#ifdef USE_LORAMESHER_V2
+            {
+                uint32_t delay_ms =
+                    LoRaMeshService::getInstance().getTimeUntilNextDataSlot();
+                if (delay_ms == 0)
+                    delay_ms = MON_SENDING_EVERY;
+                vTaskDelay(delay_ms / portTICK_PERIOD_MS);
+            }
+#else
             vTaskDelay(MON_SENDING_EVERY / portTICK_PERIOD_MS);
+#endif
             // Print the free heap memory
             ESP_LOGD(MON_TAG, "Free heap: %d", esp_get_free_heap_size());
         }
@@ -275,7 +285,17 @@ void MonService::sendingLoop(void* parameter) {
             routingTableList->Clear();
 #endif
             // end send MON
+#ifdef USE_LORAMESHER_V2
+            {
+                uint32_t delay_ms =
+                    LoRaMeshService::getInstance().getTimeUntilNextDataSlot();
+                if (delay_ms == 0)
+                    delay_ms = MON_SENDING_EVERY;
+                vTaskDelay(delay_ms / portTICK_PERIOD_MS);
+            }
+#else
             vTaskDelay(MON_SENDING_EVERY / portTICK_PERIOD_MS);
+#endif
             // Print the free heap memory
             ESP_LOGD(MON_TAG, "Free heap: %d", esp_get_free_heap_size());
         }

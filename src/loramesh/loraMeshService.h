@@ -68,6 +68,8 @@ public:
     size_t GetRxQueueSize() const;
 
     size_t GetTxQueueSize() const;
+
+    uint32_t getTimeUntilNextDataSlot(uint32_t guard_time_ms = 200) const;
 #else
     void loopReceivedPackets();
 
