@@ -276,9 +276,9 @@ Runs upgrade -> upload+monitor. Monitors start immediately after each device upl
 | 11 | C6E208-2AD4   |  12 | GW-4 | C6E208   | 2AD4   |  10964 |     |
 | 12 | GV-3428       |  13 | GW-6 | GV-ext   | 3428   |  13352 | p2p |
 | 13 | GV-14A4       |  20 | GW-5 | GV-int   | 14A4   |   5284 |     |
-
-**Not included** (GW-7 currently unavailable):
-- D6105-7984 (UID 21), D6105-B4DC (UID 22), D6105-DD3C (UID 23)
+| 14 | D6105-7984    |  21 | GW-7 | D6105    | 7984   |  31108 |     |
+| 15 | D6105-B4DC    |  22 | GW-7 | D6105    | B4DC   |  46300 |     |
+| 16 | D6105-DD3C    |  23 | GW-7 | D6105    | DD3C   |  56636 |     |
 
 ## Flags Summary
 
@@ -470,6 +470,29 @@ ssh lora@10.139.40.20 "ls -la /home/lora/dev/lora-*"
 - Verify the gateway IP in `testbed.conf`
 - If using passwords: ensure `sshpass` is installed (`apt install sshpass`) and `GW_PASS` is set
 - If using SSH keys: check with `ssh -v user@gw-ip`
+- For gateways with custom ports: set `GW_PORT` in `testbed.conf`
+
+### SSH Permission denied (publickey)
+- If the gateway uses key-based auth, set the key path in `GW_KEY`:
+  ```bash
+  declare -A GW_KEY=(
+      [GW-7]="/home/jan/.ssh/id_rsa"
+  )
+  ```
+- If the key has a **passphrase**, use `ssh-agent` to avoid interactive prompts:
+  ```bash
+  eval $(ssh-agent)
+  ssh-add /home/jan/.ssh/id_rsa    # Enter passphrase once
+  # Now deploy.sh works without prompting
+  ```
+- To make `ssh-agent` persistent across terminal sessions, add to `~/.bashrc`:
+  ```bash
+  if [ -z "$SSH_AUTH_SOCK" ]; then
+      eval $(ssh-agent) > /dev/null
+  fi
+  ```
+  Then run `ssh-add` once after each login.
+- Make sure the gateway has no password set in `GW_PASS` (leave empty or remove the entry), otherwise `sshpass` will be used instead of the key
 
 ### Serial port not found
 - Verify the symlink exists: `ssh lora@gw-ip "ls -la /home/lora/dev/lora-*"`
