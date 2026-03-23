@@ -178,16 +178,26 @@ ssh_prefix() {
     fi
 }
 
-# Build SCP command prefix for a gateway (handles sshpass if password is set)
-scp_prefix() {
+# Run SCP for a gateway (handles password, key, port)
+# Usage: scp_gw GW_ID src dest
+scp_gw() {
     local gw_id="$1"
+    local src="$2"
+    local dest="$3"
     local pass="${GW_PASS[$gw_id]:-}"
+    local key="${GW_KEY[$gw_id]:-}"
+    local port="${GW_PORT[$gw_id]:-}"
+
+    # shellcheck disable=SC2086
+    local -a scp_args=($SSH_OPTS)
+    [[ -n "$key" ]] && scp_args+=(-i "$key")
+    [[ -n "$port" ]] && scp_args+=(-P "$port")
+    [[ -z "$pass" ]] && scp_args+=(-o BatchMode=yes)
+
     if [[ -n "$pass" ]]; then
-        # shellcheck disable=SC2086
-        echo "sshpass -p '$pass' scp $SSH_OPTS"
+        SSHPASS="$pass" sshpass -e scp "${scp_args[@]}" -r "$src" "$dest"
     else
-        # shellcheck disable=SC2086
-        echo "scp $SSH_OPTS -o BatchMode=yes"
+        scp "${scp_args[@]}" -r "$src" "$dest"
     fi
 }
 
@@ -198,17 +208,24 @@ ssh_gw() {
     local cmd="$2"
     local ssh_dest="${GW_SSH[$gw_id]}"
     local pass="${GW_PASS[$gw_id]:-}"
+    local key="${GW_KEY[$gw_id]:-}"
+    local port="${GW_PORT[$gw_id]:-}"
     local retries="${SSH_RETRIES:-3}"
     local attempt=1
     local full_cmd="export PATH=$PIO_PATH:\$PATH; $cmd"
 
+    # Build SSH args dynamically
+    # shellcheck disable=SC2086
+    local -a ssh_args=($SSH_OPTS)
+    [[ -n "$key" ]] && ssh_args+=(-i "$key")
+    [[ -n "$port" ]] && ssh_args+=(-p "$port")
+    [[ -z "$pass" ]] && ssh_args+=(-o BatchMode=yes)
+
     while [[ $attempt -le $retries ]]; do
         if [[ -n "$pass" ]]; then
-            # shellcheck disable=SC2086
-            SSHPASS="$pass" sshpass -e ssh $SSH_OPTS "$ssh_dest" "$full_cmd" && return 0
+            SSHPASS="$pass" sshpass -e ssh "${ssh_args[@]}" "$ssh_dest" "$full_cmd" && return 0
         else
-            # shellcheck disable=SC2086
-            ssh $SSH_OPTS -o BatchMode=yes "$ssh_dest" "$full_cmd" && return 0
+            ssh "${ssh_args[@]}" "$ssh_dest" "$full_cmd" && return 0
         fi
         local rc=$?
         if [[ $attempt -lt $retries ]]; then
@@ -504,9 +521,7 @@ cmd_logs() {
         local ssh_dest="${GW_SSH[$gw_id]}"
 
         log_gw "$gw_id" "Fetching logs..."
-        local scp_cmd
-        scp_cmd=$(scp_prefix "$gw_id") || continue
-        if eval "$scp_cmd" -r "$ssh_dest:$REPO_PATH/logs/$SESSION/*.log" "$local_dir/" 2>/dev/null; then
+        if scp_gw "$gw_id" "$ssh_dest:$REPO_PATH/logs/$SESSION/*.log" "$local_dir/" 2>/dev/null; then
             local count
             count=$(ls -1 "$local_dir"/*.log 2>/dev/null | wc -l)
             log_gw "$gw_id" "OK: $count log file(s)"
