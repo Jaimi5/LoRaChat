@@ -186,7 +186,7 @@ ssh_gw() {
     local ssh_dest="${GW_SSH[$gw_id]}"
     local prefix
     prefix=$(ssh_prefix "$gw_id") || return 1
-    eval "$prefix" "$ssh_dest" "'$cmd'"
+    eval "$prefix" "$ssh_dest" "'export PATH=$PIO_PATH:\$PATH; $cmd'"
 }
 
 # Run SSH commands on multiple gateways in parallel
