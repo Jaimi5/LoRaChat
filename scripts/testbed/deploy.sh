@@ -1,0 +1,420 @@
+#!/usr/bin/env bash
+# deploy.sh - Testbed deployment orchestrator
+# Runs from your local machine, SSHes into gateway machines to operate on devices.
+#
+# Usage: ./deploy.sh COMMAND [OPTIONS]
+#
+# Commands:
+#   status        Check which gateways are reachable
+#   upgrade       Git pull + pio pkg update on all gateways
+#   upload        Compile and upload firmware to devices
+#   monitor       Start serial monitors on all devices
+#   stop-monitor  Stop all running monitors
+#   logs          Collect log files from gateways to local machine
+#   all           Run upgrade + upload + monitor in sequence
+#
+# Options:
+#   -e ENV        Override PlatformIO environment
+#   -g GW-1,GW-3  Limit to specific gateways
+#   -d DEVICE_ID  Limit to specific device(s) (comma-separated)
+#   -n SESSION    Session/experiment name (for log directories)
+#   --skip-compile  Skip compilation, only upload
+#   -c FILE       Path to testbed.conf (default: same dir as this script)
+#   -h            Show this help
+
+set -uo pipefail
+
+# ── Resolve script directory and load config ────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ANSI colors for gateway output
+declare -A GW_COLORS=(
+    [GW-1]="\033[31m"   # Red
+    [GW-2]="\033[32m"   # Green
+    [GW-3]="\033[33m"   # Yellow
+    [GW-4]="\033[34m"   # Blue
+    [GW-5]="\033[35m"   # Magenta
+    [GW-6]="\033[36m"   # Cyan
+    [GW-7]="\033[37m"   # White
+    [GW-8]="\033[91m"   # Bright red
+)
+RST="\033[0m"
+BOLD="\033[1m"
+
+# ── Parse arguments ─────────────────────────────────────────────────────────
+
+COMMAND=""
+OPT_ENV=""
+OPT_GW=""
+OPT_DEVICE=""
+OPT_SESSION=""
+OPT_SKIP_COMPILE=""
+CONFIG_FILE="$SCRIPT_DIR/testbed.conf"
+
+usage() {
+    head -27 "${BASH_SOURCE[0]}" | tail -25 | sed 's/^# \?//'
+    exit "${1:-0}"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        status|upgrade|upload|monitor|stop-monitor|logs|all)
+            COMMAND="$1" ;;
+        -e) OPT_ENV="$2"; shift ;;
+        -g) OPT_GW="$2"; shift ;;
+        -d) OPT_DEVICE="$2"; shift ;;
+        -n) OPT_SESSION="$2"; shift ;;
+        --skip-compile) OPT_SKIP_COMPILE="--skip-compile" ;;
+        -c) CONFIG_FILE="$2"; shift ;;
+        -h|--help) usage 0 ;;
+        *) echo "Unknown argument: $1"; usage 1 ;;
+    esac
+    shift
+done
+
+if [[ -z "$COMMAND" ]]; then
+    echo "Error: no command specified."
+    usage 1
+fi
+
+# ── Load config ──────────────────────────────────────────────────────────────
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "Error: config file not found: $CONFIG_FILE"
+    exit 1
+fi
+source "$CONFIG_FILE"
+
+ENV="${OPT_ENV:-$DEFAULT_ENV}"
+SESSION="${OPT_SESSION:-deploy-$(date +%Y%m%d-%H%M%S)}"
+
+# ── Build per-gateway device lists ───────────────────────────────────────────
+
+# Filter gateways if -g specified
+declare -a ACTIVE_GWS=()
+if [[ -n "$OPT_GW" ]]; then
+    IFS=',' read -ra ACTIVE_GWS <<< "$OPT_GW"
+else
+    ACTIVE_GWS=("${!GW_SSH[@]}")
+fi
+
+# Sort gateway list for consistent output
+IFS=$'\n' ACTIVE_GWS=($(sort <<<"${ACTIVE_GWS[*]}")); unset IFS
+
+# Build device lists per gateway
+# GW_DEVICES[GW-1]="DEV1:PORT1 DEV2:PORT2 ..."
+declare -A GW_DEVICES=()
+
+for entry in "${DEVICES[@]}"; do
+    IFS=':' read -r dev_id gw_id <<< "$entry"
+
+    # Auto-generate serial port from device ID
+    # e.g., C6E104-77A4 → /home/lora/dev/lora-77A4
+    local short_id="${dev_id##*-}"
+    local port="${SERIAL_PORT_PREFIX}${short_id}"
+
+    # Skip gateways not in active list
+    local_match=0
+    for agw in "${ACTIVE_GWS[@]}"; do
+        [[ "$agw" == "$gw_id" ]] && local_match=1 && break
+    done
+    [[ $local_match -eq 0 ]] && continue
+
+    # Filter by device if -d specified
+    if [[ -n "$OPT_DEVICE" ]]; then
+        device_match=0
+        IFS=',' read -ra dev_filter <<< "$OPT_DEVICE"
+        for df in "${dev_filter[@]}"; do
+            [[ "$dev_id" == "$df" ]] && device_match=1 && break
+        done
+        [[ $device_match -eq 0 ]] && continue
+    fi
+
+    if [[ -n "${GW_DEVICES[$gw_id]+x}" ]]; then
+        GW_DEVICES[$gw_id]+=" $dev_id:$port"
+    else
+        GW_DEVICES[$gw_id]="$dev_id:$port"
+    fi
+done
+
+# ── Helper functions ─────────────────────────────────────────────────────────
+
+log_gw() {
+    local gw_id="$1"; shift
+    local color="${GW_COLORS[$gw_id]:-\033[0m}"
+    echo -e "${color}[${gw_id}]${RST} $*"
+}
+
+# Build SSH command prefix for a gateway (handles sshpass if password is set)
+# Usage: ssh_prefix GW_ID  → outputs "sshpass -p pass ssh OPTS" or "ssh OPTS"
+ssh_prefix() {
+    local gw_id="$1"
+    local pass="${GW_PASS[$gw_id]:-}"
+    if [[ -n "$pass" ]]; then
+        if ! command -v sshpass &>/dev/null; then
+            echo "ERROR: sshpass not installed. Install with: apt install sshpass" >&2
+            return 1
+        fi
+        # shellcheck disable=SC2086
+        echo "sshpass -p '$pass' ssh $SSH_OPTS"
+    else
+        # No password: add BatchMode to prevent hanging on prompts
+        # shellcheck disable=SC2086
+        echo "ssh $SSH_OPTS -o BatchMode=yes"
+    fi
+}
+
+# Build SCP command prefix for a gateway (handles sshpass if password is set)
+scp_prefix() {
+    local gw_id="$1"
+    local pass="${GW_PASS[$gw_id]:-}"
+    if [[ -n "$pass" ]]; then
+        # shellcheck disable=SC2086
+        echo "sshpass -p '$pass' scp $SSH_OPTS"
+    else
+        # shellcheck disable=SC2086
+        echo "scp $SSH_OPTS -o BatchMode=yes"
+    fi
+}
+
+# Run a command on a gateway via SSH
+# Usage: ssh_gw GW_ID "remote command"
+ssh_gw() {
+    local gw_id="$1"
+    local cmd="$2"
+    local ssh_dest="${GW_SSH[$gw_id]}"
+    local prefix
+    prefix=$(ssh_prefix "$gw_id") || return 1
+    eval "$prefix" "$ssh_dest" "$cmd"
+}
+
+# Run SSH commands on multiple gateways in parallel
+# Pipes output with per-GW color prefixes
+# Usage: run_parallel GW_ID1 "cmd1" GW_ID2 "cmd2" ...
+run_parallel() {
+    local -A pids=()
+    local -A tmpfiles=()
+    local -A exit_codes=()
+    local tmpdir
+    tmpdir=$(mktemp -d)
+
+    # Launch all SSH sessions
+    while [[ $# -ge 2 ]]; do
+        local gw_id="$1"
+        local cmd="$2"
+        shift 2
+
+        local tmpfile="$tmpdir/$gw_id.log"
+        tmpfiles[$gw_id]="$tmpfile"
+
+        (
+            ssh_gw "$gw_id" "$cmd" 2>&1
+        ) > "$tmpfile" 2>&1 &
+        pids[$gw_id]=$!
+        log_gw "$gw_id" "Started (PID ${pids[$gw_id]})"
+    done
+
+    # Wait and collect results
+    local any_failed=0
+    for gw_id in $(echo "${!pids[@]}" | tr ' ' '\n' | sort); do
+        wait "${pids[$gw_id]}" 2>/dev/null
+        exit_codes[$gw_id]=$?
+
+        # Print output with prefix
+        local color="${GW_COLORS[$gw_id]:-\033[0m}"
+        while IFS= read -r line; do
+            echo -e "${color}[${gw_id}]${RST} $line"
+        done < "${tmpfiles[$gw_id]}"
+
+        if [[ ${exit_codes[$gw_id]} -ne 0 ]]; then
+            any_failed=1
+        fi
+    done
+
+    # Print summary
+    echo ""
+    echo -e "${BOLD}========== Summary ==========${RST}"
+    for gw_id in $(echo "${!exit_codes[@]}" | tr ' ' '\n' | sort); do
+        local color="${GW_COLORS[$gw_id]:-\033[0m}"
+        if [[ ${exit_codes[$gw_id]} -eq 0 ]]; then
+            echo -e "  ${color}${gw_id}${RST}  [\033[32mOK${RST}]"
+        else
+            echo -e "  ${color}${gw_id}${RST}  [\033[31mFAIL${RST}] (exit ${exit_codes[$gw_id]})"
+        fi
+    done
+    echo -e "${BOLD}=============================${RST}"
+
+    rm -rf "$tmpdir"
+    return $any_failed
+}
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+cmd_status() {
+    echo -e "${BOLD}Checking gateway connectivity...${RST}"
+    echo ""
+
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        args+=("$gw_id" "echo 'reachable'; hostname; uptime")
+    done
+
+    if [[ ${#args[@]} -eq 0 ]]; then
+        echo "No gateways to check."
+        return 1
+    fi
+
+    run_parallel "${args[@]}"
+}
+
+cmd_upgrade() {
+    echo -e "${BOLD}Upgrading all gateways (branch: $GIT_BRANCH)...${RST}"
+    echo ""
+
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        args+=("$gw_id" "cd $REPO_PATH && bash scripts/testbed/gw-upgrade.sh $GIT_BRANCH")
+    done
+
+    if [[ ${#args[@]} -eq 0 ]]; then
+        echo "No gateways to upgrade."
+        return 1
+    fi
+
+    run_parallel "${args[@]}"
+}
+
+cmd_upload() {
+    echo -e "${BOLD}Compiling and uploading (env: $ENV, session: $SESSION)...${RST}"
+    echo ""
+
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        local devices="${GW_DEVICES[$gw_id]:-}"
+        [[ -z "$devices" ]] && continue
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+
+        local cmd="cd $REPO_PATH && bash scripts/testbed/gw-upload.sh $ENV $OPT_SKIP_COMPILE $devices"
+        args+=("$gw_id" "$cmd")
+    done
+
+    if [[ ${#args[@]} -eq 0 ]]; then
+        echo "No devices to upload. Check -g/-d filters and testbed.conf."
+        return 1
+    fi
+
+    run_parallel "${args[@]}"
+}
+
+cmd_monitor() {
+    echo -e "${BOLD}Starting monitors (session: $SESSION)...${RST}"
+    echo ""
+
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        local devices="${GW_DEVICES[$gw_id]:-}"
+        [[ -z "$devices" ]] && continue
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+
+        local cmd="cd $REPO_PATH && bash scripts/testbed/gw-monitor.sh start $SESSION $ENV $devices"
+        args+=("$gw_id" "$cmd")
+    done
+
+    if [[ ${#args[@]} -eq 0 ]]; then
+        echo "No devices to monitor. Check -g/-d filters and testbed.conf."
+        return 1
+    fi
+
+    run_parallel "${args[@]}"
+    echo ""
+    echo "Monitors running in background on gateways."
+    echo "Use './deploy.sh logs -n $SESSION' to collect logs."
+    echo "Use './deploy.sh stop-monitor' to stop."
+}
+
+cmd_stop_monitor() {
+    echo -e "${BOLD}Stopping all monitors...${RST}"
+    echo ""
+
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        args+=("$gw_id" "cd $REPO_PATH && bash scripts/testbed/gw-monitor.sh stop")
+    done
+
+    if [[ ${#args[@]} -eq 0 ]]; then
+        echo "No gateways to stop."
+        return 1
+    fi
+
+    run_parallel "${args[@]}"
+}
+
+cmd_logs() {
+    echo -e "${BOLD}Collecting logs for session: $SESSION${RST}"
+    echo ""
+
+    local local_dir="$LOCAL_LOG_DIR/$SESSION"
+    mkdir -p "$local_dir"
+
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        local ssh_dest="${GW_SSH[$gw_id]}"
+
+        log_gw "$gw_id" "Fetching logs..."
+        local scp_cmd
+        scp_cmd=$(scp_prefix "$gw_id") || continue
+        if eval "$scp_cmd" -r "$ssh_dest:$REPO_PATH/logs/$SESSION/*.log" "$local_dir/" 2>/dev/null; then
+            local count
+            count=$(ls -1 "$local_dir"/*.log 2>/dev/null | wc -l)
+            log_gw "$gw_id" "OK: $count log file(s)"
+        else
+            log_gw "$gw_id" "No logs found for session $SESSION"
+        fi
+    done
+
+    echo ""
+    echo "Logs collected in: $local_dir"
+    ls -la "$local_dir"/*.log 2>/dev/null || true
+}
+
+cmd_all() {
+    echo -e "${BOLD}Full deployment: upgrade -> upload -> monitor${RST}"
+    echo -e "${BOLD}Session: $SESSION | Env: $ENV${RST}"
+    echo ""
+
+    echo -e "\n${BOLD}=== Phase 1/3: Upgrade ===${RST}\n"
+    if ! cmd_upgrade; then
+        echo ""
+        echo "WARNING: Some gateways failed to upgrade. Continue anyway? (y/N)"
+        read -r answer
+        [[ "$answer" != "y" && "$answer" != "Y" ]] && exit 1
+    fi
+
+    echo -e "\n${BOLD}=== Phase 2/3: Upload ===${RST}\n"
+    if ! cmd_upload; then
+        echo ""
+        echo "WARNING: Some devices failed to upload. Continue to monitor? (y/N)"
+        read -r answer
+        [[ "$answer" != "y" && "$answer" != "Y" ]] && exit 1
+    fi
+
+    echo -e "\n${BOLD}=== Phase 3/3: Monitor ===${RST}\n"
+    cmd_monitor
+}
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+case "$COMMAND" in
+    status)       cmd_status ;;
+    upgrade)      cmd_upgrade ;;
+    upload)       cmd_upload ;;
+    monitor)      cmd_monitor ;;
+    stop-monitor) cmd_stop_monitor ;;
+    logs)         cmd_logs ;;
+    all)          cmd_all ;;
+    *)            echo "Unknown command: $COMMAND"; usage 1 ;;
+esac

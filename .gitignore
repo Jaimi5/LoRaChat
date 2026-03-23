@@ -9,3 +9,9 @@
 .vscode/extensions.json
 *.code-workspace
 *.ans
+
+# ESP-IDF Component Manager
+managed_components/
+
+# Runtime monitor logs on gateways
+logs/
