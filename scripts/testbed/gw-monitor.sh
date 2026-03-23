@@ -50,7 +50,7 @@ case "$ACTION" in
             nohup bash -c "
                 script -qfc 'pio device monitor --port $PORT --filter esp32_exception_decoder' /dev/null 2>&1 | \
                 while IFS= read -r line; do
-                    echo \"[\$(date \"+%Y-%m-%d %H:%M:%S\")] \$line\"
+                    echo \"[\$(date \"+%Y-%m-%d %H:%M:%S.%3N\")] \$line\"
                 done >> \"$LOGFILE\" 2>&1
             " </dev/null >/dev/null 2>&1 &
 
