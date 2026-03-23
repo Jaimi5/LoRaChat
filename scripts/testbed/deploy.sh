@@ -199,6 +199,7 @@ run_parallel() {
     local -A logfiles=()
     local -A start_times=()
     local -A exit_codes=()
+    local -A finish_times=()
     local -a gw_order=()
     local log_dir="$LOCAL_LOG_DIR/$SESSION"
     mkdir -p "$log_dir"
@@ -252,24 +253,24 @@ run_parallel() {
                     running=$((running + 1))
                     local si=$(( tick % spinner_len ))
                     local sc="${spinner_chars:$si:1}"
-                    printf "\033[2K  ${color}%-6s${RST} ${sc} Running...    (%s)\n" "$gw_id" "$time_str"
+                    printf "\033[2K  ${color}%-6s${RST} ${sc} Running...    (%ss)\n" "$gw_id" "$elapsed"
                 else
-                    # Just finished
+                    # Just finished — freeze the elapsed time
                     wait "${pids[$gw_id]}" 2>/dev/null
                     exit_codes[$gw_id]=$?
+                    finish_times[$gw_id]="$elapsed"
                     if [[ ${exit_codes[$gw_id]} -eq 0 ]]; then
-                        printf "\033[2K  ${color}%-6s${RST} \033[32m✓ OK\033[0m            (%s)\n" "$gw_id" "$time_str"
+                        printf "\033[2K  ${color}%-6s${RST} \033[32m✓ OK\033[0m            (%ss)\n" "$gw_id" "${finish_times[$gw_id]}"
                     else
-                        printf "\033[2K  ${color}%-6s${RST} \033[31m✗ FAIL\033[0m          (%s)  → %s\n" "$gw_id" "$time_str" "${logfiles[$gw_id]}"
+                        printf "\033[2K  ${color}%-6s${RST} \033[31m✗ FAIL\033[0m          (%ss)  → %s\n" "$gw_id" "${finish_times[$gw_id]}" "${logfiles[$gw_id]}"
                     fi
                 fi
             else
-                # Already finished — just reprint
+                # Already finished — reprint with frozen time
                 if [[ ${exit_codes[$gw_id]} -eq 0 ]]; then
-                    local elapsed_final=$(( ${exit_codes[$gw_id]+"${elapsed}"} ))
-                    printf "\033[2K  ${color}%-6s${RST} \033[32m✓ OK\033[0m            (%s)\n" "$gw_id" "$time_str"
+                    printf "\033[2K  ${color}%-6s${RST} \033[32m✓ OK\033[0m            (%ss)\n" "$gw_id" "${finish_times[$gw_id]}"
                 else
-                    printf "\033[2K  ${color}%-6s${RST} \033[31m✗ FAIL\033[0m          (%s)  → %s\n" "$gw_id" "$time_str" "${logfiles[$gw_id]}"
+                    printf "\033[2K  ${color}%-6s${RST} \033[31m✗ FAIL\033[0m          (%ss)  → %s\n" "$gw_id" "${finish_times[$gw_id]}" "${logfiles[$gw_id]}"
                 fi
             fi
         done
