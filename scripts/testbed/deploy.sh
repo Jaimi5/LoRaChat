@@ -111,8 +111,8 @@ for entry in "${DEVICES[@]}"; do
 
     # Auto-generate serial port from device ID
     # e.g., C6E104-77A4 → /home/lora/dev/lora-77A4
-    local short_id="${dev_id##*-}"
-    local port="${SERIAL_PORT_PREFIX}${short_id}"
+    short_id="${dev_id##*-}"
+    port="${SERIAL_PORT_PREFIX}${short_id}"
 
     # Skip gateways not in active list
     local_match=0
