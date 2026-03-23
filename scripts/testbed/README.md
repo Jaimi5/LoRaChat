@@ -234,7 +234,7 @@ Deletes logs older than `MAX_LOG_AGE_DAYS` (default: 7) both locally and on all 
 
 ### `all` — Full deployment pipeline
 
-Runs upgrade -> upload -> monitor in sequence. Prompts to continue if any phase fails.
+Runs upgrade -> upload+monitor. Monitors start immediately after each device upload to capture boot output.
 
 ```bash
 ./deploy.sh all -n cap2-v2
