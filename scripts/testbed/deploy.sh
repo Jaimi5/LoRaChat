@@ -276,7 +276,9 @@ cmd_upgrade() {
     local args=()
     for gw_id in "${ACTIVE_GWS[@]}"; do
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
-        args+=("$gw_id" "cd $REPO_PATH && bash scripts/testbed/gw-upgrade.sh $GIT_BRANCH")
+        # Inline git commands (not gw-upgrade.sh) so it works even on first run
+        # before the testbed scripts exist on the gateway
+        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== git checkout $GIT_BRANCH ===' && git checkout $GIT_BRANCH && echo '=== git pull ===' && git pull origin $GIT_BRANCH && echo '=== pio pkg update ===' && pio pkg update && echo '=== Upgrade complete ==='")
     done
 
     if [[ ${#args[@]} -eq 0 ]]; then
