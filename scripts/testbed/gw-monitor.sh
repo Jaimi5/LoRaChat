@@ -79,6 +79,13 @@ case "$ACTION" in
             echo "No running monitors found."
         else
             echo "Stopped $stopped monitor(s)."
+            # Compress log files
+            local compressed=0
+            for logfile in "$REPO"/logs/*/*.log; do
+                [[ -f "$logfile" ]] || continue
+                gzip -f "$logfile" 2>/dev/null && compressed=$((compressed + 1))
+            done
+            [[ $compressed -gt 0 ]] && echo "Compressed $compressed log file(s)."
         fi
         ;;
 
