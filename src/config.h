@@ -133,7 +133,7 @@
 #define METADATA_UPDATE_DELAY 300000  // ms
 
 // MQTT_MON configuration
-#define MON_SENDING_EVERY 60000  // ms
+#define MON_SENDING_EVERY 300000  // ms
 
 
 // Battery configuration
