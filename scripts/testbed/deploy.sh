@@ -506,11 +506,11 @@ cmd_logs() {
 }
 
 cmd_all() {
-    echo -e "${BOLD}Full deployment: upgrade -> upload -> monitor${RST}"
+    echo -e "${BOLD}Full deployment: upgrade -> upload+monitor${RST}"
     echo -e "${BOLD}Session: $SESSION | Env: $ENV${RST}"
     echo ""
 
-    echo -e "\n${BOLD}=== Phase 1/3: Upgrade ===${RST}\n"
+    echo -e "\n${BOLD}=== Phase 1/2: Upgrade ===${RST}\n"
     if ! cmd_upgrade; then
         echo ""
         echo "WARNING: Some gateways failed to upgrade. Continue anyway? (y/N)"
@@ -518,16 +518,9 @@ cmd_all() {
         [[ "$answer" != "y" && "$answer" != "Y" ]] && exit 1
     fi
 
-    echo -e "\n${BOLD}=== Phase 2/3: Upload ===${RST}\n"
-    if ! cmd_upload; then
-        echo ""
-        echo "WARNING: Some devices failed to upload. Continue to monitor? (y/N)"
-        read -r answer
-        [[ "$answer" != "y" && "$answer" != "Y" ]] && exit 1
-    fi
-
-    echo -e "\n${BOLD}=== Phase 3/3: Monitor ===${RST}\n"
-    cmd_monitor
+    echo -e "\n${BOLD}=== Phase 2/2: Upload + Monitor ===${RST}\n"
+    OPT_MONITOR="1"
+    cmd_upload
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
