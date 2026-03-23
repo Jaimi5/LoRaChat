@@ -17,6 +17,9 @@ git fetch origin
 echo "=== git checkout $BRANCH ==="
 git checkout "$BRANCH"
 
+echo "=== reset config.h ==="
+git checkout -- src/config.h 2>/dev/null || true
+
 echo "=== git pull ==="
 git pull -X theirs origin "$BRANCH"
 
