@@ -18,7 +18,7 @@ echo "=== git checkout $BRANCH ==="
 git checkout "$BRANCH"
 
 echo "=== git pull ==="
-git pull origin "$BRANCH"
+git pull -X theirs origin "$BRANCH"
 
 echo "=== pio pkg update ==="
 pio pkg update
