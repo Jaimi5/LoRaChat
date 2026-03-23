@@ -43,13 +43,14 @@ case "$ACTION" in
 
             echo "Starting monitor: $DEVICE_ID ($PORT) -> $LOGFILE"
 
-            # Use nohup so monitor survives SSH disconnect
-            nohup pio device monitor \
-                --environment "$ENV" \
-                --port "$PORT" \
-                --filter time \
-                --filter esp32_exception_decoder \
-                >> "$LOGFILE" 2>&1 &
+            # Use script to provide a pseudo-TTY (pio device monitor requires one)
+            # Pipe through a timestamp loop to add [YYYY-MM-DD HH:MM:SS] to each line
+            nohup bash -c "
+                script -qfc 'pio device monitor --port $PORT --filter esp32_exception_decoder' /dev/null 2>&1 | \
+                while IFS= read -r line; do
+                    echo \"[\$(date \"+%Y-%m-%d %H:%M:%S\")] \$line\"
+                done >> \"$LOGFILE\" 2>&1
+            " &
 
             echo "$!:$DEVICE_ID:$PORT" >> "$PIDFILE"
         done
