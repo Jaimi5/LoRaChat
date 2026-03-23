@@ -232,6 +232,24 @@ Deletes logs older than `MAX_LOG_AGE_DAYS` (default: 7) both locally and on all 
 ./deploy.sh clean                       # Clean logs older than 7 days
 ```
 
+### `sync-time` — Check and sync gateway clocks
+
+Checks the time offset between your machine and each gateway. Attempts to enable NTP if possible.
+
+```bash
+./deploy.sh sync-time
+
+# Output:
+# Local time: 2026-03-23 18:30:05
+#
+#   GW-1  OK (offset: 0s)
+#   GW-2  OK (offset: -1s)
+#   GW-3  OFFSET: +15s — attempting sync...
+#   GW-4  OK (offset: 0s)
+```
+
+If sync fails (no sudo), it suggests commands for your admin to run.
+
 ### `run-remote` — Execute command on all gateways
 
 Runs any command on all (or filtered) gateways in parallel. Output is displayed per-gateway after completion.

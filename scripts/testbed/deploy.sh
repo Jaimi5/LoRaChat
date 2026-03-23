@@ -61,7 +61,7 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        status|upgrade|upload|monitor|stop-monitor|logs|clean|all)
+        status|upgrade|upload|monitor|stop-monitor|logs|clean|sync-time|all)
             COMMAND="$1" ;;
         upload-monitor)
             COMMAND="upload"; OPT_MONITOR="1" ;;
@@ -561,6 +561,67 @@ cmd_run_remote() {
     echo -e "Logs: ${LOCAL_LOG_DIR}/${SESSION}/"
 }
 
+cmd_sync_time() {
+    echo -e "${BOLD}Checking time synchronization...${RST}"
+    echo ""
+
+    local local_epoch
+    local_epoch=$(date +%s)
+    local local_time
+    local_time=$(date '+%Y-%m-%d %H:%M:%S')
+
+    echo "Local time: $local_time"
+    echo ""
+
+    # Check time on each gateway and attempt sync
+    local any_offset=0
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        local color="${GW_COLORS[$gw_id]:-\033[0m}"
+
+        # Get remote epoch
+        local remote_epoch
+        remote_epoch=$(ssh_gw "$gw_id" "date +%s" 2>/dev/null) || {
+            echo -e "  ${color}${gw_id}${RST}  \033[31mUNREACHABLE\033[0m"
+            continue
+        }
+
+        local offset=$((remote_epoch - local_epoch))
+        local abs_offset=${offset#-}
+
+        if [[ $abs_offset -le 2 ]]; then
+            echo -e "  ${color}${gw_id}${RST}  \033[32mOK\033[0m (offset: ${offset}s)"
+        else
+            any_offset=1
+            echo -e "  ${color}${gw_id}${RST}  \033[33mOFFSET: ${offset}s\033[0m — attempting sync..."
+
+            # Try timedatectl (might work without sudo)
+            ssh_gw "$gw_id" "timedatectl set-ntp true" 2>/dev/null && {
+                echo -e "  ${color}${gw_id}${RST}  Enabled NTP via timedatectl"
+                continue
+            }
+
+            # Try sudo -n date (non-interactive, works if NOPASSWD configured)
+            local target_time
+            target_time=$(date '+%Y-%m-%d %H:%M:%S')
+            ssh_gw "$gw_id" "sudo -n date -s '$target_time'" 2>/dev/null && {
+                echo -e "  ${color}${gw_id}${RST}  \033[32mSynced\033[0m via sudo date"
+                continue
+            }
+
+            echo -e "  ${color}${gw_id}${RST}  \033[31mCannot sync\033[0m (no sudo). Ask admin to run:"
+            echo -e "         sudo timedatectl set-ntp true"
+        fi
+    done
+
+    if [[ $any_offset -gt 0 ]]; then
+        echo ""
+        echo "Tip: Ask your admin to enable NTP on gateways with offsets:"
+        echo "  sudo timedatectl set-ntp true"
+        echo "  sudo timedatectl set-timezone Europe/Madrid  # or your timezone"
+    fi
+}
+
 cmd_all() {
     echo -e "${BOLD}Full deployment: upgrade -> upload+monitor${RST}"
     echo -e "${BOLD}Session: $SESSION | Env: $ENV${RST}"
@@ -589,6 +650,7 @@ case "$COMMAND" in
     stop-monitor) cmd_stop_monitor ;;
     logs)         cmd_logs ;;
     clean)        cmd_clean ;;
+    sync-time)    cmd_sync_time ;;
     run-remote)   cmd_run_remote ;;
     all)          cmd_all ;;
     *)            echo "Unknown command: $COMMAND"; usage 1 ;;
