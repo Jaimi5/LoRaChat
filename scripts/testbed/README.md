@@ -232,6 +232,24 @@ Deletes logs older than `MAX_LOG_AGE_DAYS` (default: 7) both locally and on all 
 ./deploy.sh clean                       # Clean logs older than 7 days
 ```
 
+### `run-remote` — Execute command on all gateways
+
+Runs any command on all (or filtered) gateways in parallel. Output is displayed per-gateway after completion.
+
+```bash
+# View a file on all gateways
+./deploy.sh run-remote "cat /home/lora/LoRaChat/common-config-v2.sh"
+
+# Update a config value
+./deploy.sh run-remote "sed -i 's/LORA_MANAGER_ID=0xE646/LORA_MANAGER_ID=0x006C/' /home/lora/LoRaChat/common-config-v2.sh"
+
+# Run on specific gateways only
+./deploy.sh run-remote -g GW-1,GW-2 "ls /home/lora/LoRaChat/"
+
+# Check disk space
+./deploy.sh run-remote "df -h"
+```
+
 ### `all` — Full deployment pipeline
 
 Runs upgrade -> upload+monitor. Monitors start immediately after each device upload to capture boot output.

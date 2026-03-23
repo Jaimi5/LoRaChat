@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
         upload-monitor)
             COMMAND="upload"; OPT_MONITOR="1" ;;
         run-remote)
-            COMMAND="run-remote"; shift; OPT_REMOTE_CMD="$*"; break ;;
+            COMMAND="run-remote" ;;
         -e) OPT_ENV="$2"; shift ;;
         -g) OPT_GW="$2"; shift ;;
         -d) OPT_DEVICE="$2"; shift ;;
@@ -75,7 +75,13 @@ while [[ $# -gt 0 ]]; do
         --monitor) OPT_MONITOR="1" ;;
         -c) CONFIG_FILE="$2"; shift ;;
         -h|--help) usage 0 ;;
-        *) echo "Unknown argument: $1"; usage 1 ;;
+        *)
+            if [[ "$COMMAND" == "run-remote" ]]; then
+                OPT_REMOTE_CMD="$1"
+            else
+                echo "Unknown argument: $1"; usage 1
+            fi
+            ;;
     esac
     shift
 done
@@ -191,13 +197,19 @@ ssh_gw() {
     local gw_id="$1"
     local cmd="$2"
     local ssh_dest="${GW_SSH[$gw_id]}"
-    local prefix
-    prefix=$(ssh_prefix "$gw_id") || return 1
+    local pass="${GW_PASS[$gw_id]:-}"
     local retries="${SSH_RETRIES:-3}"
     local attempt=1
+    local full_cmd="export PATH=$PIO_PATH:\$PATH; $cmd"
 
     while [[ $attempt -le $retries ]]; do
-        eval "$prefix" "$ssh_dest" "'export PATH=$PIO_PATH:\$PATH; $cmd'" && return 0
+        if [[ -n "$pass" ]]; then
+            # shellcheck disable=SC2086
+            SSHPASS="$pass" sshpass -e ssh $SSH_OPTS "$ssh_dest" "$full_cmd" && return 0
+        else
+            # shellcheck disable=SC2086
+            ssh $SSH_OPTS -o BatchMode=yes "$ssh_dest" "$full_cmd" && return 0
+        fi
         local rc=$?
         if [[ $attempt -lt $retries ]]; then
             echo "SSH to $gw_id failed (attempt $attempt/$retries), retrying in 5s..." >&2
@@ -529,6 +541,9 @@ cmd_run_remote() {
     fi
 
     run_parallel "remote" "${args[@]}"
+
+    echo ""
+    echo -e "Logs: ${LOCAL_LOG_DIR}/${SESSION}/"
 }
 
 cmd_all() {
