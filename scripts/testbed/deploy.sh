@@ -233,6 +233,10 @@ run_parallel() {
         echo ""
     done
 
+    # Hide cursor during spinner, restore on exit or interrupt
+    tput civis 2>/dev/null
+    trap 'tput cnorm 2>/dev/null' EXIT INT TERM
+
     # Spinner display loop
     local tick=0
     local running=1
@@ -278,6 +282,10 @@ run_parallel() {
         tick=$((tick + 1))
         [[ $running -gt 0 ]] && sleep 0.3
     done
+
+    # Restore cursor
+    tput cnorm 2>/dev/null
+    trap - EXIT INT TERM
 
     # Final summary
     echo ""
