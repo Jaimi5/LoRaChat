@@ -189,15 +189,22 @@ ssh_gw() {
     eval "$prefix" "$ssh_dest" "'export PATH=$PIO_PATH:\$PATH; $cmd'"
 }
 
-# Run SSH commands on multiple gateways in parallel
-# Pipes output with per-GW color prefixes
-# Usage: run_parallel GW_ID1 "cmd1" GW_ID2 "cmd2" ...
+# Run SSH commands on multiple gateways in parallel with spinner display
+# Output goes to log files, console shows clean progress spinners
+# Usage: run_parallel LABEL GW_ID1 "cmd1" GW_ID2 "cmd2" ...
+#   LABEL is used for log file naming (e.g., "upgrade", "upload")
 run_parallel() {
+    local label="$1"; shift
     local -A pids=()
-    local -A tmpfiles=()
+    local -A logfiles=()
+    local -A start_times=()
     local -A exit_codes=()
-    local tmpdir
-    tmpdir=$(mktemp -d)
+    local -a gw_order=()
+    local log_dir="$LOCAL_LOG_DIR/$SESSION"
+    mkdir -p "$log_dir"
+
+    local spinner_chars='|/-\'
+    local spinner_len=${#spinner_chars}
 
     # Launch all SSH sessions
     while [[ $# -ge 2 ]]; do
@@ -205,48 +212,91 @@ run_parallel() {
         local cmd="$2"
         shift 2
 
-        local tmpfile="$tmpdir/$gw_id.log"
-        tmpfiles[$gw_id]="$tmpfile"
+        local logfile="$log_dir/${gw_id}-${label}.log"
+        logfiles[$gw_id]="$logfile"
+        start_times[$gw_id]=$SECONDS
+        gw_order+=("$gw_id")
 
-        (
-            ssh_gw "$gw_id" "$cmd" 2>&1
-        ) > "$tmpfile" 2>&1 &
+        ssh_gw "$gw_id" "$cmd" > "$logfile" 2>&1 &
         pids[$gw_id]=$!
-        log_gw "$gw_id" "Started (PID ${pids[$gw_id]})"
     done
 
-    # Wait and collect results
-    local any_failed=0
-    for gw_id in $(echo "${!pids[@]}" | tr ' ' '\n' | sort); do
-        wait "${pids[$gw_id]}" 2>/dev/null
-        exit_codes[$gw_id]=$?
+    local total=${#gw_order[@]}
+    if [[ $total -eq 0 ]]; then
+        echo "No gateways to process."
+        return 1
+    fi
 
-        # Print output with prefix
-        local color="${GW_COLORS[$gw_id]:-\033[0m}"
-        while IFS= read -r line; do
-            echo -e "${color}[${gw_id}]${RST} $line"
-        done < "${tmpfiles[$gw_id]}"
-
-        if [[ ${exit_codes[$gw_id]} -ne 0 ]]; then
-            any_failed=1
-        fi
+    # Print initial status lines
+    for gw_id in "${gw_order[@]}"; do
+        echo ""
     done
 
-    # Print summary
+    # Spinner display loop
+    local tick=0
+    local running=1
+    while [[ $running -gt 0 ]]; do
+        running=0
+
+        # Move cursor up to redraw
+        echo -ne "\033[${total}A"
+
+        for gw_id in "${gw_order[@]}"; do
+            local color="${GW_COLORS[$gw_id]:-\033[0m}"
+            local elapsed=$(( SECONDS - start_times[$gw_id] ))
+            local time_str="${elapsed}s"
+
+            if [[ -z "${exit_codes[$gw_id]+x}" ]]; then
+                # Still running — check if finished
+                if kill -0 "${pids[$gw_id]}" 2>/dev/null; then
+                    running=$((running + 1))
+                    local si=$(( tick % spinner_len ))
+                    local sc="${spinner_chars:$si:1}"
+                    printf "\033[2K  ${color}%-6s${RST} ${sc} Running...    (%s)\n" "$gw_id" "$time_str"
+                else
+                    # Just finished
+                    wait "${pids[$gw_id]}" 2>/dev/null
+                    exit_codes[$gw_id]=$?
+                    if [[ ${exit_codes[$gw_id]} -eq 0 ]]; then
+                        printf "\033[2K  ${color}%-6s${RST} \033[32m✓ OK\033[0m            (%s)\n" "$gw_id" "$time_str"
+                    else
+                        printf "\033[2K  ${color}%-6s${RST} \033[31m✗ FAIL\033[0m          (%s)  → %s\n" "$gw_id" "$time_str" "${logfiles[$gw_id]}"
+                    fi
+                fi
+            else
+                # Already finished — just reprint
+                if [[ ${exit_codes[$gw_id]} -eq 0 ]]; then
+                    local elapsed_final=$(( ${exit_codes[$gw_id]+"${elapsed}"} ))
+                    printf "\033[2K  ${color}%-6s${RST} \033[32m✓ OK\033[0m            (%s)\n" "$gw_id" "$time_str"
+                else
+                    printf "\033[2K  ${color}%-6s${RST} \033[31m✗ FAIL\033[0m          (%s)  → %s\n" "$gw_id" "$time_str" "${logfiles[$gw_id]}"
+                fi
+            fi
+        done
+
+        tick=$((tick + 1))
+        [[ $running -gt 0 ]] && sleep 0.3
+    done
+
+    # Final summary
     echo ""
-    echo -e "${BOLD}========== Summary ==========${RST}"
-    for gw_id in $(echo "${!exit_codes[@]}" | tr ' ' '\n' | sort); do
-        local color="${GW_COLORS[$gw_id]:-\033[0m}"
-        if [[ ${exit_codes[$gw_id]} -eq 0 ]]; then
-            echo -e "  ${color}${gw_id}${RST}  [\033[32mOK${RST}]"
+    local failed=0
+    local succeeded=0
+    for gw_id in "${gw_order[@]}"; do
+        if [[ ${exit_codes[$gw_id]} -ne 0 ]]; then
+            failed=$((failed + 1))
         else
-            echo -e "  ${color}${gw_id}${RST}  [\033[31mFAIL${RST}] (exit ${exit_codes[$gw_id]})"
+            succeeded=$((succeeded + 1))
         fi
     done
-    echo -e "${BOLD}=============================${RST}"
 
-    rm -rf "$tmpdir"
-    return $any_failed
+    echo -e "${BOLD}Result: ${succeeded}/${total} OK${RST}"
+    if [[ $failed -gt 0 ]]; then
+        echo -e "Logs: ${log_dir}/"
+    fi
+    echo ""
+
+    [[ $failed -eq 0 ]]
 }
 
 # ── Commands ─────────────────────────────────────────────────────────────────
@@ -266,7 +316,7 @@ cmd_status() {
         return 1
     fi
 
-    run_parallel "${args[@]}"
+    run_parallel "status" "${args[@]}"
 }
 
 cmd_upgrade() {
@@ -286,7 +336,7 @@ cmd_upgrade() {
         return 1
     fi
 
-    run_parallel "${args[@]}"
+    run_parallel "upgrade" "${args[@]}"
 }
 
 cmd_upload() {
@@ -308,7 +358,7 @@ cmd_upload() {
         return 1
     fi
 
-    run_parallel "${args[@]}"
+    run_parallel "upload" "${args[@]}"
 }
 
 cmd_monitor() {
@@ -330,7 +380,7 @@ cmd_monitor() {
         return 1
     fi
 
-    run_parallel "${args[@]}"
+    run_parallel "monitor" "${args[@]}"
     echo ""
     echo "Monitors running in background on gateways."
     echo "Use './deploy.sh logs -n $SESSION' to collect logs."
@@ -352,7 +402,7 @@ cmd_stop_monitor() {
         return 1
     fi
 
-    run_parallel "${args[@]}"
+    run_parallel "stop-monitor" "${args[@]}"
 }
 
 cmd_logs() {
