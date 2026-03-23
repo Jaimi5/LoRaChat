@@ -1,25 +1,43 @@
 #!/usr/bin/env bash
 # gw-upload.sh - Runs ON a gateway machine
 # Sequentially configures, compiles, and uploads firmware for each device.
+# Optionally starts a monitor immediately after each successful upload.
 #
-# Usage: bash gw-upload.sh ENV [--skip-compile] DEVICE_ID:PORT [DEVICE_ID:PORT ...]
+# Usage: bash gw-upload.sh ENV [--skip-compile] [--monitor SESSION] DEVICE_ID:PORT [...]
 #
-# ENV             — PlatformIO environment (e.g., ttgo-t-beam-v2)
-# --skip-compile  — skip compilation, only upload (firmware must already be built)
-# DEVICE_ID:PORT  — device ID and serial port pairs
+# ENV               — PlatformIO environment (e.g., ttgo-t-beam-v2)
+# --skip-compile    — skip compilation, only upload (firmware must already be built)
+# --monitor SESSION — start a monitor for each device right after uploading
+# DEVICE_ID:PORT    — device ID and serial port pairs
 
 set -uo pipefail  # Not -e: continue on per-device failures
 
 ENV="$1"; shift
 
 SKIP_COMPILE=0
-if [[ "${1:-}" == "--skip-compile" ]]; then
-    SKIP_COMPILE=1
-    shift
-fi
+MONITOR_SESSION=""
+
+# Parse optional flags
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+        --skip-compile) SKIP_COMPILE=1; shift ;;
+        --monitor) MONITOR_SESSION="$2"; shift 2 ;;
+        *) break ;;
+    esac
+done
 
 REPO="${REPO_PATH:-/home/lora/LoRaChat}"
 cd "$REPO" || { echo "ERROR: $REPO not found"; exit 1; }
+
+# If monitoring, stop any existing monitors first
+if [[ -n "$MONITOR_SESSION" ]]; then
+    echo "--- Stopping existing monitors ---"
+    bash "$REPO/scripts/testbed/gw-monitor.sh" stop 2>/dev/null || true
+    LOG_DIR="$REPO/logs/$MONITOR_SESSION"
+    mkdir -p "$LOG_DIR"
+    PIDFILE="$LOG_DIR/.monitor_pids"
+    > "$PIDFILE"
+fi
 
 TOTAL=0
 SUCCEEDED=0
@@ -74,6 +92,20 @@ for device_spec in "$@"; do
             FAILED_DEVICES="$FAILED_DEVICES $DEVICE_ID"
         fi
     fi
+
+    # Step 3: Start monitor immediately after successful upload
+    if [[ -n "$MONITOR_SESSION" && -z "$(echo "$FAILED_DEVICES" | grep "$DEVICE_ID")" ]]; then
+        LOGFILE="$LOG_DIR/monitor-dev-${MONITOR_SESSION}-${SHORT_ID}.log"
+        echo "--- Starting monitor: $PORT -> $LOGFILE ---"
+        nohup bash -c "
+            script -qfc 'pio device monitor --port $PORT --filter esp32_exception_decoder' /dev/null 2>&1 | \
+            while IFS= read -r line; do
+                echo \"[\$(date \"+%Y-%m-%d %H:%M:%S\")] \$line\"
+            done >> \"$LOGFILE\" 2>&1
+        " </dev/null >/dev/null 2>&1 &
+        echo "$!:$DEVICE_ID:$PORT" >> "$PIDFILE"
+        echo "Monitor started for $DEVICE_ID"
+    fi
 done
 
 echo ""
@@ -81,6 +113,10 @@ echo "========================================"
 echo "  Upload summary: $SUCCEEDED/$TOTAL succeeded"
 if [[ -n "$FAILED_DEVICES" ]]; then
     echo "  Failed:$FAILED_DEVICES"
+fi
+if [[ -n "$MONITOR_SESSION" ]]; then
+    echo "  Monitors running: $SUCCEEDED device(s)"
+    echo "  Logs: $LOG_DIR/"
 fi
 echo "========================================"
 

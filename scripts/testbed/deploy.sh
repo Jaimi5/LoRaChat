@@ -50,6 +50,7 @@ OPT_GW=""
 OPT_DEVICE=""
 OPT_SESSION=""
 OPT_SKIP_COMPILE=""
+OPT_MONITOR=""
 CONFIG_FILE="$SCRIPT_DIR/testbed.conf"
 
 usage() {
@@ -61,11 +62,14 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         status|upgrade|upload|monitor|stop-monitor|logs|clean|all)
             COMMAND="$1" ;;
+        upload-monitor)
+            COMMAND="upload"; OPT_MONITOR="1" ;;
         -e) OPT_ENV="$2"; shift ;;
         -g) OPT_GW="$2"; shift ;;
         -d) OPT_DEVICE="$2"; shift ;;
         -n) OPT_SESSION="$2"; shift ;;
         --skip-compile) OPT_SKIP_COMPILE="--skip-compile" ;;
+        --monitor) OPT_MONITOR="1" ;;
         -c) CONFIG_FILE="$2"; shift ;;
         -h|--help) usage 0 ;;
         *) echo "Unknown argument: $1"; usage 1 ;;
@@ -361,7 +365,13 @@ cmd_upgrade() {
 }
 
 cmd_upload() {
-    echo -e "${BOLD}Compiling and uploading (env: $ENV, session: $SESSION)...${RST}"
+    local monitor_flag=""
+    if [[ -n "$OPT_MONITOR" ]]; then
+        monitor_flag="--monitor $SESSION"
+        echo -e "${BOLD}Compiling, uploading and monitoring (env: $ENV, session: $SESSION)...${RST}"
+    else
+        echo -e "${BOLD}Compiling and uploading (env: $ENV, session: $SESSION)...${RST}"
+    fi
     echo ""
 
     local args=()
@@ -370,7 +380,7 @@ cmd_upload() {
         [[ -z "$devices" ]] && continue
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
 
-        local cmd="cd $REPO_PATH && bash scripts/testbed/gw-upload.sh $ENV $OPT_SKIP_COMPILE $devices"
+        local cmd="cd $REPO_PATH && bash scripts/testbed/gw-upload.sh $ENV $OPT_SKIP_COMPILE $monitor_flag $devices"
         args+=("$gw_id" "$cmd")
     done
 
