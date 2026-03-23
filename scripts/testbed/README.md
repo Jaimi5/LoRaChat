@@ -22,6 +22,19 @@ Your Machine                    Gateway Machines (SSH)
 
 Operations run **in parallel across gateways** but **sequentially per device within each gateway** (PlatformIO limitation: one build at a time).
 
+The console shows a clean spinner display with per-gateway progress. All detailed SSH output goes to log files under `logs_testbed/{SESSION}/` for later inspection.
+
+```
+Upgrading all gateways (branch: new_loramesher)...
+
+  GW-1  | Running...    (12s)
+  GW-2  ✓ OK            (15s)
+  GW-3  / Running...    (10s)
+  GW-4  ✗ FAIL          (8s)  → logs_testbed/cap2-v2/GW-4-upgrade.log
+  GW-5  - Running...    (6s)
+  GW-6  ✓ OK            (14s)
+```
+
 ## Prerequisites
 
 ### On all gateway machines:
@@ -75,8 +88,8 @@ Edit `testbed.conf` to set up your testbed:
 
 ```bash
 declare -A GW_SSH=(
-    [GW-1]="jan@192.168.1.101"
-    [GW-2]="jan@192.168.1.102"
+    [GW-1]="lora@192.168.1.101"
+    [GW-2]="lora@192.168.1.102"
     ...
 )
 ```
@@ -134,7 +147,9 @@ chmod +x deploy.sh gw-upgrade.sh gw-upload.sh gw-monitor.sh
 
 ## Command Reference
 
-### `status` — Check connectivity
+### `status` — Check connectivity and running processes
+
+Shows gateway reachability, hostname, uptime, and any running `pio` processes.
 
 ```bash
 ./deploy.sh status              # All gateways
@@ -151,10 +166,10 @@ Runs `git pull` + `pio pkg update` on all gateways in parallel.
 
 ### `upload` — Compile and flash firmware
 
-For each device: runs `change-config-{ID}.sh` then `pio run --target upload`.
+For each device: runs `change-config-{SHORT_ID}.sh` then `pio run --target upload`.
 
 ```bash
-./deploy.sh upload                              # All devices
+./deploy.sh upload -n cap2-v2                   # All devices
 ./deploy.sh upload -e ttgo-t-beam-v2            # Specific PIO environment
 ./deploy.sh upload -g GW-6                      # Only GW-6 devices
 ./deploy.sh upload -d GV-DD58,GV-14A4           # Specific devices only
@@ -162,23 +177,37 @@ For each device: runs `change-config-{ID}.sh` then `pio run --target upload`.
 ./deploy.sh upload -g GW-1 --skip-compile       # Re-flash GW-1 without recompiling
 ```
 
+### `upload-monitor` — Upload + immediate monitor
+
+Same as `upload` but starts a monitor for each device **immediately after upload**, capturing boot/init output that would be missed with a separate `monitor` step.
+
+```bash
+./deploy.sh upload-monitor -n cap2-v2           # Upload + monitor all
+./deploy.sh upload --monitor -n cap2-v2         # Same thing with flag
+./deploy.sh upload-monitor -n test -g GW-1      # Single gateway
+```
+
 ### `monitor` — Start serial monitors
 
-Starts `pio device monitor` in background for each device, logging to files.
+Starts `pio device monitor` in background for each device, logging to files. Stops any existing monitors first to free serial ports.
 
 ```bash
 ./deploy.sh monitor -n cap2-v2           # Named session
 ./deploy.sh monitor -g GW-1 -n test      # Monitor only GW-1 devices
 ```
 
-Log files are created on each gateway at:
+Monitors run in the background on the gateways — `deploy.sh` exits after launching them. Log files are written on each gateway at:
 ```
 ~/LoRaChat/logs/{SESSION}/monitor-dev-{SESSION}-{SHORT_ID}.log
 ```
 
+Each log line is prefixed with a full timestamp: `[2026-03-23 14:30:05] ...`
+
 Example: `~/LoRaChat/logs/cap2-v2/monitor-dev-cap2-v2-E464.log`
 
 ### `stop-monitor` — Kill all monitors
+
+Stops all running monitors and **auto-compresses** log files with gzip.
 
 ```bash
 ./deploy.sh stop-monitor                # All gateways
@@ -194,6 +223,14 @@ Copies log files from all gateways to your local machine.
 ```
 
 Logs are collected into `./logs_testbed/{SESSION}/`.
+
+### `clean` — Remove old logs
+
+Deletes logs older than `MAX_LOG_AGE_DAYS` (default: 7) both locally and on all gateways.
+
+```bash
+./deploy.sh clean                       # Clean logs older than 7 days
+```
 
 ### `all` — Full deployment pipeline
 
@@ -233,8 +270,25 @@ Runs upgrade -> upload -> monitor in sequence. Prompts to continue if any phase 
 | `-g GW-ID,...` | Limit to gateways | `-g GW-1,GW-3` |
 | `-d DEV,...` | Limit to devices | `-d GV-DD58,GV-14A4` |
 | `-n SESSION` | Session name | `-n cap2-v2` |
-| `--skip-compile` | Upload only | `--skip-compile` |
+| `--skip-compile` | Upload only (skip build) | `--skip-compile` |
+| `--monitor` | Start monitors after upload | `upload --monitor -n test` |
 | `-c FILE` | Config file path | `-c /path/to/testbed.conf` |
+
+## Configuration Reference
+
+Key settings in `testbed.conf`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `DEFAULT_ENV` | `ttgo-t-beam-v2` | PlatformIO build environment |
+| `GIT_BRANCH` | `new_loramesher` | Branch to pull on gateways |
+| `REPO_PATH` | `/home/lora/LoRaChat` | Repo path on gateways |
+| `PIO_PATH` | `/home/lora/platformio/bin` | PlatformIO bin dir (added to PATH for SSH) |
+| `SERIAL_PORT_PREFIX` | `/home/lora/dev/lora-` | Serial port symlink prefix |
+| `SSH_RETRIES` | `3` | SSH connection retry attempts (5s delay between) |
+| `SSH_OPTS` | `ConnectTimeout=30 ...` | SSH connection options |
+| `MAX_LOG_AGE_DAYS` | `7` | Log retention for `clean` command |
+| `LOCAL_LOG_DIR` | `./logs_testbed` | Local directory for collected logs |
 
 ## Typical Workflows
 
@@ -255,20 +309,24 @@ chmod +x *.sh
 
 ### Daily experiment
 ```bash
-# Deploy and monitor
-./deploy.sh all -n cap3-v2
+# Deploy and start monitoring (captures boot output)
+./deploy.sh upgrade
+./deploy.sh upload-monitor -n cap3-v2
 
 # ... run experiment ...
 
-# Collect logs and stop
+# Collect logs and stop (logs are auto-compressed)
 ./deploy.sh logs -n cap3-v2
 ./deploy.sh stop-monitor
+
+# Clean up old logs periodically
+./deploy.sh clean
 ```
 
 ### Fix a single device
 ```bash
-# Re-upload just one device
-./deploy.sh upload -d GV-DD58
+# Re-upload just one device with immediate monitoring
+./deploy.sh upload-monitor -d GV-DD58 -n fix-dd58
 
 # Or re-flash without recompiling
 ./deploy.sh upload -d GV-DD58 --skip-compile
@@ -278,6 +336,12 @@ chmod +x *.sh
 ```bash
 # Skip compile, just re-upload to the affected gateway
 ./deploy.sh upload -g GW-3 --skip-compile
+```
+
+### Tail logs in real-time
+```bash
+# While monitors are running, tail a specific device log
+ssh lora@gw-ip "tail -f ~/LoRaChat/logs/cap3-v2/monitor-dev-cap3-v2-E464.log"
 ```
 
 ## Serial Port Setup
@@ -400,8 +464,9 @@ ssh lora@10.139.40.20 "ls -la /home/lora/dev/lora-*"
   `ssh user@gw-ip "pkill -f 'pio run'"`
 
 ### change-config script not found
-- Ensure `change-config-{DEVICE_ID}.sh` exists in `~/LoRaChat/` on the gateway
-- Script names must match DEVICE_ID exactly as listed in `testbed.conf`
+- Scripts use the SHORT_ID (last 4 hex chars): `change-config-7B6C.sh`, not `change-config-C6213-7B6C.sh`
+- Ensure the script exists in `~/LoRaChat/` on the gateway
+- The script is searched in: repo root, then `scripts/testbed/`
 
 ### Monitor dies after SSH disconnect
 - Monitors use `nohup` so they should survive SSH disconnects
