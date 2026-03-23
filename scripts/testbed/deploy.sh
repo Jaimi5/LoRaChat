@@ -186,7 +186,7 @@ ssh_gw() {
     local ssh_dest="${GW_SSH[$gw_id]}"
     local prefix
     prefix=$(ssh_prefix "$gw_id") || return 1
-    eval "$prefix" "$ssh_dest" "$cmd"
+    eval "$prefix" "$ssh_dest" "'$cmd'"
 }
 
 # Run SSH commands on multiple gateways in parallel
@@ -258,7 +258,7 @@ cmd_status() {
     local args=()
     for gw_id in "${ACTIVE_GWS[@]}"; do
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
-        args+=("$gw_id" "echo 'reachable'; hostname; uptime")
+        args+=("$gw_id" "echo 'reachable'; hostname; uptime; echo '--- pio processes ---'; pgrep -a pio || echo 'No pio processes running'")
     done
 
     if [[ ${#args[@]} -eq 0 ]]; then
