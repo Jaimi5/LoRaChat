@@ -52,7 +52,7 @@ case "$ACTION" in
                 while IFS= read -r line; do
                     echo \"[\$(date \"+%Y-%m-%d %H:%M:%S\")] \$line\"
                 done >> \"$LOGFILE\" 2>&1
-            " &
+            " </dev/null >/dev/null 2>&1 &
 
             echo "$!:$DEVICE_ID:$PORT" >> "$PIDFILE"
         done
