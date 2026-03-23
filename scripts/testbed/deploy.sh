@@ -178,7 +178,7 @@ scp_prefix() {
     fi
 }
 
-# Run a command on a gateway via SSH
+# Run a command on a gateway via SSH (with retries)
 # Usage: ssh_gw GW_ID "remote command"
 ssh_gw() {
     local gw_id="$1"
@@ -186,7 +186,19 @@ ssh_gw() {
     local ssh_dest="${GW_SSH[$gw_id]}"
     local prefix
     prefix=$(ssh_prefix "$gw_id") || return 1
-    eval "$prefix" "$ssh_dest" "'export PATH=$PIO_PATH:\$PATH; $cmd'"
+    local retries="${SSH_RETRIES:-3}"
+    local attempt=1
+
+    while [[ $attempt -le $retries ]]; do
+        eval "$prefix" "$ssh_dest" "'export PATH=$PIO_PATH:\$PATH; $cmd'" && return 0
+        local rc=$?
+        if [[ $attempt -lt $retries ]]; then
+            echo "SSH to $gw_id failed (attempt $attempt/$retries), retrying in 5s..." >&2
+            sleep 5
+        fi
+        attempt=$((attempt + 1))
+    done
+    return $rc
 }
 
 # Run SSH commands on multiple gateways in parallel with spinner display
