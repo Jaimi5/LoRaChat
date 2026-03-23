@@ -51,6 +51,7 @@ OPT_DEVICE=""
 OPT_SESSION=""
 OPT_SKIP_COMPILE=""
 OPT_MONITOR=""
+OPT_REMOTE_CMD=""
 CONFIG_FILE="$SCRIPT_DIR/testbed.conf"
 
 usage() {
@@ -64,6 +65,8 @@ while [[ $# -gt 0 ]]; do
             COMMAND="$1" ;;
         upload-monitor)
             COMMAND="upload"; OPT_MONITOR="1" ;;
+        run-remote)
+            COMMAND="run-remote"; shift; OPT_REMOTE_CMD="$*"; break ;;
         -e) OPT_ENV="$2"; shift ;;
         -g) OPT_GW="$2"; shift ;;
         -d) OPT_DEVICE="$2"; shift ;;
@@ -353,7 +356,7 @@ cmd_upgrade() {
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
         # Inline git commands (not gw-upgrade.sh) so it works even on first run
         # before the testbed scripts exist on the gateway
-        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== git checkout $GIT_BRANCH ===' && git checkout $GIT_BRANCH && echo '=== git pull ===' && git pull origin $GIT_BRANCH && echo '=== pio pkg update ===' && pio pkg update && echo '=== Upgrade complete ==='")
+        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== git checkout $GIT_BRANCH ===' && git checkout $GIT_BRANCH && echo '=== git pull ===' && git pull -X theirs origin $GIT_BRANCH && echo '=== pio pkg update ===' && pio pkg update && echo '=== Upgrade complete ==='")
     done
 
     if [[ ${#args[@]} -eq 0 ]]; then
@@ -505,6 +508,29 @@ cmd_logs() {
     ls -la "$local_dir"/*.log 2>/dev/null || true
 }
 
+cmd_run_remote() {
+    if [[ -z "$OPT_REMOTE_CMD" ]]; then
+        echo "Error: no command specified. Usage: deploy.sh run-remote [-g GW-1] \"command\""
+        return 1
+    fi
+
+    echo -e "${BOLD}Running on gateways: ${OPT_REMOTE_CMD}${RST}"
+    echo ""
+
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        args+=("$gw_id" "$OPT_REMOTE_CMD")
+    done
+
+    if [[ ${#args[@]} -eq 0 ]]; then
+        echo "No gateways selected."
+        return 1
+    fi
+
+    run_parallel "remote" "${args[@]}"
+}
+
 cmd_all() {
     echo -e "${BOLD}Full deployment: upgrade -> upload+monitor${RST}"
     echo -e "${BOLD}Session: $SESSION | Env: $ENV${RST}"
@@ -533,6 +559,7 @@ case "$COMMAND" in
     stop-monitor) cmd_stop_monitor ;;
     logs)         cmd_logs ;;
     clean)        cmd_clean ;;
+    run-remote)   cmd_run_remote ;;
     all)          cmd_all ;;
     *)            echo "Unknown command: $COMMAND"; usage 1 ;;
 esac
