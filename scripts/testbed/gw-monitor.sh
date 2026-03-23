@@ -33,6 +33,9 @@ case "$ACTION" in
             done < "$old_pidfile"
             rm -f "$old_pidfile"
         done
+        # Also kill any orphaned pio/script monitor processes
+        pkill -f 'pio device monitor' 2>/dev/null || true
+        pkill -f 'script.*pio.*monitor' 2>/dev/null || true
         > "$PIDFILE"  # Clear/create pidfile
 
         for device_spec in "$@"; do
@@ -64,6 +67,7 @@ case "$ACTION" in
 
     stop)
         stopped=0
+        # Kill tracked PIDs from pidfiles
         for pidfile in "$REPO"/logs/*/.monitor_pids; do
             [[ -f "$pidfile" ]] || continue
             session=$(basename "$(dirname "$pidfile")")
@@ -75,8 +79,11 @@ case "$ACTION" in
             done < "$pidfile"
             rm -f "$pidfile"
         done
+        # Also kill any orphaned pio/script monitor processes
+        pkill -f 'pio device monitor' 2>/dev/null && echo "Killed orphaned pio monitor processes." || true
+        pkill -f 'script.*pio.*monitor' 2>/dev/null || true
         if [[ $stopped -eq 0 ]]; then
-            echo "No running monitors found."
+            echo "No tracked monitors found (orphaned processes cleaned)."
         else
             echo "Stopped $stopped monitor(s)."
             # Compress log files
