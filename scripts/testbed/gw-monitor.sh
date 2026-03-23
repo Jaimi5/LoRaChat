@@ -22,15 +22,17 @@ case "$ACTION" in
         mkdir -p "$LOG_DIR"
         PIDFILE="$LOG_DIR/.monitor_pids"
 
-        # Kill any existing monitors from a previous session with the same name
-        if [[ -f "$PIDFILE" ]]; then
-            echo "Stopping previous monitors for session: $SESSION"
+        # Kill ALL existing monitors (any session) to free serial ports
+        for old_pidfile in "$REPO"/logs/*/.monitor_pids; do
+            [[ -f "$old_pidfile" ]] || continue
             while IFS=: read -r pid device port; do
                 if kill -0 "$pid" 2>/dev/null; then
                     kill "$pid" 2>/dev/null || true
+                    echo "Stopped previous monitor: $device (PID $pid)"
                 fi
-            done < "$PIDFILE"
-        fi
+            done < "$old_pidfile"
+            rm -f "$old_pidfile"
+        done
         > "$PIDFILE"  # Clear/create pidfile
 
         for device_spec in "$@"; do
