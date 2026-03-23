@@ -7,7 +7,7 @@
 set -euo pipefail
 
 BRANCH="${1:-new_loramesher}"
-REPO="${REPO_PATH:-$HOME/LoRaChat}"
+REPO="${REPO_PATH:-/home/lora/LoRaChat}"
 
 cd "$REPO" || { echo "ERROR: $REPO not found"; exit 1; }
 

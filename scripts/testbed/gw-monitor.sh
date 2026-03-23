@@ -11,7 +11,7 @@ set -uo pipefail
 
 ACTION="${1:-help}"; shift || true
 
-REPO="${REPO_PATH:-$HOME/LoRaChat}"
+REPO="${REPO_PATH:-/home/lora/LoRaChat}"
 
 case "$ACTION" in
     start)
