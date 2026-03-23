@@ -310,7 +310,7 @@
 #define LORA_SPREADING_FACTOR 9U
 #define LORA_BANDWIDTH 125.0
 #define LORA_CODING_RATE 7U
-#define LORA_POWER 10
+#define LORA_POWER 20
 #define LORA_SYNC_WORD 20U      // Network identifier (0-255)
 #define LORA_CRC true           // Enable CRC checking
 #define LORA_PREAMBLE_LENGTH 8U
