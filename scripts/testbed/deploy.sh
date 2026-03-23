@@ -579,21 +579,24 @@ cmd_sync_time() {
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
         local color="${GW_COLORS[$gw_id]:-\033[0m}"
 
-        # Get remote epoch
+        # Capture local epoch (ms) right before SSH to avoid cumulative drift
+        local_epoch=$(date +%s%3N)
+
+        # Get remote epoch (ms)
         local remote_epoch
-        remote_epoch=$(ssh_gw "$gw_id" "date +%s" 2>/dev/null) || {
+        remote_epoch=$(ssh_gw "$gw_id" "date +%s%3N" 2>/dev/null) || {
             echo -e "  ${color}${gw_id}${RST}  \033[31mUNREACHABLE\033[0m"
             continue
         }
 
-        local offset=$((remote_epoch - local_epoch))
-        local abs_offset=${offset#-}
+        local offset_ms=$((remote_epoch - local_epoch))
+        local abs_offset_ms=${offset_ms#-}
 
-        if [[ $abs_offset -le 2 ]]; then
-            echo -e "  ${color}${gw_id}${RST}  \033[32mOK\033[0m (offset: ${offset}s)"
+        if [[ $abs_offset_ms -le 2000 ]]; then
+            echo -e "  ${color}${gw_id}${RST}  \033[32mOK\033[0m (offset: ${offset_ms}ms)"
         else
             any_offset=1
-            echo -e "  ${color}${gw_id}${RST}  \033[33mOFFSET: ${offset}s\033[0m — attempting sync..."
+            echo -e "  ${color}${gw_id}${RST}  \033[33mOFFSET: ${offset_ms}ms\033[0m — attempting sync..."
 
             # Try timedatectl (might work without sudo)
             ssh_gw "$gw_id" "timedatectl set-ntp true" 2>/dev/null && {
