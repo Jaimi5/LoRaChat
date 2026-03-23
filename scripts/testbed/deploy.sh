@@ -59,7 +59,7 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        status|upgrade|upload|monitor|stop-monitor|logs|all)
+        status|upgrade|upload|monitor|stop-monitor|logs|clean|all)
             COMMAND="$1" ;;
         -e) OPT_ENV="$2"; shift ;;
         -g) OPT_GW="$2"; shift ;;
@@ -424,6 +424,47 @@ cmd_stop_monitor() {
     fi
 
     run_parallel "stop-monitor" "${args[@]}"
+
+    # Compress logs on gateways after stopping
+    echo -e "${BOLD}Compressing logs on gateways...${RST}"
+    local cargs=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        cargs+=("$gw_id" "find $REPO_PATH/logs/ -name '*.log' -size +0 -exec gzip -f {} \; 2>/dev/null; echo 'Compressed'")
+    done
+    [[ ${#cargs[@]} -gt 0 ]] && run_parallel "compress" "${cargs[@]}"
+}
+
+cmd_clean() {
+    local days="${MAX_LOG_AGE_DAYS:-7}"
+    echo -e "${BOLD}Cleaning logs older than ${days} days...${RST}"
+    echo ""
+
+    # Clean local logs
+    local local_count=0
+    if [[ -d "$LOCAL_LOG_DIR" ]]; then
+        local_count=$(find "$LOCAL_LOG_DIR" -name "*.log" -o -name "*.log.gz" -mtime +"$days" 2>/dev/null | wc -l)
+        if [[ $local_count -gt 0 ]]; then
+            echo "Local: removing $local_count file(s) from $LOCAL_LOG_DIR/"
+            find "$LOCAL_LOG_DIR" -name "*.log" -o -name "*.log.gz" -mtime +"$days" -delete 2>/dev/null
+            # Remove empty session directories
+            find "$LOCAL_LOG_DIR" -type d -empty -delete 2>/dev/null
+        else
+            echo "Local: no old logs found."
+        fi
+    fi
+
+    # Clean gateway logs
+    echo ""
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        args+=("$gw_id" "count=\$(find $REPO_PATH/logs/ -name '*.log' -o -name '*.log.gz' -mtime +$days 2>/dev/null | wc -l); echo \"Found \$count old file(s)\"; find $REPO_PATH/logs/ -name '*.log' -o -name '*.log.gz' -mtime +$days -delete 2>/dev/null; find $REPO_PATH/logs/ -type d -empty -delete 2>/dev/null; echo 'Cleaned'")
+    done
+
+    if [[ ${#args[@]} -gt 0 ]]; then
+        run_parallel "clean" "${args[@]}"
+    fi
 }
 
 cmd_logs() {
@@ -488,6 +529,7 @@ case "$COMMAND" in
     monitor)      cmd_monitor ;;
     stop-monitor) cmd_stop_monitor ;;
     logs)         cmd_logs ;;
+    clean)        cmd_clean ;;
     all)          cmd_all ;;
     *)            echo "Unknown command: $COMMAND"; usage 1 ;;
 esac
