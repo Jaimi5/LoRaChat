@@ -37,8 +37,9 @@ for device_spec in "$@"; do
     echo "  Env:  $ENV"
     echo "========================================"
 
-    # Step 1: Run change-config script
-    CONFIG_SCRIPT="change-config-${DEVICE_ID}.sh"
+    # Step 1: Run change-config script (uses SHORT_ID, e.g., 7B6C)
+    SHORT_ID="${DEVICE_ID##*-}"
+    CONFIG_SCRIPT="change-config-${SHORT_ID}.sh"
     if [[ -x "$REPO/$CONFIG_SCRIPT" ]]; then
         echo "--- Running ./$CONFIG_SCRIPT ---"
         (cd "$REPO" && ./"$CONFIG_SCRIPT")
