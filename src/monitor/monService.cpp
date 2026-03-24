@@ -125,10 +125,13 @@ void MonService::sendingLoopOneMessage(void* parameter) {
 #ifdef USE_LORAMESHER_V2
             LoRaMeshService::getInstance().updateRoutingTable();
             auto routes = LoRaMeshService::getInstance().getRoutingTableEntries();
-            // Count direct neighbors (destination == next_hop, i.e. 1 hop)
             uint16_t routeCount = 0;
             for (const auto& route : routes) {
-                if (route.destination == route.next_hop) {
+#ifdef MON_REPORT_ALL_ROUTES
+                if (route.is_valid) {
+#else
+                if (route.is_valid && route.destination == route.next_hop) {
+#endif
                     ++routeCount;
                 }
             }
@@ -148,7 +151,11 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                         MONMessage = getInstance().createMONPayloadMessage(routeNext);
                         heap_caps_check_integrity_all(true);
                     }
-                    if (route.destination == route.next_hop) {
+#ifdef MON_REPORT_ALL_ROUTES
+                    if (route.is_valid) {
+#else
+                    if (route.is_valid && route.destination == route.next_hop) {
+#endif
                         routing_entry entry;
                         entry.neighbor = route.destination;
                         entry.next_hop = route.next_hop;
@@ -201,8 +208,8 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                     do {
                         RouteNode* rtn = routingTableList->getCurrent();
                         if (rtn->networkNode.address == rtn->via) {
-                            MONMessage->rt[i++] = {rtn->networkNode.address, rtn->receivedSNR,
-                                                   rtn->SRTT};
+                            MONMessage->rt[i++] = {rtn->networkNode.address, rtn->via,
+                                                   0, rtn->networkNode.metric};
                         }
                     } while (routingTableList->next());
                     ESP_LOGV(MON_TAG, "sending monOneMessage");
@@ -260,7 +267,9 @@ void MonService::sendingLoop(void* parameter) {
                 MonService::getInstance().monMessageId++;
                 uint16_t monMessagecount = 0;
                 for (const auto& route : routes) {
-                    getInstance().createAndSendMessage(++monMessagecount, route);
+                    if (route.is_valid) {
+                        getInstance().createAndSendMessage(++monMessagecount, route);
+                    }
                 }
             } else {
                 ESP_LOGD(MON_TAG, "No routes");
