@@ -130,7 +130,8 @@ void MonService::sendingLoopOneMessage(void* parameter) {
 #ifdef MON_REPORT_ALL_ROUTES
                 if (route.is_valid) {
 #else
-                if (route.is_valid && route.destination == route.next_hop) {
+                // if (route.is_valid && route.destination == route.next_hop) {
+                if (route.destination == route.next_hop) {
 #endif
                     ++routeCount;
                 }
@@ -141,15 +142,14 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                 int routeNext = 0;  // routes to put in next message
                 int i = 0;
                 MonService::getInstance().monMessageId++;
-                heap_caps_check_integrity_all(true);
                 for (const auto& route : routes) {
-                    if ((routeNext == 0 && routeSent < routeCount) || MONMessage == nullptr) {  // create a new message
+                    if ((routeNext == 0 && routeSent < routeCount) ||
+                        MONMessage == nullptr) {  // create a new message
                         routeNext = 1;
                         while ((MonService::getOneMessageSize(routeNext + 1) < MAX_MSG_SIZE) &&
                                (routeNext < (routeCount - routeSent)))
                             ++routeNext;
                         MONMessage = getInstance().createMONPayloadMessage(routeNext);
-                        heap_caps_check_integrity_all(true);
                     }
 #ifdef MON_REPORT_ALL_ROUTES
                     if (route.is_valid) {
@@ -170,8 +170,10 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                         i += 1;
                         routeSent += 1;
                         if (i == routeNext) {  // send the message
-                            ESP_LOGV(MON_TAG, "sending monOneMessage (MessageId/routes/bytes): %d/%d/%d",
-                                     MonService::getInstance().monMessageId, routeNext, MonService::getOneMessageSize(routeNext));
+                            ESP_LOGV(MON_TAG,
+                                     "sending monOneMessage (MessageId/routes/bytes): %d/%d/%d",
+                                     MonService::getInstance().monMessageId, routeNext,
+                                     MonService::getOneMessageSize(routeNext));
                             routeNext = 0;
                             i = 0;
                             MessageManager::getInstance().sendMessage(messagePort::MqttPort,
@@ -208,8 +210,8 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                     do {
                         RouteNode* rtn = routingTableList->getCurrent();
                         if (rtn->networkNode.address == rtn->via) {
-                            MONMessage->rt[i++] = {rtn->networkNode.address, rtn->via,
-                                                   0, rtn->networkNode.metric};
+                            MONMessage->rt[i++] = {rtn->networkNode.address, rtn->via, 0,
+                                                   rtn->networkNode.metric};
                         }
                     } while (routingTableList->next());
                     ESP_LOGV(MON_TAG, "sending monOneMessage");
@@ -226,17 +228,17 @@ void MonService::sendingLoopOneMessage(void* parameter) {
             }
 #endif
             // end send MON
-// #ifdef USE_LORAMESHER_V2
-//             {
-//                 uint32_t delay_ms =
-//                     LoRaMeshService::getInstance().getTimeUntilNextDataSlot();
-//                 if (delay_ms == 0)
-//                     delay_ms = MON_SENDING_EVERY;
-//                 vTaskDelay(delay_ms / portTICK_PERIOD_MS);
-//             }
-// #else
+            // #ifdef USE_LORAMESHER_V2
+            //             {
+            //                 uint32_t delay_ms =
+            //                     LoRaMeshService::getInstance().getTimeUntilNextDataSlot();
+            //                 if (delay_ms == 0)
+            //                     delay_ms = MON_SENDING_EVERY;
+            //                 vTaskDelay(delay_ms / portTICK_PERIOD_MS);
+            //             }
+            // #else
             vTaskDelay(MON_SENDING_EVERY / portTICK_PERIOD_MS);
-// #endif
+            // #endif
             // Print the free heap memory
             ESP_LOGD(MON_TAG, "Free heap: %d", esp_get_free_heap_size());
         }
@@ -294,17 +296,17 @@ void MonService::sendingLoop(void* parameter) {
             routingTableList->Clear();
 #endif
             // end send MON
-// #ifdef USE_LORAMESHER_V2
-//             {
-//                 uint32_t delay_ms =
-//                     LoRaMeshService::getInstance().getTimeUntilNextDataSlot();
-//                 if (delay_ms == 0)
-//                     delay_ms = MON_SENDING_EVERY;
-//                 vTaskDelay(delay_ms / portTICK_PERIOD_MS);
-//             }
-// #else
+            // #ifdef USE_LORAMESHER_V2
+            //             {
+            //                 uint32_t delay_ms =
+            //                     LoRaMeshService::getInstance().getTimeUntilNextDataSlot();
+            //                 if (delay_ms == 0)
+            //                     delay_ms = MON_SENDING_EVERY;
+            //                 vTaskDelay(delay_ms / portTICK_PERIOD_MS);
+            //             }
+            // #else
             vTaskDelay(MON_SENDING_EVERY / portTICK_PERIOD_MS);
-// #endif
+            // #endif
             // Print the free heap memory
             ESP_LOGD(MON_TAG, "Free heap: %d", esp_get_free_heap_size());
         }
