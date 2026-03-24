@@ -135,6 +135,10 @@
 // MQTT_MON configuration
 #define MON_SENDING_EVERY 300000  // ms
 
+// Monitor reporting mode: define to report all valid routes (direct + multi-hop)
+// Undefine (default) to report only direct neighbors (1-hop), matching v1 behavior
+// #define MON_REPORT_ALL_ROUTES
+
 
 // Battery configuration
 #if defined(MAKERFABS_SENSELORA_MOISTURE)
@@ -310,7 +314,7 @@
 #define LORA_SPREADING_FACTOR 9U
 #define LORA_BANDWIDTH 125.0
 #define LORA_CODING_RATE 7U
-#define LORA_POWER 20
+#define LORA_POWER 17
 #define LORA_SYNC_WORD 20U      // Network identifier (0-255)
 #define LORA_CRC true           // Enable CRC checking
 #define LORA_PREAMBLE_LENGTH 8U
