@@ -626,11 +626,14 @@ cmd_sync_time() {
 }
 
 cmd_all() {
-    echo -e "${BOLD}Full deployment: upgrade -> upload+monitor${RST}"
+    echo -e "${BOLD}Full deployment: stop -> upgrade -> upload+monitor${RST}"
     echo -e "${BOLD}Session: $SESSION | Env: $ENV${RST}"
     echo ""
 
-    echo -e "\n${BOLD}=== Phase 1/2: Upgrade ===${RST}\n"
+    echo -e "\n${BOLD}=== Phase 1/3: Stop existing monitors ===${RST}\n"
+    cmd_stop_monitor || true
+
+    echo -e "\n${BOLD}=== Phase 2/3: Upgrade ===${RST}\n"
     if ! cmd_upgrade; then
         echo ""
         echo "WARNING: Some gateways failed to upgrade. Continue anyway? (y/N)"
@@ -638,7 +641,7 @@ cmd_all() {
         [[ "$answer" != "y" && "$answer" != "Y" ]] && exit 1
     fi
 
-    echo -e "\n${BOLD}=== Phase 2/2: Upload + Monitor ===${RST}\n"
+    echo -e "\n${BOLD}=== Phase 3/3: Upload + Monitor ===${RST}\n"
     OPT_MONITOR="1"
     cmd_upload
 }
