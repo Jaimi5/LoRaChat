@@ -64,6 +64,8 @@ void MonService::processReceivedMessage(messagePort port, DataMessage* message) 
 }
 
 void MonService::createSendingTask() {
+    running = true;
+    isCreated = true;
     BaseType_t res = xTaskCreatePinnedToCore(
 #if defined(MON_MQTT_ONE_MESSAGE)
         sendingLoopOneMessage, /* Function to implement the task */
@@ -78,11 +80,11 @@ void MonService::createSendingTask() {
         0);                  /* Core where the task should run */
     if (res != pdPASS) {
         ESP_LOGE(MON_TAG, "Sending task creation failed");
+        running = false;
+        isCreated = false;
         return;
     }
     ESP_LOGI(MON_TAG, "Sending task created");
-    running = true;
-    isCreated = true;
 }
 
 #if defined(MON_MQTT_ONE_MESSAGE)
