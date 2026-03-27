@@ -27,7 +27,8 @@ case "$ACTION" in
             [[ -f "$old_pidfile" ]] || continue
             while IFS=: read -r pid device port; do
                 if kill -0 "$pid" 2>/dev/null; then
-                    kill "$pid" 2>/dev/null || true
+                    # Kill entire process group (bash + script + pio children)
+                    kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
                     echo "Stopped previous monitor: $device (PID $pid)"
                 fi
             done < "$old_pidfile"
@@ -73,7 +74,9 @@ case "$ACTION" in
             session=$(basename "$(dirname "$pidfile")")
             while IFS=: read -r pid device port; do
                 if kill -0 "$pid" 2>/dev/null; then
-                    kill "$pid" 2>/dev/null && echo "Stopped: $device (PID $pid, session $session)" || true
+                    # Kill entire process group (bash + script + pio children)
+                    kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+                    echo "Stopped: $device (PID $pid, session $session)"
                     stopped=$((stopped + 1))
                 fi
             done < "$pidfile"
@@ -87,7 +90,7 @@ case "$ACTION" in
         else
             echo "Stopped $stopped monitor(s)."
             # Compress log files
-            local compressed=0
+            compressed=0
             for logfile in "$REPO"/logs/*/*.log; do
                 [[ -f "$logfile" ]] || continue
                 gzip -f "$logfile" 2>/dev/null && compressed=$((compressed + 1))

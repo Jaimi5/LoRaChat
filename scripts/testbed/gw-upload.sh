@@ -32,7 +32,7 @@ cd "$REPO" || { echo "ERROR: $REPO not found"; exit 1; }
 # If monitoring, stop any existing monitors first
 if [[ -n "$MONITOR_SESSION" ]]; then
     echo "--- Stopping existing monitors ---"
-    bash "$REPO/scripts/testbed/gw-monitor.sh" stop 2>/dev/null || true
+    bash "$REPO/scripts/testbed/gw-monitor.sh" stop || true
     LOG_DIR="$REPO/logs/$MONITOR_SESSION"
     mkdir -p "$LOG_DIR"
     PIDFILE="$LOG_DIR/.monitor_pids"
