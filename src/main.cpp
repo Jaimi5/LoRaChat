@@ -279,6 +279,15 @@ void setup() {
     initLoRaMesher();
     ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
 
+#ifdef WIFI_ENABLED
+    // WiFi may have connected before LoRaMesher was initialized, causing
+    // setGateway() to silently fail (mesher_ was NULL). Re-check now.
+    if (wiFiService.isConnected()) {
+        ESP_LOGI(TAG, "WiFi already connected at LoRaMesher init — setting gateway");
+        loraMeshService.setGateway();
+    }
+#endif
+
 #ifdef BLUETOOTH_ENABLED
     // Initialize Bluetooth
     initBluetooth();
