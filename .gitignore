@@ -15,3 +15,14 @@ managed_components/
 
 # Runtime monitor logs on gateways
 logs/
+logs_testbed/
+
+# Python bytecode (configtool package)
+__pycache__/
+*.pyc
+
+# Testbed experiment configs (contain credentials) and generated scripts.
+# The sanitised template is allow-listed so users have a starting point.
+scripts/testbed/experiments/*.yaml
+!scripts/testbed/experiments/example-baseline.yaml
+scripts/testbed/change-config/*.sh

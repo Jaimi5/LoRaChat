@@ -1,0 +1,32 @@
+experiment: example-baseline
+description: Template — copy to current.yaml and fill in credentials before use.
+defaults:
+  lora_frequency: 869.900
+  lora_spreading_factor: 9
+  lora_bandwidth: 125.0
+  lora_coding_rate: 7
+  lora_power: 17
+  lora_sync_word: 20
+  wifi_ssid: WIFI_SSID_HERE
+  wifi_password: WIFI_PASSWORD_HERE
+  mqtt_server: MQTT_SERVER_HERE
+  mqtt_port: 1883
+  mqtt_username: MQTT_USERNAME_HERE
+  mqtt_password: MQTT_PASSWORD_HERE
+  mqtt_topic_sub: from-server/
+  mqtt_topic_out: to-server/
+devices:
+  E464: { lora_manager_id: 0xE464 }
+  77A4: { lora_manager_id: 0x77A4 }
+  DF10: { lora_manager_id: 0xDF10 }
+  006C: { lora_manager_id: 0x006C }
+  7B6C: { lora_manager_id: 0x7B6C }
+  CB34: { lora_manager_id: 0xCB34 }
+  2A9C: { lora_manager_id: 0x2A9C }
+  1484: { lora_manager_id: 0x1484 }
+  2AD4: { lora_manager_id: 0x2AD4 }
+  DD58: { lora_manager_id: 0xDD58 }
+  14A4: { lora_manager_id: 0x14A4 }
+  3428: { lora_manager_id: 0x3428 }
+  B4DC: { lora_manager_id: 0xB4DC }
+  DD3C: { lora_manager_id: 0xDD3C }

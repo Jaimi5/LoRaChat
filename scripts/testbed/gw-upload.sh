@@ -64,11 +64,14 @@ for device_spec in "$@"; do
     elif [[ -f "$REPO/$CONFIG_SCRIPT" ]]; then
         echo "--- Running $CONFIG_SCRIPT (via bash) ---"
         (cd "$REPO" && bash "$CONFIG_SCRIPT")
+    elif [[ -f "$REPO/scripts/testbed/change-config/$CONFIG_SCRIPT" ]]; then
+        echo "--- Running scripts/testbed/change-config/$CONFIG_SCRIPT ---"
+        (cd "$REPO" && bash "scripts/testbed/change-config/$CONFIG_SCRIPT")
     elif [[ -x "$REPO/scripts/testbed/$CONFIG_SCRIPT" ]]; then
         echo "--- Running scripts/testbed/$CONFIG_SCRIPT ---"
         (cd "$REPO" && bash "scripts/testbed/$CONFIG_SCRIPT")
     else
-        echo "WARNING: $CONFIG_SCRIPT not found in repo root or scripts/testbed/"
+        echo "WARNING: $CONFIG_SCRIPT not found in repo root, scripts/testbed/change-config/, or scripts/testbed/"
         echo "         Proceeding with current src/config.h"
     fi
 

@@ -57,7 +57,7 @@ Upgrading all gateways (branch: new_loramesher)...
    git clone <repo-url> ~/LoRaChat
    ```
 
-5. **change-config scripts** present. Each device needs a `change-config-{DEVICE_ID}.sh` in the repo root that modifies `src/config.h` (WiFi SSID, MQTT ID, NM_ID, LoRa power, SF, etc.)
+5. **Per-device configs**. Per-device values (LoRa power/SF/BW, `LORA_MANAGER_ID`, WiFi/MQTT credentials, etc.) are defined in an experiment YAML under `scripts/testbed/experiments/` and rendered into `change-config-{SHORT_ID}.sh` scripts by `configtool generate`. See [Experiment configs](#experiment-configs) for the workflow. Legacy hand-written `change-config-*.sh` in the repo root still work — `gw-upload.sh` checks the repo root, then `scripts/testbed/change-config/` (generator output), then `scripts/testbed/`.
 
 6. **Serial port symlinks** set up for each connected device (see [Serial Port Setup](#serial-port-setup) below)
 
@@ -126,6 +126,179 @@ ssh lora@gw-ip "ls -la /home/lora/dev/lora-*"
 ./deploy.sh status
 ```
 
+## Experiment configs
+
+Per-device configuration (LoRa RF parameters, mesh identity, WiFi/MQTT
+credentials) is described in a YAML file per experiment under
+`scripts/testbed/experiments/`. `deploy.sh` reads that YAML, generates a
+`change-config-{SHORT_ID}.sh` per device locally, and pushes the relevant
+scripts to each gateway via `scp`. The YAML — which contains credentials —
+never leaves your machine and is gitignored.
+
+Two experiments are comparable by diffing their YAMLs (with plain
+`git diff` or `configtool diff` for a semantic device-by-device view).
+
+### Secrets hygiene — read this first
+
+Real experiment YAMLs contain WiFi/MQTT credentials; `testbed.conf`
+contains gateway SSH passwords. **None of these should reach git.** The
+repo is set up so:
+
+- `scripts/testbed/experiments/*.yaml` is gitignored, except the sanitised
+  `example-baseline.yaml` template.
+- `scripts/testbed/change-config/*.sh` (generator output) is gitignored —
+  reproducible from the YAML.
+- `scripts/testbed/testbed.conf` is tracked with placeholder values. To
+  protect your local edits from accidental commits, run **once**:
+  ```bash
+  git update-index --skip-worktree scripts/testbed/testbed.conf
+  ```
+  Git will then ignore your local changes to the file. To pick up upstream
+  changes later: `git update-index --no-skip-worktree scripts/testbed/testbed.conf`
+  then rebase/merge as normal.
+
+### YAML layout
+
+```yaml
+experiment: exp-001-sf7-high-power
+description: "SF7, 20 dBm, baseline mesh"
+defaults:                          # applied to every device
+  lora_frequency: 869.900
+  lora_spreading_factor: 9
+  lora_bandwidth: 125.0
+  lora_coding_rate: 7
+  lora_power: 17
+  lora_sync_word: 20
+  wifi_ssid: YOUR_SSID
+  wifi_password: YOUR_PASSWORD
+  mqtt_server: YOUR_BROKER
+  mqtt_port: 1883
+  mqtt_username: YOUR_USER
+  mqtt_password: YOUR_PASS
+  mqtt_topic_sub: from-server/
+  mqtt_topic_out: to-server/
+devices:                           # per-device overrides; keys are SHORT_IDs
+  E464: { lora_manager_id: 0xE464 }
+  77A4: { lora_manager_id: 0x77A4, lora_power: 20 }   # overrides default power
+  # ... one entry per SHORT_ID listed in testbed.conf DEVICES
+```
+
+A device's effective config is `defaults` merged with its per-device block.
+Per-device keys win.
+
+> **Note on numeric formatting.** YAML parses `869.900` as a Python float
+> which is rendered back as `869.9` in the generated C. This is the same
+> IEEE-754 value and the LoRa stack is indifferent. If you want the literal
+> `869.900F` for readability, quote the YAML value: `"869.900"`.
+
+### Parameter reference
+
+| YAML key                | `#define` in `src/config.h` | Type    | Notes                                   |
+|-------------------------|-----------------------------|---------|-----------------------------------------|
+| `lora_frequency`        | `LORA_FREQUENCY`            | floatF  | Carrier MHz, emitted with `F` suffix    |
+| `lora_spreading_factor` | `LORA_SPREADING_FACTOR`     | uint    | SF7..SF12                               |
+| `lora_bandwidth`        | `LORA_BANDWIDTH`            | float   | 125.0, 250.0, 500.0 kHz                 |
+| `lora_coding_rate`      | `LORA_CODING_RATE`          | uint    | 5..8 (4/5..4/8)                         |
+| `lora_power`            | `LORA_POWER`                | int     | TX power in dBm                         |
+| `lora_sync_word`        | `LORA_SYNC_WORD`            | uint    | Network identifier 0..255               |
+| `lora_manager_id`       | `LORA_MANAGER_ID`           | hex16   | Mesh node ID, written as `0xNNNN`       |
+| `wifi_ssid`             | `WIFI_SSID`                 | str     | Rendered as C string                    |
+| `wifi_password`         | `WIFI_PASSWORD`             | str     |                                         |
+| `mqtt_server`           | `MQTT_SERVER`               | str     | Broker host/IP                          |
+| `mqtt_port`             | `MQTT_PORT`                 | int     |                                         |
+| `mqtt_username`         | `MQTT_USERNAME`             | str     |                                         |
+| `mqtt_password`         | `MQTT_PASSWORD`             | str     |                                         |
+| `mqtt_topic_sub`        | `MQTT_TOPIC_SUB`            | str     |                                         |
+| `mqtt_topic_out`        | `MQTT_TOPIC_OUT`            | str     |                                         |
+
+To add a new parameter, extend `PARAMS` in
+`scripts/testbed/configtool/schema.py` and update this table.
+
+### End-to-end: "run an experiment on all devices"
+
+```bash
+# 1. Create your experiment YAML from the sanitised template.
+cp scripts/testbed/experiments/example-baseline.yaml \
+   scripts/testbed/experiments/current.yaml
+$EDITOR scripts/testbed/experiments/current.yaml    # fill in credentials
+
+# 2. Deploy everything — stop, upgrade, push configs via scp, upload + monitor.
+./scripts/testbed/deploy.sh all -n my-run
+```
+
+That's it. `deploy.sh all` runs four phases:
+
+1. **stop-monitor** — kill any existing monitors.
+2. **upgrade** — `git pull` + `pio pkg update` on every gateway (brings
+   infra changes only; experiment YAMLs are gitignored).
+3. **push-config** — validates `current.yaml`, generates
+   `scripts/testbed/change-config/change-config-{SHORT_ID}.sh` locally,
+   scp's only the relevant scripts to each gateway's matching path.
+4. **upload + monitor** — normal compile/flash; `gw-upload.sh` picks up
+   the scripts scp'd in phase 3.
+
+`./deploy.sh upload -n my-run` does the same thing without the stop/upgrade
+phases; it also runs push-config first unless you pass `--skip-config`.
+
+### Pointing at a different YAML
+
+Default path is `scripts/testbed/experiments/current.yaml`. Override per
+invocation with `-x`:
+
+```bash
+./scripts/testbed/deploy.sh all -n my-run -x scripts/testbed/experiments/exp-001.yaml
+```
+
+If neither `-x` nor `current.yaml` exists, push-config is a no-op with a
+warning and the upload proceeds with whatever's already on the gateway —
+useful when you have hand-written `change-config-*.sh` in the repo root.
+
+Convention for switching between long-running experiments: keep real YAMLs
+named descriptively (`baseline-2026-04-21.yaml`, `exp-001-sf7.yaml`, ...)
+and symlink `current.yaml` at the active one:
+
+```bash
+ln -sf exp-001-sf7.yaml scripts/testbed/experiments/current.yaml
+./scripts/testbed/deploy.sh all -n exp-001-sf7
+```
+
+### Individual configtool commands
+
+You mostly won't need these — `deploy.sh` wraps them — but they're
+available for debugging or ad-hoc workflows:
+
+```bash
+# Snapshot current state of the whole testbed (SSHes into every gateway)
+# into experiments/baseline-YYYY-MM-DD.yaml.
+python scripts/testbed/configtool/configtool.py harvest
+
+# Semantic diff between two experiments (exit 1 if different).
+python scripts/testbed/configtool/configtool.py diff \
+    scripts/testbed/experiments/baseline-2026-04-21.yaml \
+    scripts/testbed/experiments/current.yaml
+
+# Schema-check a YAML without flashing (the same check deploy.sh runs first).
+python scripts/testbed/configtool/configtool.py validate \
+    scripts/testbed/experiments/current.yaml --strict-devices
+
+# Generate scripts locally without pushing (inspect before flashing).
+python scripts/testbed/configtool/configtool.py generate \
+    scripts/testbed/experiments/current.yaml
+
+# Push configs to gateways without flashing (useful for "prime and stage"
+# flows). deploy.sh push-config = validate + generate + scp in one shot.
+./scripts/testbed/deploy.sh push-config -x scripts/testbed/experiments/current.yaml
+```
+
+The generated scripts live in `scripts/testbed/change-config/`. They are
+reproducible from the YAML; hand-edits are overwritten on the next
+`generate`. If you need to keep a hand-written script, put it in the repo
+root instead — `gw-upload.sh` prefers repo-root scripts over the generator
+directory.
+
+Details on internals, schema, and how to add a new parameter: see
+`scripts/testbed/configtool/README.md`.
+
 ## Quick Start
 
 ```bash
@@ -167,6 +340,8 @@ Runs `git pull` + `pio pkg update` on all gateways in parallel.
 ### `upload` — Compile and flash firmware
 
 For each device: runs `change-config-{SHORT_ID}.sh` then `pio run --target upload`.
+Before uploading for a new experiment, make sure the change-config scripts
+are generated from your experiment YAML — see [Experiment configs](#experiment-configs).
 
 ```bash
 ./deploy.sh upload -n cap2-v2                   # All devices
@@ -524,8 +699,35 @@ ssh lora@10.139.40.20 "ls -la /home/lora/dev/lora-*"
 
 ### change-config script not found
 - Scripts use the SHORT_ID (last 4 hex chars): `change-config-7B6C.sh`, not `change-config-C6213-7B6C.sh`
-- Ensure the script exists in `~/LoRaChat/` on the gateway
-- The script is searched in: repo root, then `scripts/testbed/`
+- `gw-upload.sh` searches in order: repo root → `scripts/testbed/change-config/` (scp'd by `deploy.sh push-config`) → `scripts/testbed/`
+- If the YAML workflow isn't pushing to the gateway, confirm push-config actually ran: `./deploy.sh push-config -x <yaml>` will print "pushed N script(s)" per gateway. Then verify on the gateway: `ssh lora@gw "ls ~/LoRaChat/scripts/testbed/change-config/"`
+
+### configtool harvest: SSH/scp failures
+- Same auth path as `deploy.sh` — if `deploy.sh status` works for a gateway, harvest should too
+- `WARN: scp config.h failed` and `note: no change-config-{SHORT_ID}.sh found` are informational; harvest continues and records whatever it could fetch. Missing change-config scripts just mean that device falls back to the gateway's `src/config.h` values
+- Password auth still needs `sshpass` installed (`apt install sshpass`)
+
+### configtool validate: schema errors
+- `unknown parameter 'lora_foo'` — typo, or the parameter isn't in the schema; check the [parameter reference](#parameter-reference) table
+- `unknown top-level key` — only `experiment`, `description`, `defaults`, `devices` are allowed at the root
+- `device 'XXXX' not in testbed.conf DEVICES` (only with `--strict-devices`) — the YAML references a device that isn't in `testbed.conf`; add it there or remove from the YAML
+
+### Generated change-config script got hand-edited
+- The YAML is the source of truth; re-running `deploy.sh push-config` (or `configtool generate`) overwrites the script
+- To keep a hand-written script for one device, move it to the repo root — `gw-upload.sh` checks the repo root first and will prefer your hand-written version
+
+### push-config fails with "device 'XXXX' not in testbed.conf DEVICES"
+- `deploy.sh push-config` runs `validate --strict-devices`, which requires every YAML device to be in `testbed.conf` `DEVICES`. Either add the device to `testbed.conf` or remove it from the YAML. If you want to deploy to a subset, use `deploy.sh upload -g GW-X` rather than editing the YAML.
+
+### Upload happened but the device still has old values
+- Confirm push-config wasn't skipped. The upload step auto-runs it unless `--skip-config` is passed. If you passed that flag, run `./deploy.sh push-config` manually
+- On the gateway, check the pushed file: `ssh lora@gw "cat ~/LoRaChat/scripts/testbed/change-config/change-config-XXXX.sh"` — does it show the values you expect?
+- Boot log: after flashing, the device prints its `LORA_*` values early in boot. Grep the session monitor log for `LORA_POWER` and similar to confirm what actually ran
+
+### Accidentally committed testbed.conf with real passwords
+- Run `git update-index --skip-worktree scripts/testbed/testbed.conf` to prevent future accidents
+- If the commit hasn't been pushed, `git reset HEAD~` + edit + re-commit with placeholders
+- If it has been pushed, rotate the leaked passwords and scrub history (`git filter-repo` or equivalent)
 
 ### Monitor dies after SSH disconnect
 - Monitors use `nohup` so they should survive SSH disconnects
