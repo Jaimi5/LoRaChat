@@ -55,6 +55,8 @@ void LoRaMeshService::initLoraMesherService() {
                   .withLoRaMeshProtocol(meshConfig)
                   .Build();
 
+    loraReceiveQueue_ = xQueueCreate(10, sizeof(LoRaQueueMessage*));
+
     mesher_->SetDataCallback([](loramesher::AddressType source, const std::vector<uint8_t>& data) {
         ESP_LOGV(LMS_TAG, "v2 data callback from %04X, size=%d", source, data.size());
 
@@ -64,22 +66,24 @@ void LoRaMeshService::initLoraMesherService() {
         }
 
         const LoRaMeshMessage* lmMsg = reinterpret_cast<const LoRaMeshMessage*>(data.data());
-        uint32_t messagePayloadSize = data.size() - sizeof(LoRaMeshMessage);
-        uint32_t dataMessageSize = sizeof(DataMessage) + messagePayloadSize;
+        uint32_t payloadSize = data.size() - sizeof(LoRaMeshMessage);
+        DataMessage* dm = (DataMessage*)pvPortMalloc(sizeof(DataMessage) + payloadSize);
+        if (!dm) return;
 
-        DataMessage* dataMessage = (DataMessage*)pvPortMalloc(dataMessageSize);
-        if (dataMessage) {
-            dataMessage->appPortDst = lmMsg->appPortDst;
-            dataMessage->appPortSrc = lmMsg->appPortSrc;
-            dataMessage->messageId = lmMsg->messageId;
-            dataMessage->addrSrc = source;
-            dataMessage->addrDst = LoRaMeshService::getInstance().getLocalAddress();
-            dataMessage->messageSize = messagePayloadSize;
-            memcpy(dataMessage->message, lmMsg->dataMessage, messagePayloadSize);
+        dm->appPortDst = lmMsg->appPortDst;
+        dm->appPortSrc = lmMsg->appPortSrc;
+        dm->messageId = lmMsg->messageId;
+        dm->addrSrc = source;
+        dm->addrDst = LoRaMeshService::getInstance().getLocalAddress();
+        dm->messageSize = payloadSize;
+        memcpy(dm->message, lmMsg->dataMessage, payloadSize);
 
-            MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, dataMessage);
-
-            vPortFree(dataMessage);
+        auto* qMsg = new LoRaQueueMessage{source, dm};
+        auto& svc = LoRaMeshService::getInstance();
+        if (xQueueSend(svc.loraReceiveQueue_, &qMsg, 0) != pdTRUE) {
+            vPortFree(dm);
+            delete qMsg;
+            ESP_LOGW(LMS_TAG, "Receive queue full, dropping packet");
         }
     });
 
@@ -88,10 +92,27 @@ void LoRaMeshService::initLoraMesherService() {
     heap_caps_check_integrity_all(true);
     if (result) {
         ESP_LOGI(LMS_TAG, "LoraMesher v2 initialized");
+        createReceiveTask();
     } else {
         ESP_LOGE(LMS_TAG, "LoraMesher v2 Start failed");
     }
 #endif
+}
+
+void LoRaMeshService::createReceiveTask() {
+    xTaskCreate(loraReceiveLoop, "LoRa_Receive", 4096, nullptr, 2, &loraReceiveTask_Handle);
+}
+
+void LoRaMeshService::loraReceiveLoop(void*) {
+    auto& svc = LoRaMeshService::getInstance();
+    LoRaQueueMessage* qMsg = nullptr;
+    for (;;) {
+        if (xQueueReceive(svc.loraReceiveQueue_, &qMsg, portMAX_DELAY) == pdTRUE) {
+            MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, qMsg->dataMessage);
+            vPortFree(qMsg->dataMessage);
+            delete qMsg;
+        }
+    }
 }
 
 uint16_t LoRaMeshService::getLocalAddress() {

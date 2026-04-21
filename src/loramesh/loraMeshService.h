@@ -79,6 +79,18 @@ public:
 private:
 #ifdef USE_LORAMESHER_V2
     std::unique_ptr<loramesher::LoraMesher> mesher_;
+
+    // Queue message struct — heap-allocated pointer, freed after processing
+    struct LoRaQueueMessage {
+        loramesher::AddressType source;
+        DataMessage* dataMessage;  // pvPortMalloc'd
+    };
+
+    QueueHandle_t loraReceiveQueue_ = nullptr;
+    TaskHandle_t loraReceiveTask_Handle = nullptr;
+
+    static void loraReceiveLoop(void* pvParameters);
+    void createReceiveTask();
 #else
     LoraMesher& radio = LoraMesher::getInstance();
 
