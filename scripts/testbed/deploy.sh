@@ -7,18 +7,21 @@
 # Commands:
 #   status        Check which gateways are reachable
 #   upgrade       Git pull + pio pkg update on all gateways
-#   upload        Compile and upload firmware to devices
+#   push-config   Generate change-config-*.sh from an experiment YAML and scp per-GW
+#   upload        Compile and upload firmware to devices (runs push-config first)
 #   monitor       Start serial monitors on all devices
 #   stop-monitor  Stop all running monitors
 #   logs          Collect log files from gateways to local machine
-#   all           Run upgrade + upload + monitor in sequence
+#   all           Run stop-monitor + upgrade + push-config + upload+monitor in sequence
 #
 # Options:
 #   -e ENV        Override PlatformIO environment
 #   -g GW-1,GW-3  Limit to specific gateways
 #   -d DEVICE_ID  Limit to specific device(s) (comma-separated)
 #   -n SESSION    Session/experiment name (for log directories)
+#   -x YAML       Experiment YAML (default: experiments/current.yaml if it exists)
 #   --skip-compile  Skip compilation, only upload
+#   --skip-config   Skip the push-config step (use whatever's on the gateway)
 #   -c FILE       Path to testbed.conf (default: same dir as this script)
 #   -h            Show this help
 
@@ -50,18 +53,21 @@ OPT_GW=""
 OPT_DEVICE=""
 OPT_SESSION=""
 OPT_SKIP_COMPILE=""
+OPT_SKIP_CONFIG=""
+OPT_EXPERIMENT_YAML=""
 OPT_MONITOR=""
 OPT_REMOTE_CMD=""
 CONFIG_FILE="$SCRIPT_DIR/testbed.conf"
 
 usage() {
-    head -27 "${BASH_SOURCE[0]}" | tail -25 | sed 's/^# \?//'
+    # Print the leading comment block (stops at the first non-comment line).
+    awk 'NR>1 && /^[^#]/ {exit} NR>1 {sub(/^# ?/, ""); print}' "${BASH_SOURCE[0]}"
     exit "${1:-0}"
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        status|upgrade|upload|monitor|stop-monitor|logs|clean|sync-time|all)
+        status|upgrade|upload|monitor|stop-monitor|logs|clean|sync-time|all|push-config)
             COMMAND="$1" ;;
         upload-monitor)
             COMMAND="upload"; OPT_MONITOR="1" ;;
@@ -71,7 +77,9 @@ while [[ $# -gt 0 ]]; do
         -g) OPT_GW="$2"; shift ;;
         -d) OPT_DEVICE="$2"; shift ;;
         -n) OPT_SESSION="$2"; shift ;;
+        -x) OPT_EXPERIMENT_YAML="$2"; shift ;;
         --skip-compile) OPT_SKIP_COMPILE="--skip-compile" ;;
+        --skip-config)  OPT_SKIP_CONFIG="1" ;;
         --monitor) OPT_MONITOR="1" ;;
         -c) CONFIG_FILE="$2"; shift ;;
         -h|--help) usage 0 ;;
@@ -101,6 +109,17 @@ source "$CONFIG_FILE"
 
 ENV="${OPT_ENV:-$DEFAULT_ENV}"
 SESSION="${OPT_SESSION:-deploy-$(date +%Y%m%d-%H%M%S)}"
+
+# Resolve the experiment YAML for push-config. -x wins; otherwise fall back
+# to experiments/current.yaml if it exists; otherwise empty (push-config
+# no-ops and upload proceeds with whatever is already on the gateway).
+if [[ -n "$OPT_EXPERIMENT_YAML" ]]; then
+    EXP_YAML="$OPT_EXPERIMENT_YAML"
+elif [[ -f "$SCRIPT_DIR/experiments/current.yaml" ]]; then
+    EXP_YAML="$SCRIPT_DIR/experiments/current.yaml"
+else
+    EXP_YAML=""
+fi
 
 # ── Build per-gateway device lists ───────────────────────────────────────────
 
@@ -198,6 +217,35 @@ scp_gw() {
         SSHPASS="$pass" sshpass -e scp "${scp_args[@]}" -r "$src" "$dest"
     else
         scp "${scp_args[@]}" -r "$src" "$dest"
+    fi
+}
+
+# Like scp_gw but accepts multiple local sources and a single remote dest.
+# Usage: scp_gw_multi GW_ID src1 src2 ... "remote:path"
+scp_gw_multi() {
+    local gw_id="$1"; shift
+    if [[ $# -lt 2 ]]; then
+        echo "scp_gw_multi: need at least one source and a remote dest" >&2
+        return 2
+    fi
+    local dest_rel="${!#}"               # last positional = "remote-side path"
+    local -a srcs=("${@:1:$#-1}")
+    local pass="${GW_PASS[$gw_id]:-}"
+    local key="${GW_KEY[$gw_id]:-}"
+    local port="${GW_PORT[$gw_id]:-}"
+
+    # shellcheck disable=SC2086
+    local -a scp_args=($SSH_OPTS)
+    [[ -n "$key" ]] && scp_args+=(-i "$key")
+    [[ -n "$port" ]] && scp_args+=(-P "$port")
+    [[ -z "$pass" ]] && scp_args+=(-o BatchMode=yes)
+
+    local dest="${GW_SSH[$gw_id]}${dest_rel}"
+
+    if [[ -n "$pass" ]]; then
+        SSHPASS="$pass" sshpass -e scp "${scp_args[@]}" "${srcs[@]}" "$dest"
+    else
+        scp "${scp_args[@]}" "${srcs[@]}" "$dest"
     fi
 }
 
@@ -358,6 +406,104 @@ run_parallel() {
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
+cmd_push_config() {
+    if [[ -z "$EXP_YAML" ]]; then
+        echo "No experiment YAML found (pass -x or create experiments/current.yaml)."
+        echo "Skipping push-config; devices will use whatever is already on their gateway."
+        return 0
+    fi
+
+    if [[ ! -f "$EXP_YAML" ]]; then
+        echo "Error: experiment YAML not found: $EXP_YAML" >&2
+        return 1
+    fi
+
+    echo -e "${BOLD}Push-config: $EXP_YAML${RST}"
+    echo ""
+
+    # 1. Validate (fail fast before touching any gateway).
+    if ! python3 "$SCRIPT_DIR/configtool/configtool.py" validate \
+            "$EXP_YAML" --strict-devices; then
+        echo ""
+        echo "Validation failed; aborting push-config." >&2
+        return 1
+    fi
+
+    # 2. Generate locally into $SCRIPT_DIR/change-config/.
+    if ! python3 "$SCRIPT_DIR/configtool/configtool.py" generate "$EXP_YAML" \
+            >/dev/null; then
+        echo "Error: configtool generate failed." >&2
+        return 1
+    fi
+
+    # 3. Per-gateway: scp only the scripts for that GW's devices. Run in
+    #    parallel via run_parallel, wrapping the scp in a helper child script
+    #    that re-imports the testbed.conf and our helpers via `bash -c`.
+    local local_cc_dir="$SCRIPT_DIR/change-config"
+    local remote_cc_dir="$REPO_PATH/scripts/testbed/change-config"
+
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        local devices="${GW_DEVICES[$gw_id]:-}"
+        [[ -z "$devices" ]] && continue
+
+        # Collect the scripts we actually need to push to this gateway.
+        local -a srcs=()
+        for entry in $devices; do
+            local dev_id="${entry%%:*}"
+            local short_id="${dev_id##*-}"
+            local script="$local_cc_dir/change-config-$short_id.sh"
+            if [[ -f "$script" ]]; then
+                srcs+=("$script")
+            else
+                echo "WARN: $script not generated (skipping $dev_id)" >&2
+            fi
+        done
+        [[ ${#srcs[@]} -eq 0 ]] && continue
+
+        # We run the mkdir+scp inside run_parallel by chaining them as a
+        # single remote-plus-local operation. Since run_parallel only takes
+        # SSH commands, do the mkdir via ssh_gw here and push files below.
+        ssh_gw "$gw_id" "mkdir -p $remote_cc_dir && rm -f $remote_cc_dir/change-config-*.sh" \
+            >/dev/null 2>&1 || {
+                echo "ERROR: could not prepare $remote_cc_dir on $gw_id" >&2
+                return 1
+            }
+
+        # Sequential scp per-GW (run_parallel is SSH-shaped, not scp-shaped).
+        # Each GW only has 1-3 devices so this is fast. Do the gateways
+        # themselves in the background to parallelise across GWs.
+        (
+            if scp_gw_multi "$gw_id" "${srcs[@]}" ":$remote_cc_dir/" >/dev/null 2>&1; then
+                log_gw "$gw_id" "pushed ${#srcs[@]} script(s)"
+            else
+                log_gw "$gw_id" "SCP FAILED"
+                exit 1
+            fi
+        ) &
+        args+=("$!:$gw_id")
+    done
+
+    # Wait for all background scps and collect results.
+    local failed=0
+    for spec in "${args[@]}"; do
+        local pid="${spec%%:*}"
+        local gw="${spec#*:}"
+        if ! wait "$pid"; then
+            failed=$((failed + 1))
+            echo "Gateway $gw failed to receive configs" >&2
+        fi
+    done
+
+    echo ""
+    if [[ $failed -gt 0 ]]; then
+        echo -e "${BOLD}push-config: $failed gateway(s) failed${RST}"
+        return 1
+    fi
+    echo -e "${BOLD}push-config: all gateways up to date${RST}"
+}
+
 cmd_status() {
     echo -e "${BOLD}Checking gateway connectivity...${RST}"
     echo ""
@@ -397,6 +543,15 @@ cmd_upgrade() {
 }
 
 cmd_upload() {
+    # Auto-push per-device configs before flashing unless explicitly skipped.
+    if [[ -z "$OPT_SKIP_CONFIG" ]]; then
+        if ! cmd_push_config; then
+            echo "Upload aborted: push-config failed (re-run with --skip-config to override)." >&2
+            return 1
+        fi
+        echo ""
+    fi
+
     local monitor_flag=""
     if [[ -n "$OPT_MONITOR" ]]; then
         monitor_flag="--monitor $SESSION"
@@ -516,18 +671,31 @@ cmd_logs() {
     local local_dir="$LOCAL_LOG_DIR/$SESSION"
     mkdir -p "$local_dir"
 
+    local -A pids=()
+    local -A scp_logs=()
+    local -a gw_order=()
+
     for gw_id in "${ACTIVE_GWS[@]}"; do
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
         local ssh_dest="${GW_SSH[$gw_id]}"
+        local scp_log
+        scp_log=$(mktemp)
+        scp_logs[$gw_id]="$scp_log"
+        gw_order+=("$gw_id")
 
         log_gw "$gw_id" "Fetching logs..."
-        if scp_gw "$gw_id" "$ssh_dest:$REPO_PATH/logs/$SESSION/*.log" "$local_dir/" 2>/dev/null; then
-            local count
-            count=$(ls -1 "$local_dir"/*.log 2>/dev/null | wc -l)
-            log_gw "$gw_id" "OK: $count log file(s)"
+        scp_gw "$gw_id" "$ssh_dest:$REPO_PATH/logs/$SESSION/*.log" "$local_dir/" >"$scp_log" 2>&1 &
+        pids[$gw_id]=$!
+    done
+
+    # Wait for all transfers in launch order; total time = slowest gateway
+    for gw_id in "${gw_order[@]}"; do
+        if wait "${pids[$gw_id]}" 2>/dev/null; then
+            log_gw "$gw_id" "OK"
         else
             log_gw "$gw_id" "No logs found for session $SESSION"
         fi
+        rm -f "${scp_logs[$gw_id]}"
     done
 
     echo ""
@@ -626,14 +794,15 @@ cmd_sync_time() {
 }
 
 cmd_all() {
-    echo -e "${BOLD}Full deployment: stop -> upgrade -> upload+monitor${RST}"
+    echo -e "${BOLD}Full deployment: stop -> upgrade -> push-config -> upload+monitor${RST}"
     echo -e "${BOLD}Session: $SESSION | Env: $ENV${RST}"
+    [[ -n "$EXP_YAML" ]] && echo -e "${BOLD}Experiment: $EXP_YAML${RST}"
     echo ""
 
-    echo -e "\n${BOLD}=== Phase 1/3: Stop existing monitors ===${RST}\n"
+    echo -e "\n${BOLD}=== Phase 1/4: Stop existing monitors ===${RST}\n"
     cmd_stop_monitor || true
 
-    echo -e "\n${BOLD}=== Phase 2/3: Upgrade ===${RST}\n"
+    echo -e "\n${BOLD}=== Phase 2/4: Upgrade ===${RST}\n"
     if ! cmd_upgrade; then
         echo ""
         echo "WARNING: Some gateways failed to upgrade. Continue anyway? (y/N)"
@@ -641,9 +810,27 @@ cmd_all() {
         [[ "$answer" != "y" && "$answer" != "Y" ]] && exit 1
     fi
 
-    echo -e "\n${BOLD}=== Phase 3/3: Upload + Monitor ===${RST}\n"
+    echo -e "\n${BOLD}=== Phase 3/4: Push-config ===${RST}\n"
+    if [[ -z "$OPT_SKIP_CONFIG" ]]; then
+        if ! cmd_push_config; then
+            echo ""
+            echo "WARNING: push-config failed. Continue anyway? (y/N)"
+            read -r answer
+            [[ "$answer" != "y" && "$answer" != "Y" ]] && exit 1
+        fi
+    else
+        echo "Skipped (--skip-config)."
+    fi
+
+    echo -e "\n${BOLD}=== Phase 4/4: Upload + Monitor ===${RST}\n"
     OPT_MONITOR="1"
+    # cmd_upload would re-run push-config; we already did it, so skip it there.
+    local prev_skip="$OPT_SKIP_CONFIG"
+    OPT_SKIP_CONFIG="1"
     cmd_upload
+    local rc=$?
+    OPT_SKIP_CONFIG="$prev_skip"
+    return $rc
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -651,6 +838,7 @@ cmd_all() {
 case "$COMMAND" in
     status)       cmd_status ;;
     upgrade)      cmd_upgrade ;;
+    push-config)  cmd_push_config ;;
     upload)       cmd_upload ;;
     monitor)      cmd_monitor ;;
     stop-monitor) cmd_stop_monitor ;;
