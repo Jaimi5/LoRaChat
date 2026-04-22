@@ -69,13 +69,17 @@ void WiFiServerService::wifi_task(void*) {
         if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
             LoRaMeshService.setGateway();
             wiFiServerService.connected = true;
+            wiFiServerService.connectBackoffMs = 5000;
             ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid.c_str(),
                      wiFiServerService.password.c_str());
         } else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
             wiFiServerService.connected = false;
             LoRaMeshService.removeGateway();
-            ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
-                     wiFiServerService.ssid.c_str(), wiFiServerService.password.c_str());
+            wiFiServerService.connectBackoffMs = min(
+                wiFiServerService.connectBackoffMs * 2,
+                WiFiServerService::MAX_CONNECT_BACKOFF_MS);
+            ESP_LOGI(TAG, "Failed to connect to SSID:%s, backoff %lu ms",
+                     wiFiServerService.ssid.c_str(), wiFiServerService.connectBackoffMs);
         }
 
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
@@ -162,6 +166,7 @@ String WiFiServerService::resetWiFiData() {
 
     // Stop WiFi before changing configuration to prevent conflicts
     result = esp_wifi_stop();
+    wifiStarted = false;
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "Failed to stop WiFi: %s", esp_err_to_name(result));
         return String("Failed to stop WiFi: ") + esp_err_to_name(result);
@@ -192,6 +197,7 @@ String WiFiServerService::resetWiFiData() {
             ESP_LOGE(TAG, "Failed to restart WiFi: %s", esp_err_to_name(result));
             return String("WiFi reset but failed to restart: ") + esp_err_to_name(result);
         }
+        wifiStarted = true;
     }
 
     ESP_LOGI(TAG, "WiFi data successfully reset to defaults");
@@ -221,39 +227,55 @@ bool WiFiServerService::isConnected() {
 }
 
 bool WiFiServerService::connectWiFi() {
-    if (!initialized) {
+    if (!initialized)
         return false;
-    }
 
-    if (isConnected()) {
+    if (isConnected())
         return true;
-    }
 
     if (!checkIfWiFiCredentialsAreSet()) {
         ESP_LOGW(TAG, "WiFi credentials are not set");
         return false;
     }
 
+    // Heap guard: skip if memory critically low to avoid ESP_ERR_NO_MEM crash
+    if (ESP.getFreeHeap() < 50000) {
+        ESP_LOGW(TAG, "Low heap (%d bytes), skipping WiFi reconnection", ESP.getFreeHeap());
+        return false;
+    }
+
+    // Exponential backoff: don't retry too frequently
+    unsigned long now = millis();
+    if ((now - lastConnectAttemptMs) < connectBackoffMs) {
+        return false;
+    }
+    lastConnectAttemptMs = now;
+
     ESP_LOGI(TAG, "Connecting to %s...", ssid.c_str());
-
-    wifi_config_t wifi_config = {};  // initialize all fields to zero
-
-    // Assume ssidHelp and passwordHelp are null-terminated strings
-    // and their lengths are less than the size of .ssid and .password arrays
-    memcpy(wifi_config.sta.ssid, ssid.c_str(), ssid.length());
-    memcpy(wifi_config.sta.password, password.c_str(), password.length());
-
-    // Ensure clean state before (re)starting: stop first (ignore error if already stopped),
-    // then reset retry counter so a fresh connection gets the full MAX_CONNECTION_TRY budget.
-    esp_wifi_stop();
     s_retry_num = 0;
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    if (!wifiStarted) {
+        // Full initialization: configure and start the WiFi stack
+        wifi_config_t wifi_config = {};
+        memcpy(wifi_config.sta.ssid, ssid.c_str(), ssid.length());
+        memcpy(wifi_config.sta.password, password.c_str(), password.length());
+
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+        ESP_ERROR_CHECK(esp_wifi_start());
+        wifiStarted = true;
+    } else {
+        // WiFi stack already running — just reconnect without stop/start cycle
+        esp_err_t err = esp_wifi_connect();
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "esp_wifi_connect() failed: %s, doing full restart", esp_err_to_name(err));
+            esp_wifi_stop();
+            wifiStarted = false;
+            return false;
+        }
+    }
 
     ESP_LOGI(TAG, "Connecting to WiFi...");
-
     return true;
 }
 
@@ -262,6 +284,7 @@ bool WiFiServerService::disconnectWiFi() {
         return true;
 
     esp_wifi_stop();
+    wifiStarted = false;
 
     ESP_LOGI(TAG, "Disconnecting from WiFi");
     LoRaMeshService::getInstance().removeGateway();
