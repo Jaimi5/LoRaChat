@@ -23,7 +23,7 @@ void SensorService::init() {
 String SensorService::getJSON(DataMessage* message) {
     SensorCommandMessage* sensorMessage = (SensorCommandMessage*)message;
 
-    StaticJsonDocument<2000> doc;
+    DynamicJsonDocument doc(2000);
 
     JsonObject root = doc.to<JsonObject>();
 
