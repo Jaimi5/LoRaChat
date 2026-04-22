@@ -24,7 +24,7 @@ void MonService::init() {
 
 String MonService::getJSON(DataMessage* message) {
     monMessage* bm = (monMessage*)message;
-    StaticJsonDocument<2000> doc;
+    DynamicJsonDocument doc(2000);
     JsonObject data = doc.createNestedObject("RT");
     if ((bm->RTcount == MONCOUNT_MONONEMESSAGE) || (bm->messageSize != 17)) {
         ESP_LOGI(MON_TAG, "getJSON: monOneMessage->serialize");

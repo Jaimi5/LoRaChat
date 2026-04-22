@@ -100,7 +100,7 @@ void LoRaMeshService::initLoraMesherService() {
 }
 
 void LoRaMeshService::createReceiveTask() {
-    xTaskCreate(loraReceiveLoop, "LoRa_Receive", 4096, nullptr, 2, &loraReceiveTask_Handle);
+    xTaskCreate(loraReceiveLoop, "LoRa_Receive", 8192, nullptr, 2, &loraReceiveTask_Handle);
 }
 
 void LoRaMeshService::loraReceiveLoop(void*) {
@@ -111,6 +111,8 @@ void LoRaMeshService::loraReceiveLoop(void*) {
             MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, qMsg->dataMessage);
             vPortFree(qMsg->dataMessage);
             delete qMsg;
+            ESP_LOGD(LMS_TAG, "LoRa_Receive stack high water: %u bytes",
+                     uxTaskGetStackHighWaterMark(NULL));
         }
     }
 }

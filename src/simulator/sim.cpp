@@ -42,7 +42,7 @@ String Sim::stop() {
 String Sim::getJSON(DataMessage* message) {
     SimMessage* simMessage = (SimMessage*)message;
 
-    StaticJsonDocument<2048> doc;
+    DynamicJsonDocument doc(2048);
 
     JsonObject data = doc.createNestedObject("data");
 
