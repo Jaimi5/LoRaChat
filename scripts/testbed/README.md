@@ -721,9 +721,23 @@ ssh lora@10.139.40.20 "ls -la /home/lora/dev/lora-*"
 - `deploy.sh push-config` runs `validate --strict-devices`, which requires every YAML device to be in `testbed.conf` `DEVICES`. Either add the device to `testbed.conf` or remove it from the YAML. If you want to deploy to a subset, use `deploy.sh upload -g GW-X` rather than editing the YAML.
 
 ### Upload happened but the device still has old values
-- Confirm push-config wasn't skipped. The upload step auto-runs it unless `--skip-config` is passed. If you passed that flag, run `./deploy.sh push-config` manually
-- On the gateway, check the pushed file: `ssh lora@gw "cat ~/LoRaChat/scripts/testbed/change-config/change-config-XXXX.sh"` — does it show the values you expect?
+- In the upload log, check which script `gw-upload.sh` actually executed. The line looks like `--- Running <path>/change-config-XXXX.sh ---`.
+  - `--- Running scripts/testbed/change-config/change-config-XXXX.sh ---` = push-config output (correct)
+  - `--- Running ./change-config-XXXX.sh ---` = **legacy script at the gateway's repo root is shadowing** push-config. push-config should have renamed it aside on the next run; if it didn't, something went wrong with the shadow-defuse step — check for `[shadow-defused]` lines in push-config output
+- Confirm push-config wasn't skipped. The upload step auto-runs it unless `--skip-config` is passed; if you passed that flag, run `./deploy.sh push-config` manually
+- Sanity-check the pushed file: `ssh lora@gw "cat ~/LoRaChat/scripts/testbed/change-config/change-config-XXXX.sh"` — does it show the values you expect?
 - Boot log: after flashing, the device prints its `LORA_*` values early in boot. Grep the session monitor log for `LORA_POWER` and similar to confirm what actually ran
+
+### Legacy repo-root change-config scripts moved aside
+`deploy.sh push-config` renames any shadowing `~/LoRaChat/change-config-{SHORT_ID}.sh` on each gateway to `change-config-{SHORT_ID}.sh.legacy-bak-{YYYYMMDD-HHMMSS}` before scp'ing the new one. This only affects devices **in** the current YAML — hand-written scripts for devices not listed in the YAML are untouched.
+
+- List backups: `./deploy.sh run-remote "ls ~/LoRaChat/change-config-*.legacy-bak-* 2>/dev/null"`
+- Restore a device's legacy script (e.g. you removed it from the YAML and want the hand-written override back):
+  ```bash
+  ./deploy.sh run-remote -g GW-1 \
+    "cd ~/LoRaChat && ls -t change-config-XXXX.sh.legacy-bak-* | head -1 | xargs -I{} mv {} change-config-XXXX.sh"
+  ```
+- Prune old backups if they pile up: `./deploy.sh run-remote "find ~/LoRaChat -maxdepth 1 -name 'change-config-*.legacy-bak-*' -mtime +30 -delete"`
 
 ### Accidentally committed testbed.conf with real passwords
 - Run `git update-index --skip-worktree scripts/testbed/testbed.conf` to prevent future accidents

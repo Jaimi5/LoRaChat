@@ -450,17 +450,37 @@ cmd_push_config() {
 
         # Collect the scripts we actually need to push to this gateway.
         local -a srcs=()
+        local -a short_ids=()
         for entry in $devices; do
             local dev_id="${entry%%:*}"
             local short_id="${dev_id##*-}"
             local script="$local_cc_dir/change-config-$short_id.sh"
             if [[ -f "$script" ]]; then
                 srcs+=("$script")
+                short_ids+=("$short_id")
             else
                 echo "WARN: $script not generated (skipping $dev_id)" >&2
             fi
         done
         [[ ${#srcs[@]} -eq 0 ]] && continue
+
+        # Defuse any legacy change-config-{SHORT_ID}.sh at the gateway's repo
+        # root — those shadow our scp'd scripts because gw-upload.sh checks
+        # repo root before scripts/testbed/change-config/. Rename (don't
+        # delete) so users can restore if they intentionally had overrides.
+        local ts; ts=$(date +%Y%m%d-%H%M%S)
+        local remote_defuse="cd '$REPO_PATH' || exit 1; moved=0; "
+        for sid in "${short_ids[@]}"; do
+            remote_defuse+="if [[ -e change-config-${sid}.sh ]]; then "
+            remote_defuse+="mv -f change-config-${sid}.sh change-config-${sid}.sh.legacy-bak-${ts} "
+            remote_defuse+="&& echo \"  [shadow-defused] change-config-${sid}.sh -> .legacy-bak-${ts}\" "
+            remote_defuse+="&& moved=\$((moved+1)); fi; "
+        done
+        remote_defuse+="if [[ \$moved -gt 0 ]]; then echo \"  [shadow-defused] $gw_id: renamed \$moved file(s)\"; fi; exit 0"
+        ssh_gw "$gw_id" "$remote_defuse" 2>/dev/null || {
+            echo "ERROR: could not defuse shadowing scripts on $gw_id" >&2
+            return 1
+        }
 
         # We run the mkdir+scp inside run_parallel by chaining them as a
         # single remote-plus-local operation. Since run_parallel only takes
