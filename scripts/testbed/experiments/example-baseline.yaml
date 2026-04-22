@@ -7,6 +7,7 @@ defaults:
   lora_coding_rate: 7
   lora_power: 17
   lora_sync_word: 20
+  lora_duty_cycle: 1.0
   wifi_ssid: WIFI_SSID_HERE
   wifi_password: WIFI_PASSWORD_HERE
   mqtt_server: MQTT_SERVER_HERE

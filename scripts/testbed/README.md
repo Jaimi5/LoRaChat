@@ -201,6 +201,7 @@ Per-device keys win.
 | `lora_coding_rate`      | `LORA_CODING_RATE`          | uint    | 5..8 (4/5..4/8)                         |
 | `lora_power`            | `LORA_POWER`                | int     | TX power in dBm                         |
 | `lora_sync_word`        | `LORA_SYNC_WORD`            | uint    | Network identifier 0..255               |
+| `lora_duty_cycle`       | `LORA_DUTY_CYCLE`           | floatF  | Airtime duty-cycle budget 0.0..1.0      |
 | `lora_manager_id`       | `LORA_MANAGER_ID`           | hex16   | Mesh node ID, written as `0xNNNN`       |
 | `wifi_ssid`             | `WIFI_SSID`                 | str     | Rendered as C string                    |
 | `wifi_password`         | `WIFI_PASSWORD`             | str     |                                         |
