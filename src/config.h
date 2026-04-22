@@ -10,6 +10,11 @@
 // #define NAYAD_V1
 // #define NAYAD_V1R2
 // #define MAKERFABS_SENSELORA_MOISTURE
+#if defined USE_LORAMESHER_V2
+#define LORAMESHER_VERSION "v1.0.0"
+#else
+#define LORAMESHER_VERSION "v0.0.8"
+#endif
 
 #if defined(NAYAD_V1) || defined(NAYAD_V1R2)
 // #define GPS_ENABLED
