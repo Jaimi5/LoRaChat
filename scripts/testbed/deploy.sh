@@ -12,6 +12,7 @@
 #   monitor       Start serial monitors on all devices
 #   stop-monitor  Stop all running monitors
 #   logs          Collect log files from gateways to local machine
+#   reset         Stop monitors and hard-reset all selected devices via DTR/RTS
 #   all           Run stop-monitor + upgrade + push-config + upload+monitor in sequence
 #
 # Options:
@@ -67,7 +68,7 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        status|upgrade|upload|monitor|stop-monitor|logs|clean|sync-time|all|push-config)
+        status|upgrade|upload|monitor|stop-monitor|logs|clean|sync-time|all|push-config|reset|list-device-map)
             COMMAND="$1" ;;
         upload-monitor)
             COMMAND="upload"; OPT_MONITOR="1" ;;
@@ -269,13 +270,21 @@ ssh_gw() {
     [[ -n "$port" ]] && ssh_args+=(-p "$port")
     [[ -z "$pass" ]] && ssh_args+=(-o BatchMode=yes)
 
+    local rc=0
     while [[ $attempt -le $retries ]]; do
         if [[ -n "$pass" ]]; then
-            SSHPASS="$pass" sshpass -e ssh "${ssh_args[@]}" "$ssh_dest" "$full_cmd" && return 0
+            SSHPASS="$pass" sshpass -e ssh "${ssh_args[@]}" "$ssh_dest" "$full_cmd"
         else
-            ssh "${ssh_args[@]}" "$ssh_dest" "$full_cmd" && return 0
+            ssh "${ssh_args[@]}" "$ssh_dest" "$full_cmd"
         fi
-        local rc=$?
+        rc=$?
+        # ssh and sshpass both exit 255 on transport / auth failure; remote
+        # commands' own non-zero exits come through with 1..254. Retry only
+        # on a transport failure — retrying a `grep -q` that found nothing
+        # is just wasted time.
+        if [[ $rc -ne 255 ]]; then
+            return $rc
+        fi
         if [[ $attempt -lt $retries ]]; then
             echo "SSH to $gw_id failed (attempt $attempt/$retries), retrying in 5s..." >&2
             sleep 5
@@ -774,6 +783,7 @@ cmd_sync_time() {
         local remote_epoch
         remote_epoch=$(ssh_gw "$gw_id" "date +%s%3N" 2>/dev/null) || {
             echo -e "  ${color}${gw_id}${RST}  \033[31mUNREACHABLE\033[0m"
+            echo "JSON_OFFSET: {\"gw\":\"${gw_id}\",\"reachable\":false}"
             continue
         }
 
@@ -785,6 +795,10 @@ cmd_sync_time() {
         else
             any_offset=1
             echo -e "  ${color}${gw_id}${RST}  \033[33mOFFSET: ${offset_ms}ms\033[0m — attempting sync..."
+        fi
+        # Machine-parseable line for the runner (always emitted when reachable).
+        echo "JSON_OFFSET: {\"gw\":\"${gw_id}\",\"offset_ms\":${offset_ms},\"host_epoch_ms\":${local_epoch},\"reachable\":true}"
+        if [[ $abs_offset_ms -gt 2000 ]]; then
 
             # Try timedatectl (might work without sudo)
             ssh_gw "$gw_id" "timedatectl set-ntp true" 2>/dev/null && {
@@ -811,6 +825,82 @@ cmd_sync_time() {
         echo "  sudo timedatectl set-ntp true"
         echo "  sudo timedatectl set-timezone Europe/Madrid  # or your timezone"
     fi
+}
+
+cmd_reset() {
+    echo -e "${BOLD}Resetting devices via DTR/RTS pulse...${RST}"
+    echo ""
+
+    # Stop monitors first — they hold the serial ports open, blocking our
+    # pyserial open() call. cmd_stop_monitor also compresses logs as a side
+    # effect; that's fine, it's idempotent.
+    cmd_stop_monitor || true
+
+    # Brief pause so the kernel releases the ports before we reopen them.
+    sleep 2
+
+    # Push gw-reset.sh to every gateway in parallel. It's a small file and
+    # may not exist on the gateway yet (it's new). Doing this every run is
+    # cheap and means `reset` works without requiring a prior `upgrade`.
+    echo -e "${BOLD}Syncing gw-reset.sh to gateways...${RST}"
+    local sync_pids=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        local devices="${GW_DEVICES[$gw_id]:-}"
+        [[ -z "$devices" ]] && continue
+        scp_gw "$gw_id" "$SCRIPT_DIR/gw-reset.sh" \
+            "${GW_SSH[$gw_id]}:$REPO_PATH/scripts/testbed/" >/dev/null 2>&1 &
+        sync_pids+=($!)
+    done
+    for pid in "${sync_pids[@]}"; do wait "$pid" || true; done
+
+    echo ""
+    echo -e "${BOLD}Pulsing reset on each device...${RST}"
+    echo ""
+
+    local args=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        local devices="${GW_DEVICES[$gw_id]:-}"
+        [[ -z "$devices" ]] && continue
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        args+=("$gw_id" "cd $REPO_PATH && bash scripts/testbed/gw-reset.sh $devices")
+    done
+
+    if [[ ${#args[@]} -eq 0 ]]; then
+        echo "No devices to reset. Check -g/-d filters and testbed.conf."
+        return 1
+    fi
+
+    run_parallel "reset" "${args[@]}"
+}
+
+cmd_list_device_map() {
+    # Emit JSON: {"GW-1":["E464","77A4",...],"GW-2":[...],...}
+    # Derived from the DEVICES array in testbed.conf. Entries that don't match
+    # the canonical <DEVICE_ID>:GW-N shape (e.g. trailing comment fragments
+    # bash parsed as array elements) are silently ignored.
+    declare -A by_gw=()
+    local entry dev_id gw_id short_id
+    for entry in "${DEVICES[@]}"; do
+        [[ "$entry" =~ ^[A-Za-z0-9_-]+:GW-[0-9]+$ ]] || continue
+        dev_id="${entry%%:*}"
+        gw_id="${entry##*:}"
+        short_id="${dev_id##*-}"
+        if [[ -n "${by_gw[$gw_id]+x}" ]]; then
+            by_gw[$gw_id]="${by_gw[$gw_id]},\"${short_id}\""
+        else
+            by_gw[$gw_id]="\"${short_id}\""
+        fi
+    done
+
+    local first=1
+    printf '{'
+    while IFS= read -r gw_id; do
+        [[ $first -eq 0 ]] && printf ','
+        first=0
+        printf '"%s":[%s]' "$gw_id" "${by_gw[$gw_id]}"
+    done < <(printf '%s\n' "${!by_gw[@]}" | sort)
+    printf '}\n'
 }
 
 cmd_all() {
@@ -866,6 +956,8 @@ case "$COMMAND" in
     clean)        cmd_clean ;;
     sync-time)    cmd_sync_time ;;
     run-remote)   cmd_run_remote ;;
+    reset)        cmd_reset ;;
     all)          cmd_all ;;
+    list-device-map) cmd_list_device_map ;;
     *)            echo "Unknown command: $COMMAND"; usage 1 ;;
 esac
