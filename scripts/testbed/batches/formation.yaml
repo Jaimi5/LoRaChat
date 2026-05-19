@@ -1,0 +1,28 @@
+# Network formation & convergence — cold-start at three spreading factors.
+#
+# All 14 active devices participate. Each run reflashes (between cells) or
+# hardware-resets (between repetitions within a cell) so every measurement
+# starts from an empty routing table. Headline metric:
+# `network_convergence_at` = max over nodes of `rt_complete_at`.
+batch: formation
+description: Cold-start convergence across SF7 / SF9 / SF12 (no subset, all devices)
+base: ../experiments/example-baseline.yaml
+
+runs: 5
+duration_min: 20
+warmup_min: 0      # cold start — convergence IS what we measure, no warmup
+cooldown_min: 1
+reset_between_runs: true
+upload_between_cells: true
+
+cells:
+  - id: SF7
+    overrides:
+      lora_spreading_factor: 7
+  - id: SF9
+    overrides:
+      lora_spreading_factor: 9
+  - id: SF12
+    overrides:
+      lora_spreading_factor: 12
+    duration_min: 30   # SF12 takes longer to converge

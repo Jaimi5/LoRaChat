@@ -203,6 +203,7 @@ Per-device keys win.
 | `lora_sync_word`        | `LORA_SYNC_WORD`            | uint    | Network identifier 0..255               |
 | `lora_duty_cycle`       | `LORA_DUTY_CYCLE`           | floatF  | Airtime duty-cycle budget 0.0..1.0      |
 | `lora_manager_id`       | `LORA_MANAGER_ID`           | hex16   | Mesh node ID, written as `0xNNNN`       |
+| `node_active`           | `NODE_ACTIVE`               | uint    | `0` makes the device boot silent (no LoRa stack); `1` is normal. Used by batch experiments for subset activation. |
 | `wifi_ssid`             | `WIFI_SSID`                 | str     | Rendered as C string                    |
 | `wifi_password`         | `WIFI_PASSWORD`             | str     |                                         |
 | `mqtt_server`           | `MQTT_SERVER`               | str     | Broker host/IP                          |
@@ -299,6 +300,201 @@ directory.
 
 Details on internals, schema, and how to add a new parameter: see
 `scripts/testbed/configtool/README.md`.
+
+## Paper-quality experiment batches
+
+For experiment campaigns that need many repetitions of the same condition
+(e.g. five runs each at SF7 / SF9 / SF12), `scripts/testbed/runner/` and
+`scripts/testbed/analysis/` wrap `deploy.sh` with batch orchestration and
+metric extraction. The runner does **not** reimplement SSH or USB
+orchestration — it shells out to `deploy.sh` for every gateway-facing step
+(`push-config`, `upload`, `monitor`, `stop-monitor`, `reset`, `logs`,
+`sync-time`). The value-add is the experiment grammar and the
+multi-run lifecycle.
+
+### Layout
+
+```
+scripts/testbed/
+├── batches/        # paper experiment definitions (YAML)
+├── runner/         # Python orchestration that drives deploy.sh
+├── analysis/       # Python metric extractors (consumes serial logs)
+└── runs/           # gitignored per-run outputs
+    └── <batch>/<YYYYMMDD-HHMMSS>-<cell>-r<NN>/
+        ├── config.yaml      # frozen per-run experiment config
+        ├── lifecycle.json   # phase markers incl. measurement window
+        ├── logs/            # monitor-dev-*.log[.gz] from each node
+        └── *.json           # per-run analysis outputs
+```
+
+### Batch YAML schema
+
+```yaml
+batch: my-batch
+description: One-line summary used in run logs.
+base: ../experiments/example-baseline.yaml   # path relative to batch file
+
+runs: 5                  # repetitions per cell
+duration_min: 30         # measurement window length
+warmup_min: 5            # post-boot settling time before measurement opens
+cooldown_min: 2          # post-measurement settling before stopping monitors
+reset_between_runs: true # hardware-reset every node between repetitions
+upload_between_cells: true  # full reflash at the start of each new cell
+
+cells:
+  - id: SF7              # short label, appears in run_id and output filenames
+    overrides:           # merged into `defaults` of the base YAML
+      lora_spreading_factor: 7
+    # Optional per-cell timing overrides (else inherit from batch defaults):
+    # duration_min: 60
+    # warmup_min: 10
+    # cooldown_min: 2
+    # Optional subset activation: these SHORT_IDs get node_active=0,
+    # everything else in the base YAML gets node_active=1.
+    inactive_devices:
+      - DD58
+      - 14A4
+      - 3428
+```
+
+For each `(cell, repetition)`, the runner materializes a self-contained
+per-run YAML in `runs/<batch>/<runid>/config.yaml` that the existing
+`configtool` can render into change-config scripts.
+
+### Running a batch
+
+```bash
+# Standard run
+python3 scripts/testbed/runner/run_batch.py scripts/testbed/batches/routing.yaml
+
+# Override runs/cell from the CLI
+python3 scripts/testbed/runner/run_batch.py scripts/testbed/batches/routing.yaml --runs 10
+
+# Dry-run: render every per-run YAML without invoking deploy.sh
+python3 scripts/testbed/runner/run_batch.py scripts/testbed/batches/capacity.yaml --dry-run
+
+# Skip clock-skew check (not recommended for paper runs)
+python3 scripts/testbed/runner/run_batch.py scripts/testbed/batches/formation.yaml --skip-clock-check
+
+# Re-run on already-flashed firmware (skip the upload phase at cell starts)
+python3 scripts/testbed/runner/run_batch.py scripts/testbed/batches/full16.yaml --skip-upload
+```
+
+Per-run lifecycle:
+
+1. **clock-check** — calls `deploy.sh sync-time`; rejects the run if the
+   worst gateway clock skew exceeds `--max-skew-ms` (default 50 ms).
+2. **upload** (first run of each cell) **or push-config + reset**
+   (between repetitions in the same cell).
+3. **monitor-start** — `deploy.sh monitor -n <session>`.
+4. **warmup** sleep.
+5. **measurement-start** marker (analysis filters events to this window).
+6. **measurement** sleep (`duration_min`).
+7. **measurement-end** marker.
+8. **cooldown** sleep.
+9. **monitor-stop** — `deploy.sh stop-monitor`.
+10. **collect-logs** — `deploy.sh logs` pulls into `./logs_testbed/<session>/`,
+    then runner moves them into `runs/<batch>/<runid>/logs/`.
+
+All phase boundaries land in `lifecycle.json` so analysis can restrict
+itself to the steady-state measurement window.
+
+### Bundled batches
+
+| File | Cells × Runs | Wall-clock | Purpose |
+|------|--------------|------------|---------|
+| `formation.yaml` | 3 × 5 = 15  | ~5 h  | Cold-start convergence (joinedAt, rtCompleteAt) at SF7/9/12. |
+| `routing.yaml`   | 3 × 5 = 15  | ~9 h  | Steady-state PDR + p50/p95 latency at SF7/9/12. |
+| `capacity.yaml`  | 3 × 5 = 15  | ~9 h  | Density sweep N=4/8/11 within the 11-node main cluster (remote cluster disabled). |
+| `long_link.yaml` | 1 × 1 =  1  | ~24 h | 24-hour observation of the 3428 ↔ 006C long link in isolation. |
+| `full16.yaml`    | 2 × 5 = 10  | ~9.5 h| Headline run with both clusters + long link, at SF9 and SF12. |
+| `energy.yaml`    | 3 × 3 =  9  | ~3 h  | Slot-derived duty cycle / energy model at SF7/9/12. |
+
+### Analysis
+
+Each per-run output directory can be fed to the analysis modules:
+
+```bash
+# Per-run metrics (each writes <metric>.json into the run dir)
+python3 -m analysis.parse_logs   scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 -m analysis.formation    scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 -m analysis.routing      scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 -m analysis.capacity     scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 -m analysis.duty_cycle   scripts/testbed/runs/routing/20260519-100000-SF9-r01
+
+# Aggregate every run of a batch into mean ± 95% CI per cell
+python3 -m analysis.multirun     scripts/testbed/runs/routing/
+# → writes scripts/testbed/runs/routing/aggregated.json
+```
+
+Run all analysis commands from `scripts/testbed/` so the `analysis`
+package resolves correctly.
+
+Headline metrics in `aggregated.json` per cell:
+
+- `pdr` — packet delivery ratio (matched on `(src, dst, seq)` from
+  LoRaMesher's `Sending DATA` / `DATA reached final destination` log lines).
+- `latency_{p50,p95,mean}_ms` — wall-clock subtraction between matched
+  send and deliver events.
+- `convergence_s` — time from earliest join to when every active node has
+  routes to every other expected peer.
+- `offered_pkt_per_min` — DATA-sent rate per active node.
+- `mean_current_mA` — slot-type-integrated current using the `CURRENT_MA`
+  table in `analysis/duty_cycle.py` (calibrate via PPK2).
+
+The regex set in `analysis/parse_logs.py` is intentionally identical to
+the one in `loramesher/log_analyzer.html`, so each run's logs can also be
+dropped into the HTML viewer for visual QA.
+
+### PPK2 energy calibration
+
+For paper-grade energy numbers, replace the placeholder currents in
+`scripts/testbed/analysis/duty_cycle.py`:
+
+```python
+CURRENT_MA = {
+    "TX":              120.0,   # measured at configured TX power
+    "RX":               12.0,
+    "SLEEP":             1.0,
+    "IDLE":              5.0,
+    "DISCOVERY_TX":    120.0,
+    "DISCOVERY_RX":     12.0,
+    "CONTROL_TX":      120.0,
+    "CONTROL_RX":       12.0,
+    "SYNC_BEACON_TX":  120.0,
+    "SYNC_BEACON_RX":   12.0,
+}
+VOLTAGE_V = 3.3
+```
+
+Hardware setup for spot validation on one or two T-BEAM v1.1/v1.2 nodes
+(do not try to PPK2 all 16):
+
+- PPK2 in source mode → JST battery connector at 4.0–4.2 V; the AXP PMIC
+  handles the rest.
+- USB cable with **Vbus cut** keeps UART alive for upload + monitor while
+  preventing backfeed. Verify the cable with a multimeter before use —
+  a non-Vbus-cut cable will defeat the measurement.
+- Run a single cell of `batches/energy.yaml` against the instrumented
+  node; integrate PPK2 current over the measurement window and compare to
+  the run's `duty_cycle.json` energy estimate. Tune `CURRENT_MA` until
+  relative error is < 20 %.
+
+### Adding a new batch
+
+1. Copy an existing `batches/*.yaml` as a starting point.
+2. Set `cells` to your experimental conditions (each cell becomes
+   `runs` independent runs).
+3. If you need a new YAML parameter (e.g. `packet_delay_ms`), add it to
+   `PARAMS` in `scripts/testbed/configtool/schema.py` first.
+4. Validate with a dry-run:
+   ```bash
+   python3 scripts/testbed/runner/run_batch.py batches/<new>.yaml --dry-run
+   ```
+5. Run it:
+   ```bash
+   python3 scripts/testbed/runner/run_batch.py batches/<new>.yaml
+   ```
 
 ## Quick Start
 
@@ -425,6 +621,23 @@ Checks the time offset between your machine and each gateway. Attempts to enable
 ```
 
 If sync fails (no sudo), it suggests commands for your admin to run.
+
+### `reset` — Hard-reset every selected device
+
+Stops any running monitors (to release the serial ports), then pulses
+DTR/RTS on each device via `esptool.py --before default_reset --after
+hard_reset chip_id`. Used between repetitions of the same experiment so
+each run starts from an empty routing table.
+
+```bash
+./deploy.sh reset                    # All devices
+./deploy.sh reset -g GW-1            # Only GW-1
+./deploy.sh reset -d C6E104-E464     # One device
+```
+
+esptool ships with PlatformIO and is reachable via `PIO_PATH`. The chip
+type is auto-detected. Reset failures print per-device but the command
+runs across the remaining devices.
 
 ### `run-remote` — Execute command on all gateways
 

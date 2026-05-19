@@ -1,0 +1,28 @@
+# Routing performance: PDR, end-to-end latency, hop distribution, route
+# stability at three spreading factors.
+#
+# Uses the default traffic generator built into the firmware (PACKET_DELAY in
+# config.h). The plan also envisioned an offered-rate sweep — that requires
+# adding a `packet_delay_ms` Param to configtool/schema.py (currently not in
+# the schema). When that lands, add a second axis to `cells`.
+batch: routing
+description: Steady-state routing PDR + latency across SF7 / SF9 / SF12
+base: ../experiments/example-baseline.yaml
+
+runs: 5
+duration_min: 30
+warmup_min: 15          # allow mesh to converge before measurement window opens
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+
+cells:
+  - id: SF7
+    overrides:
+      lora_spreading_factor: 7
+  - id: SF9
+    overrides:
+      lora_spreading_factor: 9
+  - id: SF12
+    overrides:
+      lora_spreading_factor: 12

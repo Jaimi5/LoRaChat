@@ -1,0 +1,24 @@
+# Headline configuration: full network with both clusters active, including
+# the 3.5 km long link. This is the paper's representative-deployment cell.
+#
+# Active device count is 14 (not 16) — C270 (GW-3) and 7984 (GW-7) are
+# excluded by example-baseline.yaml because they are known-bad in testbed.conf.
+# Update if those return.
+batch: full16
+description: Headline full-network run, both clusters + long link
+base: ../experiments/example-baseline.yaml
+
+runs: 5
+duration_min: 45
+warmup_min: 15        # convergence including the long-link cluster takes longer
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+
+cells:
+  - id: SF9
+    overrides:
+      lora_spreading_factor: 9
+  - id: SF12
+    overrides:
+      lora_spreading_factor: 12
