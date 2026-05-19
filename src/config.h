@@ -312,6 +312,11 @@
 #endif
 #endif
 
+// Testbed: 0 makes initLoRaMesher() return early, so the node boots with no
+// LoRa stack and never joins the mesh. Used by experiment runs that need a
+// silent-node subset (e.g. density sweeps within the 13-node main cluster).
+#define NODE_ACTIVE 1
+
 #define LORA_MANAGER_ID 0x006C
 
 // LoRa RF Parameters

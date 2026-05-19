@@ -96,6 +96,8 @@ PARAMS: dict[str, Param] = {p.yaml_key: p for p in [
     Param("lora_sync_word",        "LORA_SYNC_WORD",        "uint",   "Network identifier 0..255"),
     Param("lora_duty_cycle",       "LORA_DUTY_CYCLE",       "floatF", "Airtime duty-cycle budget 0.0..1.0"),
     Param("lora_manager_id",       "LORA_MANAGER_ID",       "hex16",  "Mesh node ID, 16-bit hex"),
+    # --- Testbed control -----------------------------------------------------
+    Param("node_active",           "NODE_ACTIVE",           "uint",   "0=boot silent (no LoRa stack), 1=normal"),
     # --- WiFi + MQTT credentials ---------------------------------------------
     Param("wifi_ssid",             "WIFI_SSID",             "str",    "WiFi SSID"),
     Param("wifi_password",         "WIFI_PASSWORD",         "str",    "WiFi password"),
