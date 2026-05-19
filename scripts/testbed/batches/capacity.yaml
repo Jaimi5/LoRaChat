@@ -1,0 +1,54 @@
+# Capacity / density: behaviour as the active node set within the main
+# cluster grows from 4 → 8 → 11. The remote cluster (DD58, 14A4, 3428) is
+# disabled for every cell so the 3.5 km long link is taken out of the
+# picture — its instability would confound a density-only analysis.
+#
+# Subsets chosen by gateway diversity so each cell uses devices from
+# multiple gateways (not all on one Pi).
+batch: capacity
+description: Density sweep within the 11-node main cluster (no long link)
+base: ../experiments/example-baseline.yaml
+
+runs: 5
+duration_min: 30
+warmup_min: 5
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+
+cells:
+  - id: N4
+    overrides:
+      lora_spreading_factor: 9
+    inactive_devices:
+      # Keep: 006C (GW-2), CB34 (GW-3), 2A9C (GW-4), B4DC (GW-7)
+      - E464
+      - 77A4
+      - DF10
+      - 7B6C
+      - 1484
+      - 2AD4
+      - DD3C
+      - DD58
+      - 14A4
+      - 3428
+  - id: N8
+    overrides:
+      lora_spreading_factor: 9
+    inactive_devices:
+      # Keep: E464, 77A4 (GW-1), 006C, 7B6C (GW-2), CB34 (GW-3),
+      #       2A9C, 1484 (GW-4), B4DC (GW-7)
+      - DF10
+      - 2AD4
+      - DD3C
+      - DD58
+      - 14A4
+      - 3428
+  - id: N11
+    overrides:
+      lora_spreading_factor: 9
+    inactive_devices:
+      # Whole main cluster active; remote cluster disabled.
+      - DD58
+      - 14A4
+      - 3428

@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""CLI entry: execute a batch of paper experiments end-to-end.
+
+Usage:
+    run_batch.py batches/formation.yaml [--runs N] [--dry-run]
+                                        [--skip-clock-check]
+                                        [--reject-skew-ms 30000]
+                                        [--warn-skew-ms 1000]
+                                        [--skip-upload]
+
+For each cell × repetition, this materializes a per-run experiment YAML,
+calls deploy.sh to push it / upload firmware (first run of each cell only,
+unless --skip-upload) / start monitors, waits warmup→duration→cooldown,
+stops monitors, pulls logs, and stores everything under
+    scripts/testbed/runs/<batch>/<YYYYMMDD-HHMMSS>-<cell>-r<NN>/
+
+Between repetitions of the same cell only a hardware reset is issued
+(via deploy.sh reset), not a full reflash.
+
+Clock skew is measured per gateway before warmup (t0) and again after
+stop-monitor (t1). Each gateway's monitor log timestamps are then
+rewritten in place using the linearly-interpolated offset; originals are
+preserved as `*.raw[.gz]`. The run is aborted only if the worst pre-run
+skew exceeds --reject-skew-ms (default 30s), since anything smaller can
+be corrected post hoc. Offsets between --warn-skew-ms and the reject
+ceiling produce a warning but the run proceeds.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Make the runner package importable when invoked as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from runner.batch import Batch, Cell, load_batch, render_run_yaml
+from runner.clock_check import (
+    SkewReport,
+    list_device_map,
+    measure_offsets,
+)
+from runner.lifecycle import (
+    RunRecorder,
+    collect_logs,
+    deploy_config,
+    mark_measurement_window,
+    start_monitors,
+    stop_monitors,
+    wait_phase,
+)
+from runner.log_collector import move_session_logs
+from runner.log_corrector import correct_logs
+
+
+def _utc_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+
+
+def _samples_to_json(report: SkewReport | None) -> dict | None:
+    if report is None:
+        return None
+    return {
+        "measured_at_ms": report.measured_at_ms,
+        "max_abs_offset_ms": report.max_abs_offset_ms,
+        "samples": [
+            {
+                "gw_id": s.gw_id,
+                "offset_ms": s.offset_ms,
+                "host_epoch_ms": s.host_epoch_ms,
+                "reachable": s.reachable,
+            }
+            for s in report.samples
+        ],
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("batch_yaml", type=Path, help="Path to batch YAML")
+    ap.add_argument("--runs", type=int, default=None, help="Override batch.runs")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Render per-run YAMLs but do not invoke deploy.sh")
+    ap.add_argument("--skip-clock-check", action="store_true",
+                    help="Do not measure clock offsets and do not correct logs")
+    ap.add_argument("--reject-skew-ms", "--max-skew-ms", type=int, default=30000,
+                    dest="reject_skew_ms",
+                    help="Reject a run if pre-run worst skew exceeds this "
+                         "(default 30000 = 30s — corrected silently below this)")
+    ap.add_argument("--warn-skew-ms", type=int, default=1000,
+                    help="Print a warning if pre-run worst skew exceeds this "
+                         "(default 1000)")
+    ap.add_argument("--skip-upload", action="store_true",
+                    help="Do not flash firmware between cells (assume already flashed)")
+    args = ap.parse_args(argv)
+
+    batch_path = args.batch_yaml.resolve()
+    if not batch_path.is_file():
+        print(f"error: batch YAML not found: {batch_path}", file=sys.stderr)
+        return 2
+
+    batch = load_batch(batch_path)
+    if args.runs is not None:
+        batch = batch.__class__(**{**batch.__dict__, "runs": args.runs})
+
+    # Resolve paths relative to scripts/testbed/.
+    testbed_root = Path(__file__).resolve().parents[1]
+    repo_root = testbed_root.parents[1]
+    deploy_sh = testbed_root / "deploy.sh"
+    if not deploy_sh.is_file():
+        print(f"error: deploy.sh not found at {deploy_sh}", file=sys.stderr)
+        return 2
+
+    # Build SHORT_ID → GW_ID map once for the whole batch (only needed if
+    # we'll be correcting logs).
+    short_id_to_gw: dict[str, str] = {}
+    if not args.skip_clock_check:
+        try:
+            short_id_to_gw = list_device_map(deploy_sh, repo_root)
+        except RuntimeError as e:
+            print(f"warning: could not load device map ({e}); log correction disabled")
+
+    # All runs of a batch live under one batch directory.
+    batch_root = testbed_root / "runs" / batch.name
+    batch_root.mkdir(parents=True, exist_ok=True)
+    local_log_dir = (repo_root / "logs_testbed").resolve()
+
+    print(f"=== batch: {batch.name} ({batch.description}) ===")
+    print(f"  base:     {batch.base_yaml}")
+    print(f"  cells:    {len(batch.cells)}")
+    print(f"  runs/cell:{batch.runs}")
+    print(f"  duration: {batch.duration_min} min   warmup: {batch.warmup_min} min   "
+          f"cooldown: {batch.cooldown_min} min")
+    print(f"  output:   {batch_root}")
+
+    total_runs = len(batch.cells) * batch.runs
+    print(f"  total:    {total_runs} runs")
+
+    failures = 0
+    for cell_index, cell in enumerate(batch.cells, 1):
+        for run_index in range(1, batch.runs + 1):
+            run_id = f"{_utc_stamp()}-{cell.id}-r{run_index:02d}"
+            run_dir = batch_root / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            session = f"{batch.name}-{run_id}"
+
+            print(f"\n--- run {cell_index}/{len(batch.cells)} cell={cell.id} "
+                  f"rep={run_index}/{batch.runs} session={session} ---")
+
+            run_yaml = render_run_yaml(batch, cell, run_index, run_dir)
+            print(f"  rendered: {run_yaml}")
+
+            if args.dry_run:
+                continue
+
+            recorder = RunRecorder(run_dir)
+
+            report_t0: SkewReport | None = None
+            if not args.skip_clock_check:
+                p = recorder.begin("clock-check-t0")
+                report_t0 = measure_offsets(deploy_sh, repo_root)
+                worst = report_t0.max_abs_offset_ms
+                recorder.end(
+                    p,
+                    ok=report_t0.ok(args.reject_skew_ms),
+                    max_abs_offset_ms=worst,
+                )
+                if worst > args.reject_skew_ms:
+                    print(f"  SKEW EXCEEDED: {worst}ms > {args.reject_skew_ms}ms "
+                          f"— rejecting run (clock cannot be corrected at this magnitude)")
+                    failures += 1
+                    continue
+                if worst > args.warn_skew_ms:
+                    print(f"  warning: worst pre-run skew is {worst}ms "
+                          f"(> {args.warn_skew_ms}ms) — will be corrected post-run")
+
+            first_of_cell = (run_index == 1)
+            do_upload = first_of_cell and not args.skip_upload
+            do_reset_only = batch.reset_between_runs and not do_upload
+
+            if not deploy_config(
+                deploy_sh, repo_root, run_yaml, session,
+                do_upload=do_upload,
+                do_reset_only=do_reset_only,
+                recorder=recorder,
+            ):
+                failures += 1
+                continue
+
+            if not start_monitors(deploy_sh, repo_root, session, recorder):
+                failures += 1
+                continue
+
+            warmup = (cell.warmup_min if cell.warmup_min is not None else batch.warmup_min) * 60
+            duration = (cell.duration_min if cell.duration_min is not None else batch.duration_min) * 60
+            cooldown = (cell.cooldown_min if cell.cooldown_min is not None else batch.cooldown_min) * 60
+
+            wait_phase("warmup", warmup, recorder)
+            mark_measurement_window(recorder, "measurement-start",
+                                    cell=cell.id, run=run_index)
+            wait_phase("measurement", duration, recorder)
+            mark_measurement_window(recorder, "measurement-end",
+                                    cell=cell.id, run=run_index)
+            wait_phase("cooldown", cooldown, recorder)
+
+            stop_monitors(deploy_sh, repo_root, recorder)
+
+            # Second clock sample, taken as close as possible to the last log
+            # line each gateway wrote. Failures here just mean we fall back to
+            # a flat shift via t0 — don't abort the run.
+            report_t1: SkewReport | None = None
+            if not args.skip_clock_check:
+                p = recorder.begin("clock-check-t1")
+                try:
+                    report_t1 = measure_offsets(deploy_sh, repo_root)
+                    recorder.end(
+                        p,
+                        ok=True,
+                        max_abs_offset_ms=report_t1.max_abs_offset_ms,
+                    )
+                except Exception as e:
+                    recorder.end(p, ok=False, error=str(e))
+                    print(f"  warning: t1 clock-check failed ({e}); will use flat shift")
+
+            collect_logs(deploy_sh, repo_root, session, recorder)
+
+            logs_dir = run_dir / "logs"
+            moved = move_session_logs(local_log_dir, session, logs_dir)
+            print(f"  moved {moved} log file(s) into {logs_dir}")
+
+            if report_t0 is not None and short_id_to_gw:
+                p = recorder.begin("log-correction")
+                summary = correct_logs(logs_dir, report_t0, report_t1, short_id_to_gw)
+                recorder.end(
+                    p,
+                    ok=True,
+                    corrected=summary.corrected_count,
+                    skipped=summary.skipped_count,
+                )
+                print(f"  corrected {summary.corrected_count} log file(s), "
+                      f"skipped {summary.skipped_count}")
+
+                offsets_path = run_dir / "clock_offsets.json"
+                offsets_path.write_text(json.dumps({
+                    "reject_skew_ms": args.reject_skew_ms,
+                    "warn_skew_ms": args.warn_skew_ms,
+                    "device_map": short_id_to_gw,
+                    "t0": _samples_to_json(report_t0),
+                    "t1": _samples_to_json(report_t1),
+                    "correction": summary.to_dict(),
+                }, indent=2))
+
+    print(f"\n=== batch complete: {total_runs - failures}/{total_runs} runs OK ===")
+    return 0 if failures == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

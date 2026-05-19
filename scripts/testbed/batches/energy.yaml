@@ -1,0 +1,28 @@
+# Energy: model-derived per-node duty cycle and current draw integrated from
+# `Slot N transition` events. Paired with PPK2 spot validation on one or two
+# T-BEAM v1.1/v1.2 nodes (PPK2 source mode via JST battery connector, USB
+# Vbus-cut cable for upload + monitor — see plan's verification section).
+#
+# Shorter duration than routing/capacity because the model is computed from
+# slot type integrals, not per-packet stats; longer adds no signal.
+batch: energy
+description: Slot-derived duty cycle / energy across SF7 / SF9 / SF12
+base: ../experiments/example-baseline.yaml
+
+runs: 3
+duration_min: 15
+warmup_min: 5
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+
+cells:
+  - id: SF7
+    overrides:
+      lora_spreading_factor: 7
+  - id: SF9
+    overrides:
+      lora_spreading_factor: 9
+  - id: SF12
+    overrides:
+      lora_spreading_factor: 12

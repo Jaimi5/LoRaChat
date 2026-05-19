@@ -1,0 +1,5 @@
+# Per-run experiment outputs are not committed; .gitkeep preserves the
+# directory itself.
+*
+!.gitignore
+!.gitkeep

@@ -1,0 +1,36 @@
+# Long-link characterization: 24-hour run with only 006C (main cluster) and
+# 3428 (remote cluster) active. Captures PDR, RSSI, SNR, and route stability
+# across the ~3.5 km link in isolation, free of multi-hop confounds.
+#
+# Single repetition: this is a long observational study, not a comparison.
+# Reviewers care about diurnal patterns and outages, both of which need a
+# continuous trace.
+batch: long_link
+description: 24-hour observation of the 3428 ↔ 006C long link in isolation
+base: ../experiments/example-baseline.yaml
+
+runs: 1
+duration_min: 1440   # 24 h
+warmup_min: 15
+cooldown_min: 5
+reset_between_runs: true
+upload_between_cells: true
+
+cells:
+  - id: long_link
+    overrides:
+      lora_spreading_factor: 12   # SF12 for max link budget on the long link
+    inactive_devices:
+      # Only 006C and 3428 active.
+      - E464
+      - 77A4
+      - DF10
+      - 7B6C
+      - CB34
+      - 2A9C
+      - 1484
+      - 2AD4
+      - B4DC
+      - DD3C
+      - DD58
+      - 14A4
