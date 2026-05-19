@@ -122,8 +122,13 @@ void initWiFi() {
 LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
 
 void initLoRaMesher() {
+#if defined(NODE_ACTIVE) && (NODE_ACTIVE == 0)
+    ESP_LOGI(TAG, "NODE_ACTIVE=0: LoRa disabled, skipping mesh init");
+    return;
+#else
     // Init LoRaMesher
     loraMeshService.initLoraMesherService();
+#endif
 }
 
 #pragma endregion
