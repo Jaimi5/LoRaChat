@@ -91,6 +91,15 @@ def deploy_config(
         cheap and harmless).
     """
     if do_upload:
+        # Stop any leftover monitors before pio grabs the serial ports.
+        # `deploy.sh upload` (unlike `deploy.sh all`) does NOT stop monitors
+        # itself, so a stale monitor from a previous session would hold the
+        # port and make `pio run -t upload` fail. Idempotent — returns 0
+        # even when no monitors are running.
+        p = recorder.begin("pre-upload-stop-monitor")
+        rc = _run(["bash", str(deploy_sh), "stop-monitor"], cwd=repo_root)
+        recorder.end(p, ok=(rc == 0), rc=rc)
+
         p = recorder.begin("upload", yaml=str(run_yaml))
         rc = _run(
             ["bash", str(deploy_sh), "upload", "-n", session, "-x", str(run_yaml)],
