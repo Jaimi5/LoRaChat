@@ -78,9 +78,32 @@ def _samples_to_json(report: SkewReport | None) -> dict | None:
     }
 
 
+def _resolve_batch_paths(inputs: list[Path]) -> list[Path] | None:
+    """Expand each input — a file or a directory of `*.yaml` — into a flat
+    list of batch YAMLs. Returns None if any path is invalid or any directory
+    contains no YAMLs."""
+    out: list[Path] = []
+    for p in inputs:
+        p = p.resolve()
+        if p.is_dir():
+            yamls = sorted(p.glob("*.yaml"))
+            if not yamls:
+                print(f"error: no *.yaml in directory {p}", file=sys.stderr)
+                return None
+            out.extend(yamls)
+        elif p.is_file():
+            out.append(p)
+        else:
+            print(f"error: batch path not found: {p}", file=sys.stderr)
+            return None
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("batch_yaml", type=Path, help="Path to batch YAML")
+    ap.add_argument("batch_yaml", type=Path, nargs="+",
+                    help="One or more batch YAML files, or a directory of them "
+                         "(e.g. `batches/` to run every batch sequentially).")
     ap.add_argument("--runs", type=int, default=None, help="Override batch.runs")
     ap.add_argument("--dry-run", action="store_true",
                     help="Render per-run YAMLs but do not invoke deploy.sh")
@@ -97,14 +120,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="Do not flash firmware between cells (assume already flashed)")
     args = ap.parse_args(argv)
 
-    batch_path = args.batch_yaml.resolve()
-    if not batch_path.is_file():
-        print(f"error: batch YAML not found: {batch_path}", file=sys.stderr)
+    batch_paths = _resolve_batch_paths(args.batch_yaml)
+    if batch_paths is None:
         return 2
-
-    batch = load_batch(batch_path)
-    if args.runs is not None:
-        batch = batch.__class__(**{**batch.__dict__, "runs": args.runs})
 
     # Resolve paths relative to scripts/testbed/.
     testbed_root = Path(__file__).resolve().parents[1]
@@ -114,8 +132,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: deploy.sh not found at {deploy_sh}", file=sys.stderr)
         return 2
 
-    # Build SHORT_ID → GW_ID map once for the whole batch (only needed if
-    # we'll be correcting logs).
+    # Build SHORT_ID → GW_ID map once for the whole run (same testbed across
+    # batches). Only needed if we'll be correcting logs.
     short_id_to_gw: dict[str, str] = {}
     if not args.skip_clock_check:
         try:
@@ -123,10 +141,49 @@ def main(argv: list[str] | None = None) -> int:
         except RuntimeError as e:
             print(f"warning: could not load device map ({e}); log correction disabled")
 
-    # All runs of a batch live under one batch directory.
+    local_log_dir = (repo_root / "logs_testbed").resolve()
+
+    if len(batch_paths) > 1:
+        print(f"=== running {len(batch_paths)} batch(es) in order: "
+              f"{', '.join(p.stem for p in batch_paths)} ===\n")
+
+    per_batch: list[tuple[str, int, int]] = []   # (name, total, failures)
+    for batch_path in batch_paths:
+        batch = load_batch(batch_path)
+        if args.runs is not None:
+            batch = batch.__class__(**{**batch.__dict__, "runs": args.runs})
+
+        total, failures = _run_one_batch(
+            batch, args, testbed_root, repo_root, deploy_sh,
+            short_id_to_gw, local_log_dir,
+        )
+        per_batch.append((batch.name, total, failures))
+
+    grand_total = sum(t for _, t, _ in per_batch)
+    grand_failures = sum(f for _, _, f in per_batch)
+
+    if len(per_batch) > 1:
+        print("\n=== overall ===")
+        for name, t, f in per_batch:
+            print(f"  {name:20s} {t - f}/{t} runs OK")
+        print(f"  {'TOTAL':20s} {grand_total - grand_failures}/{grand_total} runs OK")
+    return 0 if grand_failures == 0 else 1
+
+
+def _run_one_batch(
+    batch: Batch,
+    args: argparse.Namespace,
+    testbed_root: Path,
+    repo_root: Path,
+    deploy_sh: Path,
+    short_id_to_gw: dict[str, str],
+    local_log_dir: Path,
+) -> tuple[int, int]:
+    """Execute every (cell × repetition) run of one batch. Returns
+    (total_runs, failures). Common setup (paths, device map) is the caller's
+    responsibility so it can be shared across batches."""
     batch_root = testbed_root / "runs" / batch.name
     batch_root.mkdir(parents=True, exist_ok=True)
-    local_log_dir = (repo_root / "logs_testbed").resolve()
 
     print(f"=== batch: {batch.name} ({batch.description}) ===")
     print(f"  base:     {batch.base_yaml}")
@@ -140,15 +197,18 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  total:    {total_runs} runs")
 
     failures = 0
+    start_run = 0 if batch.warmup_run else 1
     for cell_index, cell in enumerate(batch.cells, 1):
-        for run_index in range(1, batch.runs + 1):
+        for run_index in range(start_run, batch.runs + 1):
+            is_warmup = (run_index == 0)
             run_id = f"{_utc_stamp()}-{cell.id}-r{run_index:02d}"
-            run_dir = batch_root / run_id
-            run_dir.mkdir(parents=True, exist_ok=True)
             session = f"{batch.name}-{run_id}"
+            run_dir = batch_root / session
+            run_dir.mkdir(parents=True, exist_ok=True)
 
+            rep_label = "warmup" if is_warmup else f"{run_index}/{batch.runs}"
             print(f"\n--- run {cell_index}/{len(batch.cells)} cell={cell.id} "
-                  f"rep={run_index}/{batch.runs} session={session} ---")
+                  f"rep={rep_label} session={session} ---")
 
             run_yaml = render_run_yaml(batch, cell, run_index, run_dir)
             print(f"  rendered: {run_yaml}")
@@ -159,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             recorder = RunRecorder(run_dir)
 
             report_t0: SkewReport | None = None
-            if not args.skip_clock_check:
+            if not is_warmup and not args.skip_clock_check:
                 p = recorder.begin("clock-check-t0")
                 report_t0 = measure_offsets(deploy_sh, repo_root)
                 worst = report_t0.max_abs_offset_ms
@@ -177,9 +237,14 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  warning: worst pre-run skew is {worst}ms "
                           f"(> {args.warn_skew_ms}ms) — will be corrected post-run")
 
-            first_of_cell = (run_index == 1)
-            do_upload = first_of_cell and not args.skip_upload
-            do_reset_only = batch.reset_between_runs and not do_upload
+            if is_warmup:
+                do_upload, do_reset_only = True, False
+            elif batch.warmup_run and run_index == 1:
+                do_upload, do_reset_only = False, True
+            else:
+                first_of_cell = (run_index == 1)
+                do_upload = first_of_cell and not args.skip_upload
+                do_reset_only = batch.reset_between_runs and not do_upload
 
             if not deploy_config(
                 deploy_sh, repo_root, run_yaml, session,
@@ -192,6 +257,11 @@ def main(argv: list[str] | None = None) -> int:
 
             if not start_monitors(deploy_sh, repo_root, session, recorder):
                 failures += 1
+                continue
+
+            if is_warmup:
+                wait_phase("boot-verify", batch.boot_verify_sec, recorder)
+                stop_monitors(deploy_sh, repo_root, recorder)
                 continue
 
             warmup = (cell.warmup_min if cell.warmup_min is not None else batch.warmup_min) * 60
@@ -254,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
                 }, indent=2))
 
     print(f"\n=== batch complete: {total_runs - failures}/{total_runs} runs OK ===")
-    return 0 if failures == 0 else 1
+    return total_runs, failures
 
 
 if __name__ == "__main__":
