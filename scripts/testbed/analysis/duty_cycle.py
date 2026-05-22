@@ -16,7 +16,16 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from .parse_logs import Event, parse_run
+# Allow direct script invocation from any cwd:
+#   python3 scripts/testbed/analysis/duty_cycle.py <run_dir>
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    _parent = str(Path(__file__).resolve().parent.parent)
+    if _parent not in sys.path:
+        sys.path.insert(0, _parent)
+
+from analysis.parse_logs import Event, parse_run
 
 
 # Rough datasheet currents for an ESP32 + SX1276 module at SF9, 17 dBm TX,

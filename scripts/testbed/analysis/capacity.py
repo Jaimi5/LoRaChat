@@ -9,8 +9,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .parse_logs import parse_run
-from .routing import compute as compute_routing
+# Allow direct script invocation from any cwd:
+#   python3 scripts/testbed/analysis/capacity.py <run_dir>
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    _parent = str(Path(__file__).resolve().parent.parent)
+    if _parent not in sys.path:
+        sys.path.insert(0, _parent)
+
+from analysis.parse_logs import parse_run
+from analysis.routing import compute as compute_routing
 
 
 def _airtime_ms(sf: int, bw_khz: float, payload_bytes: int,

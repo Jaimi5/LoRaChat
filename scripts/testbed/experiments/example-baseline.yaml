@@ -1,33 +1,81 @@
 experiment: example-baseline
 description: Template — copy to current.yaml and fill in credentials before use.
 defaults:
-  lora_frequency: 869.900
-  lora_spreading_factor: 9
   lora_bandwidth: 125.0
   lora_coding_rate: 7
-  lora_power: 17
+  lora_frequency: 869.525
+  lora_manager_id: 0x006C
+  lora_spreading_factor: 9
   lora_sync_word: 20
-  lora_duty_cycle: 1.0
-  wifi_ssid: WIFI_SSID_HERE
-  wifi_password: WIFI_PASSWORD_HERE
-  mqtt_server: MQTT_SERVER_HERE
+  lora_duty_cycle: 0.10
+  mqtt_password: public
   mqtt_port: 1883
-  mqtt_username: MQTT_USERNAME_HERE
-  mqtt_password: MQTT_PASSWORD_HERE
-  mqtt_topic_sub: from-server/
+  mqtt_server: 192.168.192.1
   mqtt_topic_out: to-server/
+  mqtt_topic_sub: from-server/
+  mqtt_username: admin
 devices:
-  E464: { lora_manager_id: 0xE464 }
-  77A4: { lora_manager_id: 0x77A4 }
-  DF10: { lora_manager_id: 0xDF10 }
-  006C: { lora_manager_id: 0x006C }
-  7B6C: { lora_manager_id: 0x7B6C }
-  CB34: { lora_manager_id: 0xCB34 }
-  2A9C: { lora_manager_id: 0x2A9C }
-  1484: { lora_manager_id: 0x1484 }
-  2AD4: { lora_manager_id: 0x2AD4 }
-  DD58: { lora_manager_id: 0xDD58 }
-  14A4: { lora_manager_id: 0x14A4 }
-  3428: { lora_manager_id: 0x3428 }
-  B4DC: { lora_manager_id: 0xB4DC }
-  DD3C: { lora_manager_id: 0xDD3C }
+  006C:
+    lora_power: 14
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  '1484':
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  14A4:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  2A9C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  2AD4:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  '3428':
+    lora_power: 14
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  77A4:
+    lora_power: 2
+    wifi_password: lora1234
+    wifi_ssid: loramesher
+  7B6C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  B4DC:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  CB34:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DD3C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DD58:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DF10:
+    lora_power: 2
+    wifi_password: lora1234
+    wifi_ssid: loramesher
+  E464:
+    lora_power: 2
+    wifi_password: lora1234
+    wifi_ssid: loramesher
+  7984:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  C270:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
