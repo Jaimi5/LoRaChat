@@ -9,20 +9,21 @@ description: Cold-start convergence across SF7 / SF9 / SF12 (no subset, all devi
 base: ../experiments/example-baseline.yaml
 
 runs: 5
-duration_min: 20
+duration_min: 15
 warmup_min: 0      # cold start — convergence IS what we measure, no warmup
 cooldown_min: 1
 reset_between_runs: true
 upload_between_cells: true
+warmup_run: true        # r00 = flash + boot-verify, then synchronized reset → r01
 
 cells:
-  - id: SF7
-    overrides:
-      lora_spreading_factor: 7
-  - id: SF9
-    overrides:
-      lora_spreading_factor: 9
+  # - id: SF7
+  #   overrides:
+  #     lora_spreading_factor: 7
+  # - id: SF9
+  #   overrides:
+  #     lora_spreading_factor: 9
   - id: SF12
     overrides:
       lora_spreading_factor: 12
-    duration_min: 30   # SF12 takes longer to converge
+    duration_min: 60   # SF12 takes longer to converge

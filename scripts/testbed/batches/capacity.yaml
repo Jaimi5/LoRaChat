@@ -15,6 +15,7 @@ warmup_min: 5
 cooldown_min: 2
 reset_between_runs: true
 upload_between_cells: true
+warmup_run: true        # r00 = flash + boot-verify, then synchronized reset → r01
 
 cells:
   - id: N4
