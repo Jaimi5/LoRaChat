@@ -7,6 +7,12 @@ Usage:
                                         [--reject-skew-ms 30000]
                                         [--warn-skew-ms 1000]
                                         [--skip-upload]
+                                        [--skip-upgrade]
+
+Before any batch runs, the runner invokes `deploy.sh upgrade` once to git-pull
+and `pio pkg update` every gateway, so the firmware compiled and flashed by
+the per-cell upload step reflects the latest checked-in code. Pass
+`--skip-upgrade` to bypass (e.g. resuming an interrupted batch).
 
 For each cell × repetition, this materializes a per-run experiment YAML,
 calls deploy.sh to push it / upload firmware (first run of each cell only,
@@ -30,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -118,6 +125,11 @@ def main(argv: list[str] | None = None) -> int:
                          "(default 1000)")
     ap.add_argument("--skip-upload", action="store_true",
                     help="Do not flash firmware between cells (assume already flashed)")
+    ap.add_argument("--skip-upgrade", action="store_true",
+                    help="Do not run `deploy.sh upgrade` (git pull + pio pkg update) "
+                         "before the batch. By default the runner upgrades gateways "
+                         "once per invocation so flashed firmware reflects the "
+                         "latest checked-in code.")
     args = ap.parse_args(argv)
 
     batch_paths = _resolve_batch_paths(args.batch_yaml)
@@ -131,6 +143,21 @@ def main(argv: list[str] | None = None) -> int:
     if not deploy_sh.is_file():
         print(f"error: deploy.sh not found at {deploy_sh}", file=sys.stderr)
         return 2
+
+    # Upgrade every gateway once per invocation, before any batch runs. Keeps
+    # `cmd_upload` (which compiles from the gateway's local checkout via
+    # `pio run --target upload`) honest — otherwise stale code on a gateway
+    # would silently end up on the devices. Strict: any non-zero from
+    # cmd_upgrade aborts, since a partially-upgraded fleet would produce
+    # mixed-version data within the same batch.
+    if not args.skip_upgrade and not args.dry_run:
+        print("=== Upgrading gateways (git pull + pio pkg update) ===", flush=True)
+        rc = subprocess.call(["bash", str(deploy_sh), "upgrade"], cwd=repo_root)
+        if rc != 0:
+            print(f"error: deploy.sh upgrade failed (rc={rc}); aborting batch run. "
+                  f"Re-run with --skip-upgrade to bypass after fixing the gateway(s).",
+                  file=sys.stderr)
+            return rc
 
     # Build SHORT_ID → GW_ID map once for the whole run (same testbed across
     # batches). Only needed if we'll be correcting logs.
