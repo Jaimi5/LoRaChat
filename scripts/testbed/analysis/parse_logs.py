@@ -90,9 +90,9 @@ class Event:
 
 
 def _parse_ts(s: str) -> float:
-    # gw-monitor.sh writes naive local time. Treat as UTC for ordering;
-    # cross-node latency only matters relatively because sync-time enforces
-    # bounded skew across gateways.
+    # gw-monitor.sh writes naive local time. We parse it as UTC here and then
+    # subtract a detected local-to-UTC offset in `parse_run`; that lets event
+    # timestamps compare correctly against the UTC window from lifecycle.json.
     dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
     return dt.timestamp()
 
@@ -200,6 +200,64 @@ def _iso_to_epoch(iso: str) -> float:
     return datetime.fromisoformat(iso).timestamp()
 
 
+def detect_local_offset(run_dir: Path) -> float:
+    """Recover the gateway-local → UTC offset in seconds.
+
+    gw-monitor.sh prefixes every log line with naive local time, while
+    lifecycle.json records UTC. We anchor on `monitor-start.start` (true UTC,
+    just before the wrapper begins emitting timestamps) and compare it to the
+    earliest log-line timestamp parsed as if it were UTC. The difference,
+    rounded to 15 min, is the local offset. Returns 0.0 when nothing usable
+    is found, so callers degrade to the pre-fix behavior.
+    """
+    lc = run_dir / "lifecycle.json"
+    if not lc.is_file():
+        return 0.0
+    try:
+        phases = json.loads(lc.read_text())
+    except (OSError, json.JSONDecodeError):
+        return 0.0
+
+    monitor_start: float | None = None
+    for p in phases:
+        if p.get("name") == "monitor-start" and p.get("start"):
+            monitor_start = _iso_to_epoch(p["start"])
+            break
+    if monitor_start is None:
+        return 0.0
+
+    logs_dir = run_dir / "logs"
+    if not logs_dir.is_dir():
+        return 0.0
+
+    earliest: float | None = None
+    for path in sorted(logs_dir.glob("monitor-dev-*.log*")):
+        if not _SHORT_ID_RE.search(path.name):
+            continue
+        try:
+            with _open_log(path) as fh:
+                for line in fh:
+                    m = _TS_RE.match(line)
+                    if not m:
+                        continue
+                    ts = _parse_ts(m.group(1))
+                    if earliest is None or ts < earliest:
+                        earliest = ts
+                    break
+        except OSError:
+            continue
+    if earliest is None:
+        return 0.0
+
+    # Round to 15-minute bins — covers every real-world TZ including the
+    # half/quarter-hour ones (India, Nepal, Chatham) and absorbs sub-second
+    # skew between gateway and host clocks.
+    offset = round((earliest - monitor_start) / 900.0) * 900.0
+    if abs(offset) > 14 * 3600:
+        return 0.0  # nonsense — likely a busted clock, ignore
+    return offset
+
+
 def parse_run(run_dir: Path,
               window: tuple[float | None, float | None] | None = None,
               ) -> list[Event]:
@@ -212,6 +270,8 @@ def parse_run(run_dir: Path,
         window = load_measurement_window(run_dir)
     start, end = window
 
+    local_offset = detect_local_offset(run_dir)
+
     logs_dir = run_dir / "logs"
     events: list[Event] = []
     for path in sorted(logs_dir.glob("monitor-dev-*.log*")):
@@ -219,6 +279,8 @@ def parse_run(run_dir: Path,
         if not node:
             continue
         for ev in iter_log_events(path, node):
+            if local_offset:
+                ev.ts -= local_offset
             if start is not None and ev.ts < start:
                 continue
             if end is not None and ev.ts > end:

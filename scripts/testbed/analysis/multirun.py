@@ -22,13 +22,24 @@ import statistics
 from collections import defaultdict
 from pathlib import Path
 
-from .capacity import analyse as analyse_capacity
-from .duty_cycle import analyse as analyse_duty
-from .formation import analyse as analyse_formation
-from .routing import analyse as analyse_routing
+# Allow direct script invocation from any cwd:
+#   python3 scripts/testbed/analysis/multirun.py <batch_dir>
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    _parent = str(Path(__file__).resolve().parent.parent)
+    if _parent not in sys.path:
+        sys.path.insert(0, _parent)
+
+from analysis.capacity import analyse as analyse_capacity
+from analysis.duty_cycle import analyse as analyse_duty
+from analysis.formation import analyse as analyse_formation
+from analysis.routing import analyse as analyse_routing
 
 
-_RUNID_CELL_RE = re.compile(r"^\d{8}-\d{6}-(?P<cell>.+)-r(?P<rep>\d+)$")
+_RUNID_CELL_RE = re.compile(
+    r"^(?:[A-Za-z][\w-]*?-)?\d{8}-\d{6}-(?P<cell>.+)-r(?P<rep>\d+)$"
+)
 
 
 def _cell_of(run_dir: Path) -> tuple[str, int] | None:
@@ -38,14 +49,33 @@ def _cell_of(run_dir: Path) -> tuple[str, int] | None:
     return m.group("cell"), int(m.group("rep"))
 
 
+# Two-sided 95% critical values of Student's t by degrees of freedom.
+# Source: standard t-tables. Beyond df=30 the difference from z=1.960 is <2%,
+# so we fall back to the normal approximation.
+_T_975 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
+    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+}
+
+
+def _t_critical_975(df: int) -> float:
+    if df <= 0:
+        raise ValueError("df must be >= 1")
+    return _T_975.get(df, 1.960)
+
+
 def _ci95(values: list[float]) -> tuple[float, float] | None:
-    """Half-width 95% CI of the mean using Student's t approximation (z=1.96)."""
+    """Two-sided 95% CI of the mean using Student's t with df = n-1."""
     xs = [v for v in values if v is not None]
     if len(xs) < 2:
         return None
     mean = statistics.fmean(xs)
     sd = statistics.stdev(xs)
-    half = 1.96 * sd / math.sqrt(len(xs))
+    half = _t_critical_975(len(xs) - 1) * sd / math.sqrt(len(xs))
     return (mean - half, mean + half)
 
 
@@ -93,9 +123,11 @@ def _per_run_summary(run_dir: Path) -> dict | None:
     }
 
 
-def aggregate(batch_dir: Path) -> dict:
+def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
     per_run: dict[Path, dict] = {}
     per_cell: dict[str, list[Path]] = defaultdict(list)
+    per_cell_reps: dict[str, list[tuple[int, Path]]] = defaultdict(list)
+    warmup_by_cell: dict[str, list[str]] = defaultdict(list)
 
     for run_dir in sorted(batch_dir.iterdir()):
         if not run_dir.is_dir():
@@ -103,8 +135,19 @@ def aggregate(batch_dir: Path) -> dict:
         cell_rep = _cell_of(run_dir)
         if cell_rep is None:
             continue
-        cell, _rep = cell_rep
-        per_cell[cell].append(run_dir)
+        cell, rep = cell_rep
+        if rep == 0:
+            warmup_by_cell[cell].append(run_dir.name)
+            continue
+        per_cell_reps[cell].append((rep, run_dir))
+
+    dropped_by_cell: dict[str, list[str]] = {}
+    for cell, rep_dirs in per_cell_reps.items():
+        rep_dirs.sort(key=lambda x: x[0])
+        dropped = rep_dirs[:drop_first] if drop_first > 0 else []
+        kept = rep_dirs[drop_first:] if drop_first > 0 else rep_dirs
+        dropped_by_cell[cell] = [d.name for _, d in dropped]
+        per_cell[cell] = [d for _, d in kept]
 
     rejected: list[str] = []
     for cell, dirs in per_cell.items():
@@ -119,12 +162,17 @@ def aggregate(batch_dir: Path) -> dict:
     for cell, dirs in per_cell.items():
         included = [per_run[d] for d in dirs if d in per_run]
         if not included:
-            cells[cell] = {"n_runs": 0, "n_rejected": len(dirs)}
+            cells[cell] = {
+                "n_runs": 0,
+                "n_rejected": len(dirs),
+                "dropped_reps": dropped_by_cell.get(cell, []),
+            }
             continue
 
         cells[cell] = {
             "n_runs": len(included),
             "n_rejected": len(dirs) - len(included),
+            "dropped_reps": dropped_by_cell.get(cell, []),
             "pdr": _agg([r["routing"]["totals"]["pdr"] for r in included]),
             "latency_p50_ms": _agg(
                 [r["routing"]["latency_ms_overall"]["p50"] for r in included]),
@@ -142,8 +190,10 @@ def aggregate(batch_dir: Path) -> dict:
 
     return {
         "batch_dir": str(batch_dir),
+        "drop_first": drop_first,
         "cells": cells,
         "rejected_runs": rejected,
+        "warmup_runs": dict(warmup_by_cell),
     }
 
 
@@ -153,8 +203,10 @@ def main() -> int:
                     help="e.g. scripts/testbed/runs/formation")
     ap.add_argument("-o", "--output", type=Path,
                     help="Path to write aggregated.json (default: <batch_dir>/aggregated.json)")
+    ap.add_argument("--drop-first", type=int, default=0, metavar="N",
+                    help="Drop the first N repetitions (sorted by rep number) of each cell before aggregating")
     args = ap.parse_args()
-    result = aggregate(args.batch_dir)
+    result = aggregate(args.batch_dir, drop_first=args.drop_first)
     out = args.output or (args.batch_dir / "aggregated.json")
     out.write_text(json.dumps(result, indent=2, sort_keys=True, default=list))
     print(f"wrote {out}")

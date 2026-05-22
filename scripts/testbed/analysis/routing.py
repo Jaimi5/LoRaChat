@@ -1,8 +1,14 @@
 """Routing performance: PDR, end-to-end latency, hop distribution, route stability.
 
-Match key for a flow: (src, dst, seq). PDR is computed by matching every
-`data_sent` event against the first subsequent `data_delivered` event with
-the same key. Latency = delivered.ts − sent.ts.
+Match key for a flow: (src, dst, seq). Because the firmware's `seq` is a
+per-node uint8_t shared across all destinations, the same (src,dst,seq) can
+recur on long runs (every ~256 packets to that destination). To stay correct
+across wraps, we process events in chronological order and match each
+`data_delivered` to the FIFO-oldest unmatched `data_sent` with the same key.
+Sends still queued at end-of-run are losses; deliveries that find an empty
+queue are reported as `orphan_deliveries` and do not affect PDR.
+
+Latency = delivered.ts − send.ts of the matched pair.
 
 Route stability per (src, dst): count via-hop changes in successive
 `data_sent` events (or RTENTRY snapshots for non-source-local view).
@@ -13,10 +19,19 @@ from __future__ import annotations
 import json
 import math
 import statistics
-from collections import defaultdict
+from collections import defaultdict, deque
 from pathlib import Path
 
-from .parse_logs import Event, parse_run
+# Allow direct script invocation from any cwd:
+#   python3 scripts/testbed/analysis/routing.py <run_dir>
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    _parent = str(Path(__file__).resolve().parent.parent)
+    if _parent not in sys.path:
+        sys.path.insert(0, _parent)
+
+from analysis.parse_logs import Event, parse_run
 
 
 def _flow_key(src: str, dst: str, seq: int) -> tuple[str, str, int]:
@@ -39,11 +54,18 @@ def _percentile(values: list[float], pct: float) -> float | None:
 
 
 def compute(events: list[Event]) -> dict:
-    sent: dict[tuple[str, str, int], Event] = {}
-    delivered: dict[tuple[str, str, int], Event] = {}
-    ttl_expired: set[tuple[str, str, int]] = set()
-    no_route: set[tuple[str, str, int]] = set()
+    # FIFO queue of pending sends per (src, dst, seq). Each entry is the
+    # data_sent Event. A delivery pops the oldest unmatched send with the
+    # same key — robust to per-node seq wrap on long runs.
+    pending: dict[tuple[str, str, int], deque[Event]] = defaultdict(deque)
+    ttl_expired_count: int = 0
+    no_route_count: int = 0
+    orphan_deliveries: int = 0
 
+    # Per-flow buckets, accumulated as events are matched (in time order).
+    per_flow: dict[str, dict] = defaultdict(lambda: {"sent": 0, "delivered": 0,
+                                                     "lats_ms": []})
+    latencies: list[float] = []
     via_per_flow: dict[tuple[str, str], list[str]] = defaultdict(list)
     pkt_rx_rssi: list[float] = []
     pkt_rx_snr: list[float] = []
@@ -51,39 +73,37 @@ def compute(events: list[Event]) -> dict:
     for ev in events:
         if ev.kind == "data_sent":
             f = ev.fields
-            key = _flow_key(ev.node, f["dst"], f["seq"])
-            # Earliest send wins (a node only sends once per (dst, seq)).
-            sent.setdefault(key, ev)
-            via_per_flow[(ev.node, f["dst"].upper())].append(f["via"].upper())
+            dst = f["dst"]
+            key = _flow_key(ev.node, dst, f["seq"])
+            pending[key].append(ev)
+            flow_id = f"{ev.node.upper()}->{dst.upper()}"
+            per_flow[flow_id]["sent"] += 1
+            via_per_flow[(ev.node, dst.upper())].append(f["via"].upper())
         elif ev.kind == "data_delivered":
             f = ev.fields
-            key = _flow_key(f["src"], ev.node, f["seq"])
-            delivered.setdefault(key, ev)
+            src = f["src"]
+            key = _flow_key(src, ev.node, f["seq"])
+            queue = pending.get(key)
+            if not queue:
+                # Delivery with no outstanding send — usually means the send
+                # log line was lost/never seen. Don't credit PDR.
+                orphan_deliveries += 1
+                continue
+            sent_ev = queue.popleft()
+            if not queue:
+                del pending[key]
+            flow_id = f"{src.upper()}->{ev.node.upper()}"
+            per_flow[flow_id]["delivered"] += 1
+            lat_ms = (ev.ts - sent_ev.ts) * 1000.0
+            per_flow[flow_id]["lats_ms"].append(lat_ms)
+            latencies.append(lat_ms)
         elif ev.kind == "data_ttl_expired":
-            f = ev.fields
-            ttl_expired.add(_flow_key(f["src"], f["dst"], f["seq"]))
+            ttl_expired_count += 1
         elif ev.kind == "data_no_route":
-            f = ev.fields
-            no_route.add(_flow_key(f["src"], f["dst"], f["seq"]))
+            no_route_count += 1
         elif ev.kind == "pkt_rx":
             pkt_rx_rssi.append(ev.fields["rssi"])
             pkt_rx_snr.append(ev.fields["snr"])
-
-    # Per-flow PDR + latency aggregates.
-    per_flow: dict[str, dict] = {}
-    latencies: list[float] = []
-    for key, sent_ev in sent.items():
-        src, dst, seq = key
-        dev_ev = delivered.get(key)
-        flow_id = f"{src}->{dst}"
-        bucket = per_flow.setdefault(flow_id, {"sent": 0, "delivered": 0,
-                                               "lats_ms": []})
-        bucket["sent"] += 1
-        if dev_ev is not None:
-            bucket["delivered"] += 1
-            lat_ms = (dev_ev.ts - sent_ev.ts) * 1000.0
-            bucket["lats_ms"].append(lat_ms)
-            latencies.append(lat_ms)
 
     pdr_per_flow = {}
     for flow, b in per_flow.items():
@@ -117,8 +137,9 @@ def compute(events: list[Event]) -> dict:
         "totals": {
             "sent": total_sent,
             "delivered": total_delivered,
-            "ttl_expired": len(ttl_expired),
-            "no_route": len(no_route),
+            "ttl_expired": ttl_expired_count,
+            "no_route": no_route_count,
+            "orphan_deliveries": orphan_deliveries,
             "pdr": (total_delivered / total_sent) if total_sent else None,
         },
         "latency_ms_overall": {
@@ -150,11 +171,39 @@ def analyse(run_dir: Path) -> dict:
     return compute(events)
 
 
+def _selftest() -> None:
+    """Synthetic check: two sends + two deliveries with the same (src,dst,seq)
+    must both be counted (uint8_t seq wrap case)."""
+    e = lambda ts, node, kind, fields: Event(ts=ts, node=node, kind=kind, fields=fields)
+    events = [
+        e(10.0,  "A001", "data_sent",      {"dst": "B002", "via": "B002", "ttl": 32, "seq": 42, "payload_size": 100}),
+        e(11.0,  "B002", "data_delivered", {"src": "A001", "dest": "B002", "seq": 42, "payload_size": 100}),
+        e(500.0, "A001", "data_sent",      {"dst": "B002", "via": "B002", "ttl": 32, "seq": 42, "payload_size": 100}),
+        e(501.0, "B002", "data_delivered", {"src": "A001", "dest": "B002", "seq": 42, "payload_size": 100}),
+    ]
+    r = compute(events)
+    assert r["totals"]["sent"] == 2,        f"sent={r['totals']['sent']}"
+    assert r["totals"]["delivered"] == 2,   f"delivered={r['totals']['delivered']}"
+    assert r["totals"]["pdr"] == 1.0,       f"pdr={r['totals']['pdr']}"
+    assert r["totals"]["orphan_deliveries"] == 0
+    lats = [r["pdr_per_flow"]["A001->B002"]["latency_ms"]["p50"]]
+    assert abs(lats[0] - 1000.0) < 1e-6,    f"p50 latency={lats[0]}"
+    print("routing._selftest OK")
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Compute routing metrics for one run")
-    ap.add_argument("run_dir", type=Path)
+    ap.add_argument("run_dir", type=Path, nargs="?",
+                    help="(omit when using --selftest)")
+    ap.add_argument("--selftest", action="store_true",
+                    help="Run synthetic regression test for wrap-collision matching")
     args = ap.parse_args()
+    if args.selftest:
+        _selftest()
+        return 0
+    if args.run_dir is None:
+        ap.error("run_dir required (or pass --selftest)")
     result = analyse(args.run_dir)
     out = args.run_dir / "routing.json"
     out.write_text(json.dumps(result, indent=2, sort_keys=True))
