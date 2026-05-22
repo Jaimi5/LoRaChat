@@ -378,7 +378,21 @@ python3 scripts/testbed/runner/run_batch.py scripts/testbed/batches/formation.ya
 
 # Re-run on already-flashed firmware (skip the upload phase at cell starts)
 python3 scripts/testbed/runner/run_batch.py scripts/testbed/batches/full16.yaml --skip-upload
+
+# Run several batches back-to-back (positional args run in the given order)
+python3 scripts/testbed/runner/run_batch.py \
+    scripts/testbed/batches/formation.yaml \
+    scripts/testbed/batches/routing.yaml \
+    scripts/testbed/batches/capacity.yaml
+
+# Run EVERY batch in the directory (alphabetical: capacity → energy →
+# formation → full16 → long_link → routing). Useful for an overnight run.
+python3 scripts/testbed/runner/run_batch.py scripts/testbed/batches/
 ```
+
+When more than one batch is given, the runner reuses a single device-map
+load and prints a per-batch summary plus a grand total at the end. Common
+setup (paths, `list-device-map` call) only runs once.
 
 Per-run lifecycle:
 
@@ -412,23 +426,110 @@ itself to the steady-state measurement window.
 
 ### Analysis
 
-Each per-run output directory can be fed to the analysis modules:
+Each per-run output directory can be fed to the analysis modules. Invoke
+them as direct scripts so they work from any cwd:
 
 ```bash
 # Per-run metrics (each writes <metric>.json into the run dir)
-python3 -m analysis.parse_logs   scripts/testbed/runs/routing/20260519-100000-SF9-r01
-python3 -m analysis.formation    scripts/testbed/runs/routing/20260519-100000-SF9-r01
-python3 -m analysis.routing      scripts/testbed/runs/routing/20260519-100000-SF9-r01
-python3 -m analysis.capacity     scripts/testbed/runs/routing/20260519-100000-SF9-r01
-python3 -m analysis.duty_cycle   scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 scripts/testbed/analysis/parse_logs.py  scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 scripts/testbed/analysis/formation.py   scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 scripts/testbed/analysis/routing.py     scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 scripts/testbed/analysis/capacity.py    scripts/testbed/runs/routing/20260519-100000-SF9-r01
+python3 scripts/testbed/analysis/duty_cycle.py  scripts/testbed/runs/routing/20260519-100000-SF9-r01
 
 # Aggregate every run of a batch into mean ± 95% CI per cell
-python3 -m analysis.multirun     scripts/testbed/runs/routing/
+python3 scripts/testbed/analysis/multirun.py    scripts/testbed/runs/routing/
 # → writes scripts/testbed/runs/routing/aggregated.json
+
+# Drop the first N repetitions of each cell before aggregating (useful when
+# r01 is a cold-start outlier — empty routing table, OTA settle, clock resync).
+python3 scripts/testbed/analysis/multirun.py    scripts/testbed/runs/formation/ --drop-first 1
+# aggregated.json records `drop_first` and per-cell `dropped_reps` so the file
+# is self-describing.
+
+# Render a per-SF bar chart with 95% CI error bars from aggregated.json.
+# Auto-regenerates aggregated.json if missing or if --drop-first differs.
+python3 scripts/testbed/analysis/plot.py        scripts/testbed/runs/formation/ --drop-first 1
+# → writes scripts/testbed/runs/formation/formation_sf_comparison.png
+# Pick another metric with --metric (convergence_s [default], pdr, latency_p50_ms,
+# latency_p95_ms, latency_mean_ms, offered_pkt_per_min, mean_current_mA).
 ```
 
-Run all analysis commands from `scripts/testbed/` so the `analysis`
-package resolves correctly.
+`python3 -m analysis.<module>` still works as well, but only when run from
+`scripts/testbed/` (Python's `-m` resolves the package on `sys.path`).
+
+### Confidence intervals and rep counts
+
+`multirun.py` reports 95% CIs using **Student's t** with `df = n−1` (hardcoded
+two-sided t₀.₉₇₅ table for df 1–30, falls back to z=1.960 for df>30). Practical
+guidance for the `runs:` setting in a batch YAML:
+
+| n surviving reps/cell | t₀.₉₇₅ vs z | Verdict |
+|----|----|----|
+| 2–4  | 4.30–3.18 | CI is wide and unstable; descriptive only |
+| 5–9  | 2.78–2.31 | Usable for ranking conditions; CIs still loose |
+| 10+  | 2.26 → 1.96 | Stable estimate; small t→z gap |
+| 20+  | 2.09 → 1.96 | Normal-approximation territory; tight CIs |
+
+Rule of thumb for paper-quality numbers: target **n=10 surviving reps per
+cell**. With `--drop-first 1`, that means `runs: 11` in the batch YAML.
+
+### How the metrics are computed
+
+Every analyser starts from the same event stream produced by
+`analysis/parse_logs.py`, which scans `monitor-dev-*.log[.gz]` files
+under a run's `logs/`, applies the regex set in `_PATTERNS`, and emits
+typed `Event` records sorted by timestamp (after applying per-gateway
+clock offsets from `clock_offsets.json`).
+
+**`routing.totals.pdr`** — `analysis/routing.py`
+
+Matches each `data_sent` log line at the source against the first
+unmatched `data_delivered` log line at the destination with the same
+`(src, dst, seq)`. The match is **FIFO per key**: a per-`(src,dst,seq)`
+queue accumulates sends in time order, and each delivery pops the
+oldest pending send. This is robust to the firmware's per-node
+`uint8_t` seq wrapping (the same seq can recur every ~256 packets to
+a destination). Counters: `totals.sent`, `totals.delivered`,
+`totals.orphan_deliveries` (deliveries that found an empty queue —
+usually a parse loss; they do not enter the PDR ratio).
+
+```
+pdr = totals.delivered / totals.sent
+```
+
+Per-flow breakdown is in `pdr_per_flow["SRC->DST"]`. Run a synthetic
+regression check for the wrap case with
+`python3 scripts/testbed/analysis/routing.py --selftest`.
+
+**`capacity.offered_pkt_per_min`** — `analysis/capacity.py`
+
+Counts every `data_sent` event in the run and divides by the
+wall-clock span between the first and last such event, summed across
+all active nodes. The lifecycle.json `measurement-start →
+measurement-end` window is **not** currently honoured here — see
+[TODO](#todo--known-limitations). `delivered_pkt_per_min` is
+`offered × routing.totals.pdr`.
+
+**`duty_cycle.mean_current_mA`** — `analysis/duty_cycle.py`
+
+Each `Slot N transition` log line emits a `slot` event with a `type`
+field. Per node, slot durations are inferred as the gap to the next
+transition; durations grouped by type (TX/RX/SLEEP/DISCOVERY_*/
+CONTROL_*/SYNC_BEACON_*) are multiplied by the `CURRENT_MA` table at
+`duty_cycle.py:33`. `mean_current_mA = total_mAs / window_s`.
+`multirun.py` then averages this across nodes per run before
+aggregating across reps. **The current values are unmeasured
+datasheet estimates** — replace them with PPK2 spot-validated numbers
+for paper-grade energy (see [TODO](#todo--known-limitations)).
+
+**`formation.network_convergence_at`** — `analysis/formation.py`
+
+The latest `rt_complete_at` across all expected peers, expressed
+relative to the earliest `joined_at` in the run. A node is considered
+"rt_complete" when its active routing table covers every other active
+device listed in `config.yaml`. Churn is the mean per-node count of
+via-hop flips per minute over the steady-state window.
 
 Headline metrics in `aggregated.json` per cell:
 
@@ -870,6 +971,53 @@ ssh lora@10.139.40.20 "ls -la /home/lora/dev/lora-*"
 # Or check all gateways at once
 ./deploy.sh status
 ```
+
+## TODO / Known limitations
+
+Open items, roughly ordered by impact on metric correctness. Each entry
+names the file or area that needs the change so it's actionable.
+
+### Analysis
+
+- **Calibrate `CURRENT_MA` with PPK2 measurements per board variant.**
+  `analysis/duty_cycle.py:33` ships datasheet estimates only. Calibrate at
+  least one T-BEAM v1.0, v1.2, v2, and T-Lora32 — energy numbers are
+  unusable for paper claims until this is done.
+- **TX current should depend on `lora_power` dBm.** `CURRENT_MA["TX"]` is
+  a flat 120 mA today; SX1276 at 14 dBm vs 20 dBm draws ~85 mA vs
+  ~120 mA. Add a small lookup or linear model keyed on the run's
+  configured power.
+- **Restrict offered-load and PDR windows to lifecycle.json.**
+  `analysis/capacity.py` and `analysis/routing.py` use the first/last
+  `data_sent` ts as their window; the runner records
+  `measurement-start` / `measurement-end` markers in `lifecycle.json`
+  that should be honoured instead, so warmup and cooldown bleed-over
+  don't pollute steady-state numbers.
+- **Per-link PDR breakdown.** Use the `via` field in `data_sent` to
+  group transmissions by single-hop link `(node, via)` and report
+  per-link PDR. Different antennas and RF conditions on the testbed
+  produce wildly different per-link loss; the cluster-average PDR
+  hides this. The data is already in `pdr_per_flow` end-to-end, but
+  link-level needs a new aggregation.
+- **Per-packet-type PDR.** `PKT_TX` / `PKT_RX` log lines carry a
+  `type=0x..` field. Splitting PDR by message type (DATA vs HELLO vs
+  control) would let us separate application loss from mesh-management
+  loss.
+- **FIFO match misattribution on loss + wrap.** When a node sends seq=42,
+  it wraps and sends seq=42 again, and only one delivery arrives, the
+  current FIFO matcher pairs that delivery with the older send and
+  reports an inflated latency. Hard to do better without firmware help
+  (per-`(src,dst)` seq or a 32-bit monotonic field).
+
+### Firmware
+
+- **Retransmit logging.** LoRaMesher does not currently emit a "retx"
+  log line; without it, retries are indistinguishable from the original
+  send. Adding a `RETX seq=N` line at the link layer would unblock
+  proper retry-aware PDR.
+- **Per-(src,dst) sequence numbers.** A 16- or 32-bit per-destination
+  seq would eliminate the wrap-collision ambiguity entirely and let
+  analysis stop relying on time-ordered FIFO matching.
 
 ## Troubleshooting
 
