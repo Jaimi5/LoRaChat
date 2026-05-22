@@ -39,6 +39,8 @@ class Batch:
     reset_between_runs: bool
     upload_between_cells: bool
     cells: tuple[Cell, ...]
+    warmup_run: bool = False
+    boot_verify_sec: int = 20
 
 
 def load_batch(path: Path) -> Batch:
@@ -82,6 +84,8 @@ def load_batch(path: Path) -> Batch:
         reset_between_runs=bool(raw.get("reset_between_runs", True)),
         upload_between_cells=bool(raw.get("upload_between_cells", True)),
         cells=tuple(cells),
+        warmup_run=bool(raw.get("warmup_run", False)),
+        boot_verify_sec=int(raw.get("boot_verify_sec", 20)),
     )
 
 
