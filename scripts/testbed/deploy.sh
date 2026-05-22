@@ -713,7 +713,10 @@ cmd_logs() {
         gw_order+=("$gw_id")
 
         log_gw "$gw_id" "Fetching logs..."
-        scp_gw "$gw_id" "$ssh_dest:$REPO_PATH/logs/$SESSION/*.log" "$local_dir/" >"$scp_log" 2>&1 &
+        # Glob catches both `.log` (rare — only if compression somehow lost
+        # the race) and `.log.gz` (the steady state after gw-monitor.sh stop
+        # + cmd_stop_monitor both gzip every monitor log).
+        scp_gw "$gw_id" "$ssh_dest:$REPO_PATH/logs/$SESSION/*.log*" "$local_dir/" >"$scp_log" 2>&1 &
         pids[$gw_id]=$!
     done
 
@@ -729,7 +732,7 @@ cmd_logs() {
 
     echo ""
     echo "Logs collected in: $local_dir"
-    ls -la "$local_dir"/*.log 2>/dev/null || true
+    ls -la "$local_dir"/*.log* 2>/dev/null || true
 }
 
 cmd_run_remote() {
