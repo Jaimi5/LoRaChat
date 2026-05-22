@@ -837,24 +837,11 @@ cmd_reset() {
     cmd_stop_monitor || true
 
     # Brief pause so the kernel releases the ports before we reopen them.
+    # gw-reset.sh then keeps each port open through the post-reset boot
+    # window, appending the boot banner to the same per-device log file the
+    # monitor will use next — so the reset is visible in the captured logs.
     sleep 2
 
-    # Push gw-reset.sh to every gateway in parallel. It's a small file and
-    # may not exist on the gateway yet (it's new). Doing this every run is
-    # cheap and means `reset` works without requiring a prior `upgrade`.
-    echo -e "${BOLD}Syncing gw-reset.sh to gateways...${RST}"
-    local sync_pids=()
-    for gw_id in "${ACTIVE_GWS[@]}"; do
-        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
-        local devices="${GW_DEVICES[$gw_id]:-}"
-        [[ -z "$devices" ]] && continue
-        scp_gw "$gw_id" "$SCRIPT_DIR/gw-reset.sh" \
-            "${GW_SSH[$gw_id]}:$REPO_PATH/scripts/testbed/" >/dev/null 2>&1 &
-        sync_pids+=($!)
-    done
-    for pid in "${sync_pids[@]}"; do wait "$pid" || true; done
-
-    echo ""
     echo -e "${BOLD}Pulsing reset on each device...${RST}"
     echo ""
 
@@ -863,7 +850,7 @@ cmd_reset() {
         local devices="${GW_DEVICES[$gw_id]:-}"
         [[ -z "$devices" ]] && continue
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
-        args+=("$gw_id" "cd $REPO_PATH && bash scripts/testbed/gw-reset.sh $devices")
+        args+=("$gw_id" "cd $REPO_PATH && bash scripts/testbed/gw-reset.sh $SESSION $devices")
     done
 
     if [[ ${#args[@]} -eq 0 ]]; then
