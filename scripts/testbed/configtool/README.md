@@ -46,6 +46,27 @@ the C compiler emits identical bits either way.
 module picks it up automatically because they iterate `PARAMS`. Update the
 parameter table in `scripts/testbed/README.md` too.
 
+### SF-derived packet/message sizes
+
+`lora_max_packet_size` (`LORA_MAX_PACKET_SIZE`) and `max_msg_size`
+(`MAX_MSG_SIZE`) are configurable like any other parameter, but if you leave
+them out, `flatten()` derives them from the active spreading factor (and
+bandwidth) via `apply_derived_defaults()` — mirroring LoRaMesher's own
+`GetMaxPacketSizeForSf`. So a cell that sets only `lora_spreading_factor`
+still flashes a matching packet size. BW125 defaults:
+
+| SF    | `LORA_MAX_PACKET_SIZE` | `MAX_MSG_SIZE` |
+|-------|------------------------|----------------|
+| 7 / 8 | 242                    | 232            |
+| 9     | 115                    | 105            |
+| 10–12 | 51                     | 41             |
+
+The base is doubled at 250 kHz and quadrupled at 500 kHz (clamped to 255).
+`MAX_MSG_SIZE = packet_size − 10`, where 10 is the LoRaMesher v2 DATA
+overhead (6-byte BaseHeader + 4-byte DataHeader). An explicit value in the
+YAML always wins; setting `lora_max_packet_size` alone still derives
+`max_msg_size` from it.
+
 ## Generated script format
 
 ```bash

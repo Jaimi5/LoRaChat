@@ -330,6 +330,9 @@
 #define LORA_PREAMBLE_LENGTH 8U
 #define LORA_DUTY_CYCLE 1.0f
 #define LORA_MAX_PACKET_SIZE 255
+// Max monitor message bytes handed to LoRaMesher = packet size minus the
+// 10-byte LoRaMesher DATA overhead (6-byte BaseHeader + 4-byte DataHeader).
+#define MAX_MSG_SIZE 245
 #define LORA_MIN_SLEEP_FRACTION 0
 #ifdef USE_LORAMESHER_V2
 #define LORA_RADIO_TYPE loramesher::RadioType::kSx1276

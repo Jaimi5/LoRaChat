@@ -95,6 +95,8 @@ PARAMS: dict[str, Param] = {p.yaml_key: p for p in [
     Param("lora_power",            "LORA_POWER",            "int",    "TX power in dBm"),
     Param("lora_sync_word",        "LORA_SYNC_WORD",        "uint",   "Network identifier 0..255"),
     Param("lora_duty_cycle",       "LORA_DUTY_CYCLE",       "floatF", "Airtime duty-cycle budget 0.0..1.0"),
+    Param("lora_max_packet_size",  "LORA_MAX_PACKET_SIZE",  "uint",   "Max LoRa PHY packet bytes 1..255; SF-derived if unset"),
+    Param("max_msg_size",          "MAX_MSG_SIZE",          "uint",   "Max monitor message bytes = packet_size - LoRaMesher DATA overhead; derived if unset"),
     Param("lora_manager_id",       "LORA_MANAGER_ID",       "hex16",  "Mesh node ID, 16-bit hex"),
     # --- Testbed control -----------------------------------------------------
     Param("node_active",           "NODE_ACTIVE",           "uint",   "0=boot silent (no LoRa stack), 1=normal"),
@@ -108,6 +110,28 @@ PARAMS: dict[str, Param] = {p.yaml_key: p for p in [
     Param("mqtt_topic_sub",        "MQTT_TOPIC_SUB",        "str",    "MQTT inbound topic prefix"),
     Param("mqtt_topic_out",        "MQTT_TOPIC_OUT",        "str",    "MQTT outbound topic prefix"),
 ]}
+
+
+# Wire overhead of a LoRaMesher v2 DATA packet: 6-byte BaseHeader
+# (dst+src+type+payload_size) + 4-byte DataHeader (next_hop+ttl+seq_num).
+# Usable application payload = max_packet_size - LORAMESHER_DATA_OVERHEAD.
+LORAMESHER_DATA_OVERHEAD = 10
+
+
+def max_packet_size_for_sf(sf: int, bw_khz: float) -> int:
+    """SF/bandwidth -> max LoRa PHY packet size in bytes.
+
+    Mirrors LoRaMesher's RadioConfig::GetMaxPacketSizeForSf: a BW125 base per
+    SF, doubled at 250 kHz and quadrupled at 500 kHz, clamped to 1..255.
+    """
+    base = {7: 242, 8: 242, 9: 115}.get(int(sf), 51)
+    if bw_khz >= 500.0 - 0.1:
+        scaled = base * 4
+    elif bw_khz >= 250.0 - 0.1:
+        scaled = base * 2
+    else:
+        scaled = base
+    return max(1, min(255, scaled))
 
 
 def param(key: str) -> Param:
