@@ -202,6 +202,8 @@ Per-device keys win.
 | `lora_power`            | `LORA_POWER`                | int     | TX power in dBm                         |
 | `lora_sync_word`        | `LORA_SYNC_WORD`            | uint    | Network identifier 0..255               |
 | `lora_duty_cycle`       | `LORA_DUTY_CYCLE`           | floatF  | Airtime duty-cycle budget 0.0..1.0      |
+| `lora_max_packet_size`  | `LORA_MAX_PACKET_SIZE`      | uint    | Max LoRa PHY packet bytes 1..255. If unset, SF-derived (SF7/8→242, SF9→115, SF10–12→51 at BW125; ×2 at 250 kHz, ×4 at 500 kHz, capped 255). |
+| `max_msg_size`          | `MAX_MSG_SIZE`              | uint    | Max monitor message bytes. If unset, `LORA_MAX_PACKET_SIZE − 10` (LoRaMesher DATA overhead). |
 | `lora_manager_id`       | `LORA_MANAGER_ID`           | hex16   | Mesh node ID, written as `0xNNNN`       |
 | `node_active`           | `NODE_ACTIVE`               | uint    | `0` makes the device boot silent (no LoRa stack); `1` is normal. Used by batch experiments for subset activation. |
 | `wifi_ssid`             | `WIFI_SSID`                 | str     | Rendered as C string                    |

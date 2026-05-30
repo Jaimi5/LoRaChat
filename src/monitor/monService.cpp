@@ -1,4 +1,3 @@
-#define MAX_MSG_SIZE 240
 #if !defined(USE_LORAMESHER_V2)
 #define USE_LORAMESHER_V2
 #endif

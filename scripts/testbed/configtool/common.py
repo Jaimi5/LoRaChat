@@ -10,6 +10,8 @@ from typing import Any
 
 import yaml
 
+from schema import LORAMESHER_DATA_OVERHEAD, max_packet_size_for_sf
+
 
 class HexInt(int):
     """An int that dumps as `0xNNNN` in YAML. Round-trips fine: PyYAML's
@@ -143,11 +145,35 @@ def load_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
+def apply_derived_defaults(params: dict[str, Any]) -> dict[str, Any]:
+    """Fill SF-derived packet/message sizes when not explicitly set.
+
+    Mutates and returns `params`. If the spreading factor is known, an unset
+    `lora_max_packet_size` is derived from (SF, bandwidth) to mirror
+    LoRaMesher's own default, and an unset `max_msg_size` is set to
+    `packet_size - LORAMESHER_DATA_OVERHEAD`. Explicit values are preserved.
+    """
+    sf = params.get("lora_spreading_factor")
+    if sf is None:
+        return params
+
+    bw = float(params.get("lora_bandwidth", 125.0))
+    if params.get("lora_max_packet_size") is None:
+        params["lora_max_packet_size"] = max_packet_size_for_sf(int(sf), bw)
+
+    if params.get("max_msg_size") is None:
+        packet_size = int(params["lora_max_packet_size"])
+        params["max_msg_size"] = max(1, packet_size - LORAMESHER_DATA_OVERHEAD)
+
+    return params
+
+
 def flatten(experiment: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Apply `defaults` to every device, returning {short_id: {param: value}}.
 
-    Per-device keys override defaults. Unknown sections (e.g. `description`)
-    are ignored.
+    Per-device keys override defaults. SF-derived packet/message sizes are
+    filled in per device (see `apply_derived_defaults`). Unknown sections
+    (e.g. `description`) are ignored.
     """
     defaults = experiment.get("defaults") or {}
     devices = experiment.get("devices") or {}
@@ -156,5 +182,5 @@ def flatten(experiment: dict[str, Any]) -> dict[str, dict[str, Any]]:
         merged = dict(defaults)
         if overrides:
             merged.update(overrides)
-        flat[str(short_id)] = merged
+        flat[str(short_id)] = apply_derived_defaults(merged)
     return flat
