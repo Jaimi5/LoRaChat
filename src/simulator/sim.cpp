@@ -240,6 +240,17 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
         MessageManager::getInstance().sendMessage(messagePort::MqttPort,
                                                   (DataMessage*)simPayloadMessage);
 
+#ifdef USE_LORAMESHER_V2
+        // Pace to the TDMA schedule: inject the next packet only after the previous
+        // one has had time to traverse the mesh (max hop depth * 2 data slots). This
+        // keeps the LoRaMesher TX queue from overflowing at high SF, where airtime
+        // (and thus slot length) is long. `delayMs` (PACKET_DELAY) is the fallback
+        // used before the node has joined and has a slot schedule.
+        uint8_t depth = LoRaMeshService::getInstance().getMaxHopDepth();
+        uint8_t nSlots = depth * 2;
+        ESP_LOGI(SIM_TAG, "Pacing: hop depth %d -> waiting %d data slots", depth, nSlots);
+        LoRaMeshService::getInstance().waitForDataSlots(nSlots, delayMs);
+#else
         vTaskDelay(delayMs / portTICK_PERIOD_MS);  // Wait delayMs milliseconds
 
         // Wait until the previous packet has been sent
@@ -249,6 +260,7 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
                 SIM_QUEUE_CONGESTION_DELAY /
                 portTICK_PERIOD_MS);  // Wait when queue is congested before sending next packet
         }
+#endif
 
         ESP_LOGI(SIM_TAG, "FREE HEAP: %d", ESP.getFreeHeap());
     }
