@@ -535,3 +535,38 @@ void LoRaMeshService::updateRoutingTable() {
 }
 
 #endif  // USE_LORAMESHER_V2
+
+// ============================================================
+// Version-agnostic send pacing helpers (declared outside the #ifdef so both
+// library backends share one definition; the v2-only API calls are guarded).
+// ============================================================
+
+uint8_t LoRaMeshService::getMaxHopDepth() {
+#ifdef USE_LORAMESHER_V2
+    uint8_t depth = 0;
+    for (const auto& route : getRoutingTableEntries()) {
+        if (route.is_valid && route.hop_count > depth)
+            depth = route.hop_count;
+    }
+    return depth > 0 ? depth : 1;
+#else
+    return 1;
+#endif
+}
+
+void LoRaMeshService::waitForDataSlots(uint8_t nSlots, uint32_t fallbackMs) {
+    if (nSlots == 0)
+        nSlots = 1;
+#ifdef USE_LORAMESHER_V2
+    for (uint8_t i = 0; i < nSlots; i++) {
+        // 0 means "not joined / no slot yet" — fall back so warmup still advances.
+        uint32_t waitMs = getTimeUntilNextDataSlot();
+        if (waitMs == 0)
+            waitMs = fallbackMs;
+        vTaskDelay(waitMs / portTICK_PERIOD_MS);
+    }
+#else
+    // v1 has no slot schedule; approximate with a single fallback wait.
+    vTaskDelay(fallbackMs / portTICK_PERIOD_MS);
+#endif
+}

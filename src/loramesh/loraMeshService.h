@@ -62,6 +62,15 @@ public:
 
     void updateRoutingTable();
 
+    // Largest known hop_count in the routing table (>=1, version-agnostic). Used
+    // by senders to size how long a packet needs to traverse the mesh.
+    uint8_t getMaxHopDepth();
+
+    // Pace a sender to the LoRaMesher TDMA schedule: block until `nSlots` of this
+    // node's data slots have passed. On v2 each step waits getTimeUntilNextDataSlot()
+    // (falling back to fallbackMs before the node has joined / on v1).
+    void waitForDataSlots(uint8_t nSlots, uint32_t fallbackMs);
+
 #ifdef USE_LORAMESHER_V2
     std::vector<loramesher::RouteEntry> getRoutingTableEntries();
 
