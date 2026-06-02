@@ -60,7 +60,6 @@ from runner.lifecycle import (
     wait_phase,
 )
 from runner.log_collector import move_session_logs
-from runner.log_corrector import correct_logs
 
 
 def _utc_stamp() -> str:
@@ -160,13 +159,13 @@ def main(argv: list[str] | None = None) -> int:
             return rc
 
     # Build SHORT_ID → GW_ID map once for the whole run (same testbed across
-    # batches). Only needed if we'll be correcting logs.
+    # batches). Used to label the per-gateway skew record in clock_offsets.json.
     short_id_to_gw: dict[str, str] = {}
     if not args.skip_clock_check:
         try:
             short_id_to_gw = list_device_map(deploy_sh, repo_root)
         except RuntimeError as e:
-            print(f"warning: could not load device map ({e}); log correction disabled")
+            print(f"warning: could not load device map ({e}); skew record disabled")
 
     local_log_dir = (repo_root / "logs_testbed").resolve()
 
@@ -257,12 +256,12 @@ def _run_one_batch(
                 )
                 if worst > args.reject_skew_ms:
                     print(f"  SKEW EXCEEDED: {worst}ms > {args.reject_skew_ms}ms "
-                          f"— rejecting run (clock cannot be corrected at this magnitude)")
+                          f"— rejecting run")
                     failures += 1
                     continue
                 if worst > args.warn_skew_ms:
                     print(f"  warning: worst pre-run skew is {worst}ms "
-                          f"(> {args.warn_skew_ms}ms) — will be corrected post-run")
+                          f"(> {args.warn_skew_ms}ms) — recorded but not corrected")
 
             if is_warmup:
                 do_upload, do_reset_only = True, False
@@ -306,8 +305,7 @@ def _run_one_batch(
             stop_monitors(deploy_sh, repo_root, recorder)
 
             # Second clock sample, taken as close as possible to the last log
-            # line each gateway wrote. Failures here just mean we fall back to
-            # a flat shift via t0 — don't abort the run.
+            # line each gateway wrote. Recorded for diagnostics only.
             report_t1: SkewReport | None = None
             if not args.skip_clock_check:
                 p = recorder.begin("clock-check-t1")
@@ -320,7 +318,7 @@ def _run_one_batch(
                     )
                 except Exception as e:
                     recorder.end(p, ok=False, error=str(e))
-                    print(f"  warning: t1 clock-check failed ({e}); will use flat shift")
+                    print(f"  warning: t1 clock-check failed ({e})")
 
             collect_logs(deploy_sh, repo_root, session, recorder)
 
@@ -329,17 +327,8 @@ def _run_one_batch(
             print(f"  moved {moved} log file(s) into {logs_dir}")
 
             if report_t0 is not None and short_id_to_gw:
-                p = recorder.begin("log-correction")
-                summary = correct_logs(logs_dir, report_t0, report_t1, short_id_to_gw)
-                recorder.end(
-                    p,
-                    ok=True,
-                    corrected=summary.corrected_count,
-                    skipped=summary.skipped_count,
-                )
-                print(f"  corrected {summary.corrected_count} log file(s), "
-                      f"skipped {summary.skipped_count}")
-
+                # Skew is recorded for diagnostics only; it is no longer applied
+                # to the logs — the raw monitor capture is kept as-is.
                 offsets_path = run_dir / "clock_offsets.json"
                 offsets_path.write_text(json.dumps({
                     "reject_skew_ms": args.reject_skew_ms,
@@ -347,7 +336,6 @@ def _run_one_batch(
                     "device_map": short_id_to_gw,
                     "t0": _samples_to_json(report_t0),
                     "t1": _samples_to_json(report_t1),
-                    "correction": summary.to_dict(),
                 }, indent=2))
 
     print(f"\n=== batch complete: {total_runs - failures}/{total_runs} runs OK ===")
