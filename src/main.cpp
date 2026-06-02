@@ -6,6 +6,7 @@
 // Log
 #include "esp32-hal-log.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 
 // Manager
 #include "message/messageManager.h"
@@ -47,6 +48,16 @@ MonService& mon_mqttService = MonService::getInstance();
 void init_mqtt_mon() {
     mon_mqttService.init();
 }
+#pragma endregion
+
+#pragma region OTA
+#ifdef OTA_ENABLED
+#include "ota/otaService.h"
+OTAService& otaService = OTAService::getInstance();
+void initOTA() {
+    otaService.init();
+}
+#endif
 #pragma endregion
 
 // Battery
@@ -214,6 +225,11 @@ void initManager() {
     manager.addMessageService(&displayService);
     ESP_LOGV(TAG, "Display service added to manager");
 
+#ifdef OTA_ENABLED
+    manager.addMessageService(&otaService);
+    ESP_LOGV(TAG, "OTA service added to manager");
+#endif
+
     Serial.println(manager.getAvailableCommands());
 }
 
@@ -237,6 +253,9 @@ void initWire() {
 void setup() {
     // Initialize Serial Monitor
     Serial.begin(115200);
+
+    // Mark app valid so bootloader doesn't roll back
+    esp_ota_mark_app_valid_cancel_rollback();
 
     // Set log level
     esp_log_level_set("*", ESP_LOG_VERBOSE);
@@ -330,6 +349,11 @@ void setup() {
     // Initialize MQTT_MON
     init_mqtt_mon();
     ESP_LOGV(TAG, "Heap after init_mqtt_mon: %d", ESP.getFreeHeap());
+#endif
+
+#ifdef OTA_ENABLED
+    initOTA();
+    ESP_LOGV(TAG, "Heap after initOTA: %d", ESP.getFreeHeap());
 #endif
 
     ESP_LOGV(TAG, "Setup finished");
