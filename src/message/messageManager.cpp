@@ -85,7 +85,7 @@ String MessageManager::getJSON(DataMessage* message) {
 }
 
 DataMessage* MessageManager::getDataMessage(String json) {
-    DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(2048);  // 2048 needed for OTA_CHUNK with base64 payload (~800 B)
 
     DeserializationError error = deserializeJson(doc, json);
 
