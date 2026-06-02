@@ -18,6 +18,13 @@ void MqttService::initMqtt(String lclName) {
     // Set the MQTT_CLIENT library logging level
     esp_log_level_set("MQTT_CLIENT", ESP_LOG_WARN);
 
+    // Silence the TLS/transport reconnect spam emitted every retry while the
+    // broker is unreachable; this UART/log-mutex traffic is what starves the
+    // LoRa tasks. The MQTT event handler still logs disconnect/error events.
+    esp_log_level_set("esp-tls", ESP_LOG_NONE);
+    esp_log_level_set("TRANSPORT_BASE", ESP_LOG_NONE);
+    esp_log_level_set("transport_base", ESP_LOG_NONE);
+
     ESP_LOGI(MQTT_TAG, "Mqtt initialized");
 }
 
@@ -79,22 +86,13 @@ bool MqttService::connect() {
 
     esp_mqtt_client_start(client);
 
-    ESP_LOGV(MQTT_TAG, "Waiting for MQTT connection to start");
-
-    int tries = 0;
-    while (!isDeviceConnected() && tries++ < MAX_CONNECTION_TRY) {
-        ESP_LOGV(MQTT_TAG, ".");
-        vTaskDelay(1000 / portTICK_PERIOD_MS);  // Wait 1 second
-    }
-
-    if (!isDeviceConnected()) {
-        ESP_LOGW(MQTT_TAG, "No MQTT connection");
-        return false;
-    }
-
-    ESP_LOGI(MQTT_TAG, "MQTT connected");
-
-    return true;
+    // Do not block the caller waiting for the connection. esp_mqtt reconnects
+    // on its own task and flips mqtt_connected via the event handler; busy-
+    // waiting here (up to MAX_CONNECTION_TRY seconds) ran on the caller — incl.
+    // the LoRa receive/forward path — and stalled time-critical work whenever
+    // the broker was unreachable. Callers fall back to the LoRa mesh gateway
+    // when this returns false (see MessageManager::sendMessageMqtt).
+    return isDeviceConnected();
 }
 
 void MqttService::disconnect() {

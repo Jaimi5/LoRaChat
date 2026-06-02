@@ -257,8 +257,10 @@ void setup() {
     // Mark app valid so bootloader doesn't roll back
     esp_ota_mark_app_valid_cancel_rollback();
 
-    // Set log level
-    esp_log_level_set("*", ESP_LOG_VERBOSE);
+    // Set log level. INFO keeps operational and error logs while dropping the
+    // verbose/debug spam whose blocking UART flush (~7 ms/line at 115200) and
+    // log-mutex contention starve time-critical tasks during reconnect storms.
+    esp_log_level_set("*", ESP_LOG_INFO);
 
     ESP_LOGI(TAG, "Build environment name: %s", BUILD_ENV_NAME);
 
