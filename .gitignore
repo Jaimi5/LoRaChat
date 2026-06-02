@@ -26,3 +26,7 @@ __pycache__/
 scripts/testbed/experiments/*.yaml
 !scripts/testbed/experiments/example-baseline.yaml
 scripts/testbed/change-config/*.sh
+
+# OTA test fixtures: firmware images and generated patch chunks.
+# Regenerable via scripts/ota_tools (generate_patch.py / split_chunks.py).
+test_firmware/
