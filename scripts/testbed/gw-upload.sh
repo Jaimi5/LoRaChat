@@ -29,6 +29,11 @@ done
 REPO="${REPO_PATH:-/home/lora/LoRaChat}"
 cd "$REPO" || { echo "ERROR: $REPO not found"; exit 1; }
 
+# CPU throttle (set by deploy.sh ssh_gw; empty when run standalone)
+PIO_NICE="${PIO_NICE:-}"
+JOBS_FLAG=""
+[[ -n "${PIO_JOBS:-}" ]] && JOBS_FLAG="-j ${PIO_JOBS}"
+
 # If monitoring, stop any existing monitors first
 if [[ -n "$MONITOR_SESSION" ]]; then
     echo "--- Stopping existing monitors ---"
@@ -78,7 +83,7 @@ for device_spec in "$@"; do
     # Step 2: Compile + Upload
     if [[ $SKIP_COMPILE -eq 1 ]]; then
         echo "--- Upload only (--skip-compile) ---"
-        if pio run -e "$ENV" --target upload --upload-port "$PORT"; then
+        if $PIO_NICE pio run -e "$ENV" $JOBS_FLAG --target upload --upload-port "$PORT"; then
             echo "OK: $DEVICE_ID uploaded on $PORT"
             SUCCEEDED=$((SUCCEEDED + 1))
         else
@@ -87,7 +92,7 @@ for device_spec in "$@"; do
         fi
     else
         echo "--- Compile + Upload ---"
-        if pio run -e "$ENV" --target upload --upload-port "$PORT"; then
+        if $PIO_NICE pio run -e "$ENV" $JOBS_FLAG --target upload --upload-port "$PORT"; then
             echo "OK: $DEVICE_ID compiled and uploaded on $PORT"
             SUCCEEDED=$((SUCCEEDED + 1))
         else
@@ -101,7 +106,7 @@ for device_spec in "$@"; do
         LOGFILE="$LOG_DIR/monitor-dev-${MONITOR_SESSION}-${SHORT_ID}.log"
         echo "--- Starting monitor: $PORT -> $LOGFILE ---"
         nohup bash -c "
-            script -qfc 'pio device monitor --port $PORT --filter esp32_exception_decoder' /dev/null 2>&1 | \
+            $PIO_NICE script -qfc 'pio device monitor --port $PORT --filter esp32_exception_decoder' /dev/null 2>&1 | \
             while IFS= read -r line; do
                 echo \"[\$(date \"+%Y-%m-%d %H:%M:%S.%3N\")] \$line\"
             done >> \"$LOGFILE\" 2>&1

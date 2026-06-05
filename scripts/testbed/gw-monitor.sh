@@ -13,6 +13,9 @@ ACTION="${1:-help}"; shift || true
 
 REPO="${REPO_PATH:-/home/lora/LoRaChat}"
 
+# CPU throttle (set by deploy.sh ssh_gw; empty when run standalone)
+PIO_NICE="${PIO_NICE:-}"
+
 case "$ACTION" in
     start)
         SESSION="${1:?Missing SESSION name}"; shift
@@ -52,7 +55,7 @@ case "$ACTION" in
             # Use script to provide a pseudo-TTY (pio device monitor requires one)
             # Pipe through a timestamp loop to add [YYYY-MM-DD HH:MM:SS] to each line
             nohup bash -c "
-                script -qfc 'pio device monitor --port $PORT --filter esp32_exception_decoder' /dev/null 2>&1 | \
+                $PIO_NICE script -qfc 'pio device monitor --port $PORT --filter esp32_exception_decoder' /dev/null 2>&1 | \
                 while IFS= read -r line; do
                     echo \"[\$(date \"+%Y-%m-%d %H:%M:%S.%3N\")] \$line\"
                 done >> \"$LOGFILE\" 2>&1
