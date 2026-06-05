@@ -261,7 +261,11 @@ ssh_gw() {
     local port="${GW_PORT[$gw_id]:-}"
     local retries="${SSH_RETRIES:-3}"
     local attempt=1
-    local full_cmd="export PATH=$PIO_PATH:\$PATH; $cmd"
+    # Per-gateway PlatformIO CPU throttle (falls back to global defaults).
+    # Exported into every remote command so gw-*.sh scripts can apply them.
+    local jobs="${GW_PIO_JOBS[$gw_id]:-${DEFAULT_PIO_JOBS:-}}"
+    local nicewrap="${GW_PIO_NICE[$gw_id]:-${DEFAULT_PIO_NICE:-}}"
+    local full_cmd="export PATH=$PIO_PATH:\$PATH; export PIO_JOBS='$jobs'; export PIO_NICE='$nicewrap'; $cmd"
 
     # Build SSH args dynamically
     # shellcheck disable=SC2086
@@ -560,7 +564,7 @@ cmd_upgrade() {
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
         # Inline git commands (not gw-upgrade.sh) so it works even on first run
         # before the testbed scripts exist on the gateway
-        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== git checkout $GIT_BRANCH ===' && git checkout $GIT_BRANCH && echo '=== reset config.h ===' && git checkout -- src/config.h 2>/dev/null; echo '=== git pull ===' && git pull -X theirs origin $GIT_BRANCH && echo '=== pio pkg update ===' && pio pkg update && echo '=== Upgrade complete ==='")
+        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== git checkout $GIT_BRANCH ===' && git checkout $GIT_BRANCH && echo '=== reset config.h ===' && git checkout -- src/config.h 2>/dev/null; echo '=== git pull ===' && git pull -X theirs origin $GIT_BRANCH && echo '=== pio pkg update ===' && \$PIO_NICE pio pkg update && echo '=== Upgrade complete ==='")
     done
 
     if [[ ${#args[@]} -eq 0 ]]; then

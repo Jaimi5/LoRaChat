@@ -24,6 +24,6 @@ echo "=== git pull ==="
 git pull -X theirs origin "$BRANCH"
 
 echo "=== pio pkg update ==="
-pio pkg update
+${PIO_NICE:-} pio pkg update
 
 echo "=== Upgrade complete ==="
