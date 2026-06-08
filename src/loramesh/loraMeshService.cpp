@@ -48,6 +48,9 @@ void LoRaMeshService::initLoraMesherService() {
     meshConfig.setTargetDutyCycle(LORA_DUTY_CYCLE);
     meshConfig.setMaxPacketSize(LORA_MAX_PACKET_SIZE);
     meshConfig.setMinSleepFraction(LORA_MIN_SLEEP_FRACTION);
+    meshConfig.setDefaultDataSlots(LORA_DEFAULT_DATA_SLOTS);
+    meshConfig.setMaxNetworkNodes(LORA_MAX_NETWORK_NODES);
+    meshConfig.setMaxDataSlots(LORA_MAX_DATA_SLOTS);
 
     mesher_ = loramesher::LoraMesher::Builder()
                   .withRadioConfig(radioConfig)
