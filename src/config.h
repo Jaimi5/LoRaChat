@@ -334,6 +334,16 @@
 // 10-byte LoRaMesher DATA overhead (6-byte BaseHeader + 4-byte DataHeader).
 #define MAX_MSG_SIZE 245
 #define LORA_MIN_SLEEP_FRACTION 0
+// Data slots each node requests at join. More slots amortize the fixed control
+// overhead (higher per-node throughput) at the cost of a longer superframe; the
+// sum across nodes is capped by the data-slot pool (max_network_nodes).
+#define LORA_DEFAULT_DATA_SLOTS 1
+// Maximum number of nodes admitted to the network (node-count cap only).
+#define LORA_MAX_NETWORK_NODES 50
+// Total data-slot pool: sum of every node's data slots. Independent of the node
+// cap (LoRaMesher separates the two). Raise above nodes x data_slots when
+// sweeping default_data_slots so late joiners aren't starved of data slots.
+#define LORA_MAX_DATA_SLOTS 50
 #ifdef USE_LORAMESHER_V2
 #define LORA_RADIO_TYPE loramesher::RadioType::kSx1276
 #endif

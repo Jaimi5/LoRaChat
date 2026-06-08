@@ -1,0 +1,39 @@
+# Data-slot knob — confirmation runs validating analysis/model.py.
+#
+# The superframe model (analysis/model.py) sweeps the whole
+# SF x data_slots x duty_cycle space analytically; these few runs only ANCHOR
+# the data-slots axis empirically: confirm the new LORA_DEFAULT_DATA_SLOTS knob
+# flows end-to-end (every node is granted the requested slots, no "No slots
+# available" warnings) and that PDR/latency hold as throughput rises.
+#
+# Fixed at SF9 (mid-range). data_slots=1 is already covered by the formation
+# batch, so this sweeps the two new points 2 and 4 (clean 1x/2x/4x story).
+# At ~16 active nodes, 4 slots x 16 = 64 > the default 50-slot data-slot pool, so
+# the pool (max_data_slots — independent of the node cap after LoRaMesher commit
+# 4e64315) is raised to 80; otherwise late joiners would be starved ("No slots
+# available"). The node cap (max_network_nodes=50) is untouched. Validate against
+# the model (max_data_slots=80): capacity rises and overhead drops along the
+# data_slots axis, with every node granted the requested slots.
+batch: dataslots_check
+description: Anchor the model's data_slots axis at SF9 (slots 2 and 4, pool raised)
+base: ../experiments/example-baseline.yaml
+
+runs: 2
+duration_min: 20
+warmup_min: 0
+cooldown_min: 1
+reset_between_runs: true
+upload_between_cells: true   # data_slots changes config.h → reflash between cells
+warmup_run: true
+
+cells:
+  - id: Slots2
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 2
+      lora_max_data_slots: 80
+  - id: Slots4
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 4
+      lora_max_data_slots: 80
