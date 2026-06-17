@@ -1,0 +1,54 @@
+# Steady-state PDR on the 13-node MAIN cluster, re-run with DETERMINISTIC STATIC
+# PACING and per-SF, capacity-matched offered load.
+#
+# Why this batch (see docs/paper/sf_offered_load_capacity.md):
+#   The original main_cluster_pdr offered the same load (MON_SENDING_EVERY=300s) at
+#   every SF. The TDMA superframe stretches with SF (recurrence R ~ 24/38/119 s), so
+#   per-node capacity C collapses ~5x from SF7 to SF12. At SF12 the fixed 300 s load
+#   ran the network past saturation (rho_node ~1.2, bottleneck relay rho_max ~2.7),
+#   collapsing PDR to ~0.53 — a load artifact, not a protocol defect.
+#
+#   Firmware now uses a fixed vTaskDelay (no waitForDataSlots), so offered load equals
+#   MON_SENDING_EVERY exactly and is reproducible. We scale MON_SENDING_EVERY per SF to
+#   keep load within capacity. SF7/SF9 keep the nominal interval (already rho<0.4, well
+#   under capacity — the existing load curve confirms their headroom); SF12 is raised to
+#   the model-recommended interval so a single data slot (and the busiest relay) is not
+#   oversubscribed.
+#
+#   sustainable_per_source = 1/(R*F), F = busiest-relay fan-in (~4 at SF12). The SF12
+#   600 s interval targets bottleneck rho ~0.8; raise to 900000 for a 0.5 margin.
+#   At SF12 the sustainable rate is low, so the SF12 cell uses a longer measurement
+#   window to gather an adequate PDR sample.
+batch: main_cluster_pdr_static
+description: Steady-state PDR on the 13-node main cluster, static pacing + per-SF capacity-matched load
+base: ../experiments/example-baseline.yaml
+
+runs: 5
+duration_min: 30
+warmup_min: 15
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: true
+
+cells:
+  - id: SF7
+    overrides:
+      lora_spreading_factor: 7
+      mon_sending_every: 300000      # rho_node ~0.21, bottleneck ~0.28 (ample headroom)
+    inactive_devices: &remote
+      - DD58
+      - 14A4
+      - '3428'
+  - id: SF9
+    overrides:
+      lora_spreading_factor: 9
+      mon_sending_every: 300000      # rho_node ~0.19, bottleneck ~0.38
+    inactive_devices: *remote
+  - id: SF12
+    overrides:
+      lora_spreading_factor: 12
+      mon_sending_every: 600000      # capacity-matched: bottleneck rho ~0.8 (was ~2.7 at 300s)
+    warmup_min: 25                   # SF12 convergence is slower
+    duration_min: 60                 # low sustainable rate -> longer window for sample size
+    inactive_devices: *remote

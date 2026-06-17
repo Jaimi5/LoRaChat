@@ -229,17 +229,10 @@ void MonService::sendingLoopOneMessage(void* parameter) {
             }
 #endif
             // end send MON
-#ifdef USE_LORAMESHER_V2
-            {
-                // Pace to the TDMA schedule (see Sim::sendPacketsToServer): wait
-                // max-hop-depth*2 data slots so MON traffic doesn't overflow the TX
-                // queue at high SF. Falls back to MON_SENDING_EVERY before joining.
-                uint8_t depth = LoRaMeshService::getInstance().getMaxHopDepth();
-                LoRaMeshService::getInstance().waitForDataSlots(depth * 2, MON_SENDING_EVERY);
-            }
-#else
+            // Static pacing: fixed MON_SENDING_EVERY delay. Offered load is exactly
+            // this interval and reproducible; per-SF capacity matching is done by
+            // choosing MON_SENDING_EVERY (see docs/paper/sf_offered_load_capacity.md).
             vTaskDelay(MON_SENDING_EVERY / portTICK_PERIOD_MS);
-#endif
             // Print the free heap memory
             ESP_LOGD(MON_TAG, "Free heap: %d", esp_get_free_heap_size());
         }

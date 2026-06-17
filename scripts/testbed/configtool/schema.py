@@ -103,6 +103,7 @@ PARAMS: dict[str, Param] = {p.yaml_key: p for p in [
     Param("lora_manager_id",       "LORA_MANAGER_ID",       "hex16",  "Mesh node ID, 16-bit hex"),
     # --- Testbed control -----------------------------------------------------
     Param("node_active",           "NODE_ACTIVE",           "uint",   "0=boot silent (no LoRa stack), 1=normal"),
+    Param("mon_sending_every",     "MON_SENDING_EVERY",     "uint",   "MQTT-mon DATA send interval (ms); offered-load knob, set per-SF to keep load under capacity"),
     # --- WiFi + MQTT credentials ---------------------------------------------
     Param("wifi_ssid",             "WIFI_SSID",             "str",    "WiFi SSID"),
     Param("wifi_password",         "WIFI_PASSWORD",         "str",    "WiFi password"),
