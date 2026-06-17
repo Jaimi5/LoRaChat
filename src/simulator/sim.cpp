@@ -241,15 +241,11 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
                                                   (DataMessage*)simPayloadMessage);
 
 #ifdef USE_LORAMESHER_V2
-        // Pace to the TDMA schedule: inject the next packet only after the previous
-        // one has had time to traverse the mesh (max hop depth * 2 data slots). This
-        // keeps the LoRaMesher TX queue from overflowing at high SF, where airtime
-        // (and thus slot length) is long. `delayMs` (PACKET_DELAY) is the fallback
-        // used before the node has joined and has a slot schedule.
-        uint8_t depth = LoRaMeshService::getInstance().getMaxHopDepth();
-        uint8_t nSlots = depth * 2;
-        ESP_LOGI(SIM_TAG, "Pacing: hop depth %d -> waiting %d data slots", depth, nSlots);
-        LoRaMeshService::getInstance().waitForDataSlots(nSlots, delayMs);
+        // Static pacing: a fixed inter-packet delay so the offered load is exactly
+        // `delayMs` and reproducible. Per-SF capacity matching is done by choosing
+        // `delayMs` (the TDMA superframe stretches with SF, so a single SF-independent
+        // rate saturates high SF — see docs/paper/sf_offered_load_capacity.md).
+        vTaskDelay(delayMs / portTICK_PERIOD_MS);
 #else
         vTaskDelay(delayMs / portTICK_PERIOD_MS);  // Wait delayMs milliseconds
 

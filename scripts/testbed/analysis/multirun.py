@@ -34,12 +34,16 @@ if __name__ == "__main__":
 from analysis.capacity import analyse as analyse_capacity
 from analysis.duty_cycle import analyse as analyse_duty
 from analysis.formation import analyse as analyse_formation
+from analysis.load import analyse as analyse_load
 from analysis.routing import analyse as analyse_routing
 
 
 _RUNID_CELL_RE = re.compile(
     r"^(?:[A-Za-z][\w-]*?-)?\d{8}-\d{6}-(?P<cell>.+)-r(?P<rep>\d+)$"
 )
+
+# Extract the SF integer from an "SF<n>" cell id (None for non-SF cells).
+_SF_OF_CELL = re.compile(r"^SF(\d+)$")
 
 
 def _cell_of(run_dir: Path) -> tuple[str, int] | None:
@@ -104,6 +108,7 @@ def _per_run_summary(run_dir: Path) -> dict | None:
         formation = analyse_formation(run_dir)
         capacity = analyse_capacity(run_dir)
         duty = analyse_duty(run_dir)
+        load = analyse_load(run_dir)
     except Exception as e:
         return {"error": repr(e)}
 
@@ -119,6 +124,7 @@ def _per_run_summary(run_dir: Path) -> dict | None:
         "routing": routing,
         "formation": formation,
         "capacity": capacity,
+        "load": load,
         "duty_cycle_mean_current_mA": mean_current,
     }
 
@@ -183,15 +189,41 @@ def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
             "convergence_s": _agg(
                 [r["formation"]["network_convergence_at"] for r in included]),
             "offered_pkt_per_min": _agg(
-                [r["capacity"]["offered_pkt_per_min"] for r in included]),
+                [r["capacity"].get("offered_pkt_per_min") for r in included]),
             "mean_current_mA": _agg(
                 [r["duty_cycle_mean_current_mA"] for r in included]),
+            "rho_node": _agg(
+                [(r["load"] or {}).get("rho_node") for r in included]),
+            "rho_max": _agg(
+                [(r["load"] or {}).get("rho_max") for r in included]),
         }
+
+    # Per-run scatter points: PDR/latency vs normalized load, one row per kept run.
+    # The cell-mean rollup above discards the per-run granularity a load curve needs.
+    per_run_points: list[dict] = []
+    for cell, dirs in per_cell.items():
+        m = _SF_OF_CELL.match(cell)
+        sf = int(m.group(1)) if m else None
+        for d in dirs:
+            r = per_run.get(d)
+            if not r:
+                continue
+            load = r.get("load") or {}
+            per_run_points.append({
+                "run": d.name, "cell": cell, "sf": sf,
+                "pdr": r["routing"]["totals"]["pdr"],
+                "latency_p50_ms": r["routing"]["latency_ms_overall"]["p50"],
+                "rho_node": load.get("rho_node"),
+                "rho_max": load.get("rho_max"),
+                "offered_pkt_per_min_per_node": load.get("offered_pkt_per_min_per_node"),
+                "bottleneck_fan_in": load.get("bottleneck_fan_in"),
+            })
 
     return {
         "batch_dir": str(batch_dir),
         "drop_first": drop_first,
         "cells": cells,
+        "per_run_points": per_run_points,
         "rejected_runs": rejected,
         "warmup_runs": dict(warmup_by_cell),
     }
