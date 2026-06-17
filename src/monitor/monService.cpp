@@ -1,6 +1,3 @@
-#if !defined(USE_LORAMESHER_V2)
-#define USE_LORAMESHER_V2
-#endif
 #include "monService.h"
 #include <Arduino.h>
 #include "loramesh/loraMeshService.h"
@@ -211,8 +208,11 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                     do {
                         RouteNode* rtn = routingTableList->getCurrent();
                         if (rtn->networkNode.address == rtn->via) {
-                            MONMessage->rt[i++] = {rtn->networkNode.address, rtn->via, 0,
-                                                   rtn->networkNode.metric};
+                            routing_entry& entry = MONMessage->rt[i++];
+                            entry.neighbor = rtn->networkNode.address;
+                            entry.next_hop = rtn->via;
+                            entry.link_quality = 0;
+                            entry.hop_count = rtn->networkNode.metric;
                         }
                     } while (routingTableList->next());
                     ESP_LOGV(MON_TAG, "sending monOneMessage");
