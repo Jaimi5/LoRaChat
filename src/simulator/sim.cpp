@@ -92,6 +92,26 @@ void Sim::simLoop(void* pvParameters) {
     ESP_LOGI(SIM_TAG, "Simulator started");
     Sim sim = Sim::getInstance();
 
+#if SIM_PDR_COMPARE
+    // ── PDR-comparison testbed mode ──────────────────────────────────────────
+    // Pure LoRa load generator: no WiFi/MQTT orchestration and no LM_State dump
+    // (that machinery is one-shot and v1-only). Wait for the mesh to converge
+    // and a gateway to appear, then send one fixed-size, fixed-rate burst. The
+    // gateways' serial logs capture the APP_TX / APP_RX markers used for PDR.
+    ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) waiting for mesh to converge");
+    vTaskDelay(SIM_TESTBED_WARMUP_MS / portTICK_PERIOD_MS);
+    while (!LoRaMeshService::getInstance().hasGateway()) {
+        ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) waiting for a gateway");
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) sending %d packets of %d B every %d ms",
+             PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+    sim.sendPacketsToServer(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+    ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) finished burst");
+    vTaskDelete(NULL);
+    return;
+#endif
+
     for (;;) {
         sim.sendStartSimMessage();
 
@@ -236,6 +256,12 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
     SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
     for (size_t i = 0; i < packetCount; i++) {
         simPayloadMessage->messageId = i;
+        // Version-neutral TX marker for end-to-end PDR (matched against APP_RX at
+        // the sink, keyed by src+seq). INFO level so it survives the testbed log
+        // filter. `size` is the LoRaMesher payload requested for this burst.
+        ESP_LOGI(SIM_TAG, "APP_TX src=0x%04X seq=%u size=%u",
+                 LoRaMeshService::getInstance().getLocalAddress(), (unsigned)i,
+                 (unsigned)packetSize);
         ESP_LOGI(SIM_TAG, "Simulator sending packet %d", i);
         MessageManager::getInstance().sendMessage(messagePort::MqttPort,
                                                   (DataMessage*)simPayloadMessage);

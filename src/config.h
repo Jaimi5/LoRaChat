@@ -54,6 +54,19 @@
 #define MQTT_ENABLED
 #endif
 
+// ── PDR-comparison experiment (sim-based load generator) ─────────────────────
+// When SIM_PDR_COMPARE != 0 (set per-run by the testbed configtool) the board
+// runs the simulator as a fixed-rate, fixed-size LoRa load generator instead of
+// the MQTT monitor. This lets LoRaMesher v1 and v2 be compared at an identical,
+// controlled offered load. Default 0 keeps the normal MQTT-monitor behaviour.
+#define SIM_PDR_COMPARE 0
+#if SIM_PDR_COMPARE
+#undef MQTT_MON_ENABLED
+#ifndef SIMULATION_ENABLED
+#define SIMULATION_ENABLED
+#endif
+#endif
+
 // Configuration
 
 // Display Configuration
@@ -367,6 +380,10 @@
 
 // If defined, there only be one sender
 #define ONE_SENDER 0
+
+// PDR-comparison testbed mode: time to wait after boot for the mesh to converge
+// (and a gateway to appear) before the load-generator burst begins.
+#define SIM_TESTBED_WARMUP_MS 60000
 
 // If defined 0 the packets will be sent unreliably
 #define SEND_RELIABLE 0

@@ -104,6 +104,13 @@ PARAMS: dict[str, Param] = {p.yaml_key: p for p in [
     # --- Testbed control -----------------------------------------------------
     Param("node_active",           "NODE_ACTIVE",           "uint",   "0=boot silent (no LoRa stack), 1=normal"),
     Param("mon_sending_every",     "MON_SENDING_EVERY",     "uint",   "MQTT-mon DATA send interval (ms); offered-load knob, set per-SF to keep load under capacity"),
+    # --- Sim-based PDR comparison (v1 vs v2 load generator) -------------------
+    Param("sim_pdr_compare",       "SIM_PDR_COMPARE",       "uint",   "1=run the simulator as a fixed-rate LoRa load generator (replaces MQTT-mon); 0=normal"),
+    Param("packet_count",          "PACKET_COUNT",          "uint",   "Sim load generator: number of packets in the burst"),
+    Param("packet_size",           "PACKET_SIZE",           "uint",   "Sim load generator: LoRaMesher payload bytes per packet (keep single-packet on both versions, <=~41 at SF12)"),
+    Param("packet_delay",          "PACKET_DELAY",          "uint",   "Sim load generator: inter-packet delay (ms); the offered-load knob"),
+    Param("one_sender",            "ONE_SENDER",            "uint",   "0=all active nodes send; non-zero=only that node address sends"),
+    Param("sim_testbed_warmup_ms", "SIM_TESTBED_WARMUP_MS", "uint",   "Sim PDR mode: post-boot wait before the burst; align with the run's warmup so the burst lands inside the measurement window"),
     # --- WiFi + MQTT credentials ---------------------------------------------
     Param("wifi_ssid",             "WIFI_SSID",             "str",    "WiFi SSID"),
     Param("wifi_password",         "WIFI_PASSWORD",         "str",    "WiFi password"),

@@ -31,6 +31,7 @@ if __name__ == "__main__":
     if _parent not in sys.path:
         sys.path.insert(0, _parent)
 
+from analysis.app_pdr import analyse as analyse_app_pdr
 from analysis.capacity import analyse as analyse_capacity
 from analysis.duty_cycle import analyse as analyse_duty
 from analysis.formation import analyse as analyse_formation
@@ -38,12 +39,37 @@ from analysis.load import analyse as analyse_load
 from analysis.routing import analyse as analyse_routing
 
 
+def _safe(fn, run_dir):
+    """Run one per-metric analysis, tolerating failure (returns None).
+
+    Needed for the v1-vs-v2 sim comparison: v1 runs have no v2 TDMA mesh logs,
+    so routing/formation/capacity/superframe analyses raise — but the run is
+    still valid for the version-neutral app-layer PDR. One analysis failing must
+    not reject the whole run."""
+    try:
+        return fn(run_dir)
+    except Exception:
+        return None
+
+
+def _dig(d, *keys):
+    """Nested .get() that returns None if any level is missing/None."""
+    for k in keys:
+        if not isinstance(d, dict):
+            return None
+        d = d.get(k)
+    return d
+
+
 _RUNID_CELL_RE = re.compile(
     r"^(?:[A-Za-z][\w-]*?-)?\d{8}-\d{6}-(?P<cell>.+)-r(?P<rep>\d+)$"
 )
 
-# Extract the SF integer from an "SF<n>" cell id (None for non-SF cells).
-_SF_OF_CELL = re.compile(r"^SF(\d+)$")
+# Extract the SF integer from a cell id. Matches "SF7" and combined sweep ids
+# like "SF7_d300000" (SF<n> followed by a "_d<delay_ms>" load token).
+_SF_OF_CELL = re.compile(r"SF(\d+)")
+# Optional load token "_d<delay_ms>" / "-d<delay_ms>" in a sweep cell id.
+_DELAY_OF_CELL = re.compile(r"[_-]d(\d+)")
 
 
 def _cell_of(run_dir: Path) -> tuple[str, int] | None:
@@ -103,19 +129,19 @@ def _per_run_summary(run_dir: Path) -> dict | None:
     if not logs_dir.is_dir() or not any(logs_dir.iterdir()):
         return None
 
-    try:
-        routing = analyse_routing(run_dir)
-        formation = analyse_formation(run_dir)
-        capacity = analyse_capacity(run_dir)
-        duty = analyse_duty(run_dir)
-        load = analyse_load(run_dir)
-    except Exception as e:
-        return {"error": repr(e)}
+    # Each analysis is guarded independently so a v2-only metric failing on a v1
+    # run (no TDMA logs) doesn't discard the run's app-layer PDR.
+    routing = _safe(analyse_routing, run_dir)
+    formation = _safe(analyse_formation, run_dir)
+    capacity = _safe(analyse_capacity, run_dir)
+    duty = _safe(analyse_duty, run_dir)
+    load = _safe(analyse_load, run_dir)
+    app = _safe(analyse_app_pdr, run_dir)
 
     # Per-run mean current across nodes (for energy aggregation).
     currents = [
         v.get("mean_current_mA")
-        for v in (duty.get("per_node") or {}).values()
+        for v in (_dig(duty, "per_node") or {}).values()
         if isinstance(v, dict) and v.get("mean_current_mA") is not None
     ]
     mean_current = (statistics.fmean(currents) if currents else None)
@@ -125,6 +151,7 @@ def _per_run_summary(run_dir: Path) -> dict | None:
         "formation": formation,
         "capacity": capacity,
         "load": load,
+        "app": app,
         "duty_cycle_mean_current_mA": mean_current,
     }
 
@@ -179,23 +206,31 @@ def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
             "n_runs": len(included),
             "n_rejected": len(dirs) - len(included),
             "dropped_reps": dropped_by_cell.get(cell, []),
-            "pdr": _agg([r["routing"]["totals"]["pdr"] for r in included]),
+            "pdr": _agg([_dig(r, "routing", "totals", "pdr") for r in included]),
             "latency_p50_ms": _agg(
-                [r["routing"]["latency_ms_overall"]["p50"] for r in included]),
+                [_dig(r, "routing", "latency_ms_overall", "p50") for r in included]),
             "latency_p95_ms": _agg(
-                [r["routing"]["latency_ms_overall"]["p95"] for r in included]),
+                [_dig(r, "routing", "latency_ms_overall", "p95") for r in included]),
             "latency_mean_ms": _agg(
-                [r["routing"]["latency_ms_overall"]["mean"] for r in included]),
+                [_dig(r, "routing", "latency_ms_overall", "mean") for r in included]),
             "convergence_s": _agg(
-                [r["formation"]["network_convergence_at"] for r in included]),
+                [_dig(r, "formation", "network_convergence_at") for r in included]),
             "offered_pkt_per_min": _agg(
-                [r["capacity"].get("offered_pkt_per_min") for r in included]),
+                [_dig(r, "capacity", "offered_pkt_per_min") for r in included]),
             "mean_current_mA": _agg(
-                [r["duty_cycle_mean_current_mA"] for r in included]),
+                [r.get("duty_cycle_mean_current_mA") for r in included]),
             "rho_node": _agg(
-                [(r["load"] or {}).get("rho_node") for r in included]),
+                [_dig(r, "load", "rho_node") for r in included]),
             "rho_max": _agg(
-                [(r["load"] or {}).get("rho_max") for r in included]),
+                [_dig(r, "load", "rho_max") for r in included]),
+            # Version-neutral application-layer metrics (sim v1-vs-v2 comparison):
+            "app_pdr": _agg([_dig(r, "app", "totals", "pdr") for r in included]),
+            "app_goodput_Bps": _agg(
+                [_dig(r, "app", "totals", "goodput_Bps") for r in included]),
+            "app_latency_p50_ms": _agg(
+                [_dig(r, "app", "latency_ms_overall", "p50") for r in included]),
+            "app_latency_p95_ms": _agg(
+                [_dig(r, "app", "latency_ms_overall", "p95") for r in included]),
         }
 
     # Per-run scatter points: PDR/latency vs normalized load, one row per kept run.
@@ -204,6 +239,8 @@ def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
     for cell, dirs in per_cell.items():
         m = _SF_OF_CELL.match(cell)
         sf = int(m.group(1)) if m else None
+        dm = _DELAY_OF_CELL.search(cell)
+        packet_delay_ms = int(dm.group(1)) if dm else None
         for d in dirs:
             r = per_run.get(d)
             if not r:
@@ -211,12 +248,17 @@ def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
             load = r.get("load") or {}
             per_run_points.append({
                 "run": d.name, "cell": cell, "sf": sf,
-                "pdr": r["routing"]["totals"]["pdr"],
-                "latency_p50_ms": r["routing"]["latency_ms_overall"]["p50"],
+                "packet_delay_ms": packet_delay_ms,
+                "pdr": _dig(r, "routing", "totals", "pdr"),
+                "latency_p50_ms": _dig(r, "routing", "latency_ms_overall", "p50"),
                 "rho_node": load.get("rho_node"),
                 "rho_max": load.get("rho_max"),
                 "offered_pkt_per_min_per_node": load.get("offered_pkt_per_min_per_node"),
                 "bottleneck_fan_in": load.get("bottleneck_fan_in"),
+                # Version-neutral app-layer metrics (the load-curve y-axes):
+                "app_pdr": _dig(r, "app", "totals", "pdr"),
+                "app_goodput_Bps": _dig(r, "app", "totals", "goodput_Bps"),
+                "app_latency_p50_ms": _dig(r, "app", "latency_ms_overall", "p50"),
             })
 
     return {

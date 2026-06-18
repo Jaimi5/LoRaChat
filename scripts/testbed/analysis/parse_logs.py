@@ -71,6 +71,11 @@ _PATTERNS = {
         r"LinkStats\s+0x([0-9A-Fa-f]+):\s+quality\s+(\d+)\s*->\s*(\d+)\s+"
         r"\(ewma=(\d+)\s+remote=(\d+)\s+exp=(\d+)\s+recv=(\d+)\s+missed=(\d+)\)"
     ),
+    # Version-neutral application-layer end-to-end markers (firmware emits these
+    # above the LoRaMesher library, so they are identical for v1 and v2):
+    #   APP_TX at the originator, APP_RX at the final destination.
+    "app_tx": re.compile(r"APP_TX src=0x([0-9A-Fa-f]+) seq=(\d+) size=(\d+)"),
+    "app_rx": re.compile(r"APP_RX src=0x([0-9A-Fa-f]+) seq=(\d+) app=(\d+)"),
     "state_change": re.compile(r"Network service state changed to (\d+)"),
     "route_updated": re.compile(
         r"Route updated: dest=0x([0-9A-Fa-f]+) via=0x([0-9A-Fa-f]+) hops=(\d+)"
@@ -164,6 +169,10 @@ def _extract_fields(kind: str, m: re.Match) -> dict:
                 "quality_from": int(g[1]), "quality_to": int(g[2]),
                 "ewma": int(g[3]), "remote": int(g[4]),
                 "exp": int(g[5]), "recv": int(g[6]), "missed": int(g[7])}
+    if kind == "app_tx":
+        return {"src": g[0].upper(), "seq": int(g[1]), "size": int(g[2])}
+    if kind == "app_rx":
+        return {"src": g[0].upper(), "seq": int(g[1]), "app": int(g[2])}
     if kind == "state_change":
         return {"state": int(g[0])}
     if kind == "route_updated":
