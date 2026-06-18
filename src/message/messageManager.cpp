@@ -140,6 +140,14 @@ void MessageManager::processReceivedMessage(messagePort port, DataMessage* messa
         return;
     }
 
+    // Version-neutral RX marker: this message reached its final destination.
+    // Matched against the originator's APP_TX (src+seq) to compute end-to-end
+    // PDR/latency independent of the LoRaMesher version. INFO level so it
+    // survives the testbed log filter. `app` lets analysis select a flow
+    // (e.g. SimApp=12 for the PDR-comparison load generator).
+    ESP_LOGI(MANAGER_TAG, "APP_RX src=0x%04X seq=%u app=%u", message->addrSrc,
+             (unsigned)message->messageId, (unsigned)message->appPortSrc);
+
     for (auto service : services) {
         if (service->serviceId == message->appPortDst) {
             service->processReceivedMessage(port, message);
