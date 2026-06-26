@@ -62,6 +62,12 @@
 #define SIM_PDR_COMPARE 0
 #if SIM_PDR_COMPARE
 #undef MQTT_MON_ENABLED
+// Pure-LoRa load test: disable WiFi/MQTT entirely. The gateway/sink role is set
+// directly at boot (see sim.cpp), so the experiment must not depend on an AP. This
+// also prevents the WiFi-fail path (wifiServerService.cpp) from calling
+// removeGateway() and clobbering that role, and removes the MQTT connect log spam.
+#undef WIFI_ENABLED
+#undef MQTT_ENABLED
 #ifndef SIMULATION_ENABLED
 #define SIMULATION_ENABLED
 #endif
