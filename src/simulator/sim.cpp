@@ -1,5 +1,7 @@
 #include "sim.h"
 
+#include <cstring>
+
 // HELLO_PACKETS_DELAY is defined in the v1 LoRaMesher library; provide a default for v2
 #ifndef HELLO_PACKETS_DELAY
 #define HELLO_PACKETS_DELAY 120
@@ -98,6 +100,17 @@ void Sim::simLoop(void* pvParameters) {
     // (that machinery is one-shot and v1-only). Wait for the mesh to converge
     // and a gateway to appear, then send one fixed-size, fixed-rate burst. The
     // gateways' serial logs capture the APP_TX / APP_RX markers used for PDR.
+    //
+    // Designate the sink without depending on the WiFi AP: in PDR mode the WiFi-cred
+    // nodes are the sinks (SSID != "nowifi"). Set the gateway role directly at boot so
+    // the pure-LoRa experiment doesn't hinge on AP reachability. The sink sends no burst;
+    // messageManager.cpp logs APP_RX for every packet that reaches it.
+    if (strcmp(WIFI_SSID, "nowifi") != 0) {
+        LoRaMeshService::getInstance().setGateway();
+        ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) acting as gateway/sink (no burst)");
+        vTaskDelete(NULL);
+        return;
+    }
     ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) waiting for mesh to converge");
     vTaskDelay(SIM_TESTBED_WARMUP_MS / portTICK_PERIOD_MS);
     while (!LoRaMeshService::getInstance().hasGateway()) {
