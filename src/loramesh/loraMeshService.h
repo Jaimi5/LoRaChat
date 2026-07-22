@@ -38,6 +38,12 @@ public:
 
     String getRoutingTable();
 
+    // Human-readable summary of the radio parameters actually applied to the
+    // LoRa stack at init (SF/BW/power/max packet size), captured in both the v1
+    // and v2 paths. Used by the simulator to periodically log the live config so
+    // a stale/ignored value is visible inside the measurement window.
+    String getRadioInfo();
+
     void send(DataMessage* message);
 
     bool sendClosestGateway(DataMessage* message);
@@ -86,6 +92,10 @@ public:
 #endif
 
 private:
+    // Radio config actually applied at init (version-agnostic). Populated by
+    // initLoraMesherService() in both the v1 and v2 branches.
+    String radioInfo_ = "SF=? BW=? pow=? maxPkt=?";
+
 #ifdef USE_LORAMESHER_V2
     std::unique_ptr<loramesher::LoraMesher> mesher_;
 
