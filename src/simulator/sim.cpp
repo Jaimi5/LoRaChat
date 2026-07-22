@@ -94,6 +94,13 @@ void Sim::simLoop(void* pvParameters) {
     ESP_LOGI(SIM_TAG, "Simulator started");
     Sim sim = Sim::getInstance();
 
+    // Guardrail: log the radio config actually applied at init. Emitted once
+    // here (covers SIM_PDR_COMPARE mode, where this task is one-shot) and again
+    // each cycle of the loop below, so the live SF/power is visible inside the
+    // measurement window even when boot-time logs are not captured.
+    ESP_LOGI(SIM_TAG, "radio config: %s",
+             LoRaMeshService::getInstance().getRadioInfo().c_str());
+
 #if SIM_PDR_COMPARE
     // ── PDR-comparison testbed mode ──────────────────────────────────────────
     // Pure LoRa load generator: no WiFi/MQTT orchestration and no LM_State dump
@@ -132,6 +139,10 @@ void Sim::simLoop(void* pvParameters) {
                    portTICK_PERIOD_MS);  // Wait to propagate all the network status
 
         ESP_LOGI(SIM_TAG, "Heap size start sim: %d", ESP.getFreeHeap());
+
+        // Periodic radio-config guardrail (see note at simLoop entry).
+        ESP_LOGI(SIM_TAG, "radio config: %s",
+                 LoRaMeshService::getInstance().getRadioInfo().c_str());
 
 
 #if ONE_SENDER != 0

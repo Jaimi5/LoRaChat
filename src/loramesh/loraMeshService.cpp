@@ -58,6 +58,10 @@ void LoRaMeshService::initLoraMesherService() {
                   .withLoRaMeshProtocol(meshConfig)
                   .Build();
 
+    radioInfo_ = "SF=" + String((unsigned)LORA_SPREADING_FACTOR) + " BW=" +
+                 String((float)LORA_BANDWIDTH, 1) + " pow=" + String((int)LORA_POWER) +
+                 " maxPkt=" + String((unsigned)LORA_MAX_PACKET_SIZE);
+
     loraReceiveQueue_ = xQueueCreate(10, sizeof(LoRaQueueMessage*));
 
     mesher_->SetDataCallback([](loramesher::AddressType source, const std::vector<uint8_t>& data) {
@@ -316,6 +320,30 @@ void LoRaMeshService::initLoraMesherService() {
     ESP_LOGV(LMS_TAG, "LoraMesher config: LORA_SCK: %d, LORA_MISO: %d, LORA_MOSI: %d, LORA_CS: %d",
              LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
 
+    // Apply radio parameters from config.h. Without these the v1 library keeps
+    // its LM_* struct defaults (SF7 / 869.9 MHz / 6 dBm / sync 19) and every
+    // batch/baseline override is silently ignored — mirror the v2 RadioConfig.
+    config.freq = LORA_FREQUENCY;
+    config.bw = LORA_BANDWIDTH;
+    config.sf = LORA_SPREADING_FACTOR;
+    config.cr = LORA_CODING_RATE;
+    config.syncWord = LORA_SYNC_WORD;
+    config.power = LORA_POWER;
+    config.preambleLength = LORA_PREAMBLE_LENGTH;
+    config.max_packet_size = LORA_MAX_PACKET_SIZE;
+
+    // Confirmation log of what actually goes into begin(). MUST be ESP_LOGI: the
+    // ESP_LOGV lines above are compiled out at CORE_DEBUG_LEVEL=3. Logging the
+    // struct fields (not the macros) also flags a future re-break — if the block
+    // above is removed, config.sf falls back to LM_LORASF and this prints SF=7.
+    ESP_LOGI(LMS_TAG,
+             "v1 radio applied: SF=%u freq=%.3f BW=%.1f CR=%u SW=%u pow=%d preLen=%u maxPkt=%u",
+             config.sf, config.freq, config.bw, config.cr, config.syncWord, config.power,
+             config.preambleLength, (unsigned)config.max_packet_size);
+
+    radioInfo_ = "SF=" + String((unsigned)config.sf) + " BW=" + String(config.bw, 1) +
+                 " pow=" + String((int)config.power) + " maxPkt=" + String((unsigned)config.max_packet_size);
+
     // Initialize LoRaMesher
     radio.begin(config);
 
@@ -572,4 +600,9 @@ void LoRaMeshService::waitForDataSlots(uint8_t nSlots, uint32_t fallbackMs) {
     // v1 has no slot schedule; approximate with a single fallback wait.
     vTaskDelay(fallbackMs / portTICK_PERIOD_MS);
 #endif
+}
+
+// Version-agnostic: returns the radio config recorded at init by either branch.
+String LoRaMeshService::getRadioInfo() {
+    return radioInfo_;
 }
