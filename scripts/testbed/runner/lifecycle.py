@@ -106,6 +106,22 @@ def deploy_config(
             cwd=repo_root,
         )
         recorder.end(p, ok=(rc == 0), rc=rc)
+        if rc != 0:
+            return False
+
+        # Synchronized reset AFTER the staggered upload. Boards are flashed one at a
+        # time across the ~15-min upload, and each SIM_TESTBED_WARMUP_MS clock starts
+        # at that board's flash-time boot. Without this reset, boards flashed early
+        # finish their warmup and emit the first burst packets BEFORE the monitors
+        # attach (which happens only after the whole upload completes) — silently
+        # dropping seq 0/1 on the earliest boards, a systematic PDR bias against the
+        # slower-to-flash v2. One reset reboots every board at the same instant so all
+        # warmup clocks restart together; the caller then attaches monitors (ports are
+        # free — the reset must precede start_monitors, since gw-reset needs the port
+        # to pulse DTR/RTS). Mirrors the do_reset_only path, which never had this bug.
+        p = recorder.begin("post-upload-sync-reset")
+        rc = _run(["bash", str(deploy_sh), "reset", "-n", session], cwd=repo_root)
+        recorder.end(p, ok=(rc == 0), rc=rc)
         return rc == 0
     if do_reset_only:
         p = recorder.begin("push-config", yaml=str(run_yaml))

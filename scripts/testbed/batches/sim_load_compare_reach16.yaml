@@ -1,0 +1,59 @@
+# v1-vs-v2 16-node REACH test — does each stack deliver across the 3.5 km long link?
+#
+# This settles a claim the buggy v1 data cannot: whether v2 reaches the remote
+# cluster {3428,14A4,DD58} where v1 does not, or whether v1's earlier "failure to
+# join" was an artifact of it running SF7/6 dBm (instead of the configured SF9/SF12
+# and 14 dBm on the long-link endpoints 006C/3428) on a link that needs high SF and
+# full power. On FIXED firmware, run both stacks at their CONFIGURED radio params,
+# interleaved (via run_full_redo.sh) so weather is shared, and gate cells on the
+# 006C<->3428 link health logged during the run.
+#
+# Cells: SF12 (primary — best link margin, most likely to close) and SF9
+# (secondary — verify whether it also closes). NO SF7: it cannot close a 3.5 km hop
+# for either stack, so a reach comparison there is meaningless (both fail).
+# Light-ish load so the relay bottleneck does not saturate and confound reach.
+#
+# Full 16-node topology: NO inactive_devices — the remote cluster and both long-link
+# endpoints must be active. TX power comes from example-baseline (006C=14, 3428=14,
+# clusters=2); the fix now applies it, and the periodic `radio config: ... pow=` /
+# link-stats lines let you VERIFY 14 dBm and link RSSI/SNR on-air per run.
+#
+# Reps via rounds (run_full_redo.sh --runs 1); do not set runs>1 here.
+batch: sim_load_compare_reach16
+description: v1-vs-v2 16-node long-link reach test (SF12 primary, SF9 secondary; equal configured power)
+base: ../experiments/example-baseline.yaml
+
+runs: 1
+duration_min: 60
+warmup_min: 30
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  # SF12 rho~1.0 — PRIMARY. Long link closes at SF12 if it closes at all.
+  - id: SF12_d462000
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 5                # was 8
+      lora_spreading_factor: 12
+      packet_delay: 462000
+      sim_testbed_warmup_ms: 1800000 # = warmup_min 30
+    warmup_min: 30
+    duration_min: 53                 # burst ~38.5 + tail 14
+
+  # SF9 rho~1.2 — SECONDARY. The one cell where prior v1 data had both fully joined.
+  - id: SF9_d63000
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 13               # was 25
+      lora_spreading_factor: 9
+      packet_delay: 63000
+      sim_testbed_warmup_ms: 1500000 # = warmup_min 25 (>15 min upload — capture safe)
+    warmup_min: 25
+    duration_min: 21                 # burst ~13.7 + tail 7 (window is adequate)

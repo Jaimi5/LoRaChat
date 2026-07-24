@@ -1,0 +1,80 @@
+# v1-vs-v2 13-node delivery comparison — SHORTENED redo for the paper's app_pdr figure.
+#
+# Recollection of figures/energy/app_pdr.pdf (+ latency, participation, energy) on
+# FIXED firmware, after the bug that made v1 ignore its configured SF/power and run
+# SF7/6 dBm/sync 19 regardless of the cell. The 13-node main cluster has no long
+# link, so weather is not a factor here; the reach story lives in the separate
+# reach16 batch.
+#
+# Reps: this batch is invoked once per ROUND by run_full_redo.sh (--runs 1); the N
+# rounds ARE the N reps (multirun computes the 95% CI across them). Do NOT set
+# runs>1 here — the orchestrator provides repetition and interleaves v1/v2.
+#
+# Shortening vs batches/sim_load_compare.yaml: one operating point per SF (the
+# past-saturation load — the decisive contention point at SF7, parity at SF9/SF12),
+# packet_count halved (still hundreds of packets across 13 senders x rounds), and
+# SF7/SF9 warmup trimmed 15->10 min (SF12 kept at 25 — genuinely slow to converge).
+# See sim_load_compare.yaml for the offered-load model (rho, C/F) these anchor on.
+batch: sim_load_compare_13node
+description: v1-vs-v2 13-node app delivery ratio (one load point per SF, shortened; reps via rounds)
+base: ../experiments/example-baseline.yaml
+
+runs: 1                   # rounds provide the reps — leave at 1 (run_full_redo.sh)
+duration_min: 30
+warmup_min: 10
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  # SF7 rho~1.2 — past relay saturation. The decisive cell (v1 contention drop).
+  - id: SF7_d40000
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 15               # was 30
+      lora_spreading_factor: 7
+      packet_delay: 40000
+      # Warmup > v2 upload phase (~15 min), else the earliest boards burst before
+      # monitors attach and seq 0/1 are lost (see SF9 note). 600000 was too short.
+      sim_testbed_warmup_ms: 900000  # = warmup_min 15
+    warmup_min: 15
+    duration_min: 16                 # burst 10 + tail 6 (window is adequate)
+    inactive_devices: &remote
+      - DD58
+      - 14A4
+      - '3428'
+
+  # SF9 rho~1.2 — past relay saturation.
+  - id: SF9_d63000
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 13               # was 25
+      lora_spreading_factor: 9
+      packet_delay: 63000
+      # Warmup MUST exceed the v2 upload phase (~15 min) or the earliest-flashed
+      # boards burst before the serial monitors attach and their seq 0/1 are lost
+      # (systematic ~5pp bias against v2). 900000 (15 min) restores the margin the
+      # original sim_load_compare.yaml used; 600000 was too short. See warmup note.
+      sim_testbed_warmup_ms: 900000  # = warmup_min 15
+    warmup_min: 15
+    duration_min: 21                 # burst ~13.7 + tail 7 (window is adequate)
+    inactive_devices: *remote
+
+  # SF12 rho~1.5 — overload. Expensive (long airtime); packet_count cut hardest.
+  - id: SF12_d308000
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 5                # was 10
+      lora_spreading_factor: 12
+      packet_delay: 308000
+      sim_testbed_warmup_ms: 1500000 # = warmup_min 25
+    warmup_min: 25
+    duration_min: 40                 # burst ~25.7 + tail 14
+    inactive_devices: *remote
