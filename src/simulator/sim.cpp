@@ -280,6 +280,12 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
     SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
     for (size_t i = 0; i < packetCount; i++) {
         simPayloadMessage->messageId = i;
+        // Guardrail, logged with EVERY packet (not just i==0): on v2 SF7/SF9 the
+        // monitor misses the first 1-2 packets on some nodes (006C/1484/2A9C/7984),
+        // so an i==0-only line would be lost on exactly those nodes. Per-packet
+        // guarantees the applied SF/power is captured as long as ANY packet is.
+        ESP_LOGI(SIM_TAG, "radio config: %s",
+                 LoRaMeshService::getInstance().getRadioInfo().c_str());
         // Version-neutral TX marker for end-to-end PDR (matched against APP_RX at
         // the sink, keyed by src+seq). INFO level so it survives the testbed log
         // filter. `size` is the LoRaMesher payload requested for this burst.
