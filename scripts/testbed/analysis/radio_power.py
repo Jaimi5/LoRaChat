@@ -42,7 +42,7 @@ Sources
         in the paper — the paper reports them only as figures.
 
 Known limits of [SOLER] — state these in any write-up, do not hide them:
-  - Measured at 433 MHz (DS bands 2&3). We deploy 869.9 MHz (DS band 1). Their
+  - Measured at 433 MHz (DS bands 2&3). We deploy 869.525 MHz (DS band 1). Their
     RX (12.27 mA) matches the bands-2&3 datasheet row (12.0 mA) to +2.3%, which
     both confirms genuine 433 MHz operation and pins shield overhead at ~0.3 mA.
   - On the SX1276MB1LAS, PA_BOOST is the 915 MHz (HF) path. Driving it at
@@ -92,7 +92,7 @@ PA_BOOST_MEASURED_MA = {
 # +2 dBm — not used by any current testbed config.
 RFO_MEASURED_MA = {2.0: 14.41, 14.0: 25.64}
 
-# ── [DS] Table 6 p.14. Band 1 = 862-1020 MHz = our 869.9 MHz deployment. ─────
+# ── [DS] Table 6 p.14. Band 1 = 862-1020 MHz = our 869.525 MHz deployment. ───
 RX_BAND1_LNABOOST_OFF_MA = 10.8   # IDDR
 RX_BAND1_LNABOOST_ON_MA = 11.5    # IDDR — LoRaMesher leaves LnaBoost on
 RX_BAND23_MA = 12.0               # IDDR — 433 MHz, i.e. what [SOLER] measured
@@ -217,7 +217,7 @@ def rx_current_ma(source: str = "best") -> float:
     band 1 sits below that, but not by more than the spread between [SOLER]'s
     own two RX figures — hence "indistinguishable", never a percentage advantage.
 
-    Band 1 with LnaBoost on is the honest choice for a 869.9 MHz deployment.
+    Band 1 with LnaBoost on is the honest choice for a 869.525 MHz deployment.
     [SOLER]'s 12.27 mA is a bands-2&3 (433 MHz) measurement and reads high here.
     """
     if _norm_source(source) == "legacy":
