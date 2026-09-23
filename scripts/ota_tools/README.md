@@ -126,6 +126,39 @@ python split_chunks.py --input patch.bin    --transport mqtt --output-dir chunks
 | MQTT | 400 bytes | 128 chunks (~seconds) |
 | LoRa | 222 bytes | 231 chunks (~40–77 min at 1% duty cycle) |
 
+Each chunk also carries an 11-byte `OTAChunkPayload` header (`src/ota/otaMessage.h`)
+and costs one 10-byte `OTA_ACK` on the return path, so wire cost is roughly
+`patch_size + 21 × total_chunks`.
+
+## How big is a delta patch?
+
+Measured on `ttgo-t-beam-v1-2` (baseline image 1,045,376 B), patches generated with
+`generate_patch.py` (detools bsdiff + heatshrink, the same path a campaign uses):
+
+| Change vs. baseline | Patch | Full/patch | MQTT chunks | LoRa chunks |
+|---|---|---|---|---|
+| Version string only (`test_firmware/` pair) | 22.8 KB | 64× | 57 | 103 |
+| One added `println` in `main.cpp` | 37.2 KB | 28× | 93 | 168 |
+| Real commit, 61 lines / 4 files (`f96bde5`) | 48.4 KB | 22× | 122 | 219 |
+| Same source, different board (LORA32 vs T-Beam) | 360 KB | 2.8× | 901 | 1623 |
+| Unrelated build (different lib version + board) | 543 KB | 2.7× | 1359 | 2448 |
+
+Three things to know when budgeting a campaign:
+
+- **Patch size does not track lines-of-diff.** Adding one line shifts ~92% of the raw
+  bytes in the image, because everything after it moves in the link map. bsdiff encodes
+  the shift cheaply, which is why the patch stays in the tens of KB — but it is not free.
+- **There is a floor of ~23 KB.** That is the cost of the compressed diff/extra streams
+  over a 1 MB image, paid no matter how small the change. The `test_firmware/` pair sits
+  at that floor and is *not* representative; budget ~35–60 KB for an ordinary commit.
+- **Toolchain or library changes fall off a cliff.** Changing board target, bumping
+  LoRaMesher, or updating ESP-IDF leaves bsdiff no long matching runs, and the patch
+  lands at 1/3 to 1/2 of the full image. At 1% duty cycle that is ~5–9 h per node over
+  LoRa — for those updates, plan on a wired flash or an MQTT-connected node instead.
+
+Regenerate these numbers with `generate_patch.py --old <prev>.bin --new <next>.bin`;
+the printed `Patch size` line and `patch.json` both report it.
+
 ## MQTT defaults
 
 Matching `src/config.h`: broker `192.168.1.26:1883`, username `admin`, password `public`.

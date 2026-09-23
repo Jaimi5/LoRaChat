@@ -1,5 +1,32 @@
 # Spreading-Factor-Aware Offered Load in a TDMA LoRa Mesh
 
+> **SUPERSEDED (2026-07-30) — retired from the paper. Do not cite these numbers.**
+>
+> This note analyses the `main_cluster_pdr__lmv2` batch (12–13 Jun 2026), which no longer
+> backs any claim in `main.tex`. Three reasons it was retired:
+>
+> 1. **Its metric cannot be extended to LoRaMesher v1.** `routing.totals.pdr` parses
+>    v2-specific log lines (`Sending DATA to 0x… via 0x…`), so it is `null` for every `__lmv1`
+>    run and cannot support the v1-vs-v2 comparison the paper is built on.
+> 2. **The SF12 collapse is largely an observation-window artifact, not saturation loss.**
+>    SF12 p50 latency is 399 s against an 1800 s window, and the logs run only ~122 s past
+>    `measurement-end`, so late-sent packets cannot be observed arriving. Restricting to sends
+>    with ≥800 s of remaining observation gives **SF12 0.573 → 0.822** (SF7 0.9825→0.9835,
+>    SF9 0.9817→0.9849). §3's "ρ_max ≈ 2.7, nearly 3× oversubscribed" diagnosis therefore
+>    overstates the case.
+> 3. **The headline table below is itself stale** — 0.982/0.984/0.529 at n=7/5/5 predates the
+>    warm-up-drop and run-rejection rules. The batch's own `aggregated.json` says
+>    0.984/0.982/0.573 at n=6/4/4.
+>
+> The paper's delivery section now uses `sim_load_compare_13node__lmv{1,2}` throughout:
+> app-layer `delivered/intended`, one metric for both stacks, measurement windows sized as
+> burst + delivery tail. The capacity-model reasoning in §2 and §5 is still sound and is what
+> the superframe section relies on; only the measured PDR cells are retired.
+>
+> Note also that one log path under `…-20260612-160341-SF7-r02/logs/` is now a directory where
+> a `.log` file should be, so §9's reproduction commands no longer regenerate `aggregated.json`
+> as-is.
+
 *Diagnosing the SF12 delivery collapse, and turning it into a capacity model.*
 
 This note documents an experiment on the 13-node main cluster: why packet delivery
