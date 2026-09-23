@@ -41,7 +41,7 @@ devices:
     wifi_ssid: nowifi
   77A4:
     lora_power: 2
-    wifi_password: lora1234
+    wifi_password: YOUR_PASSWORD
     wifi_ssid: loramesher
   7B6C:
     lora_power: 2
@@ -65,11 +65,11 @@ devices:
     wifi_ssid: nowifi
   DF10:
     lora_power: 2
-    wifi_password: lora1234
+    wifi_password: YOUR_PASSWORD
     wifi_ssid: loramesher
   E464:
     lora_power: 2
-    wifi_password: lora1234
+    wifi_password: YOUR_PASSWORD
     wifi_ssid: loramesher
   7984:
     lora_power: 2

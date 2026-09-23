@@ -30,3 +30,23 @@ scripts/testbed/change-config/*.sh
 # OTA test fixtures: firmware images and generated patch chunks.
 # Regenerable via scripts/ota_tools (generate_patch.py / split_chunks.py).
 test_firmware/
+# Testbed gateway inventory (SSH hosts/passwords). Copy testbed.conf.example.
+scripts/testbed/testbed.conf
+
+# Experiment output and orchestrator logs
+new_sims4/
+*.log
+scripts/testbed/docs/
+
+# Paper working material (lives in the loramesher repo)
+docs/paper/*
+!docs/paper/sf_offered_load_capacity.md
+docs/compliance/
+docs/debate/
+docs/paper_lorachat/
+docs/compass_artifact_*.md
+docs/formation_convergence_floor.md
+
+# Local assistant notes
+CLAUDE.md
+CONTINUE.md

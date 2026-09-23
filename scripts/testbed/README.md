@@ -63,6 +63,11 @@ Upgrading all gateways (branch: new_loramesher)...
 
 ### On your machine:
 
+0. **Gateway inventory** — `testbed.conf` is gitignored because it holds SSH hosts and passwords. Create it from the template and fill in `GW_SSH` (and `GW_PASS`/`GW_KEY`):
+   ```bash
+   cp scripts/testbed/testbed.conf.example scripts/testbed/testbed.conf
+   ```
+
 1. **SSH authentication** — choose one:
    - **Password auth** (simpler): install `sshpass` and fill in `GW_PASS` in `testbed.conf`
      ```bash

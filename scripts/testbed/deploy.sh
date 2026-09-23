@@ -104,6 +104,7 @@ fi
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
     echo "Error: config file not found: $CONFIG_FILE"
+    echo "Create it from the template: cp \"$SCRIPT_DIR/testbed.conf.example\" \"$SCRIPT_DIR/testbed.conf\""
     exit 1
 fi
 source "$CONFIG_FILE"
