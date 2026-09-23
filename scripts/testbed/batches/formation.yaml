@@ -17,12 +17,12 @@ upload_between_cells: true
 warmup_run: true        # r00 = flash + boot-verify, then synchronized reset → r01
 
 cells:
-  # - id: SF7
-  #   overrides:
-  #     lora_spreading_factor: 7
-  # - id: SF9
-  #   overrides:
-  #     lora_spreading_factor: 9
+  - id: SF7
+    overrides:
+      lora_spreading_factor: 7
+  - id: SF9
+    overrides:
+      lora_spreading_factor: 9
   - id: SF12
     overrides:
       lora_spreading_factor: 12

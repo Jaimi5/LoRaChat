@@ -41,6 +41,29 @@ _PATTERNS = {
         r"PKT_RX src=0x([0-9A-Fa-f]+) dst=0x([0-9A-Fa-f]+) type=0x([0-9A-Fa-f]+) "
         r"size=(\d+) rssi=(-?\d+\.?\d*) snr=(-?\d+\.?\d*)"
     ),
+    # v1 (old LoRaMesher) PHY-level activity. v1 emits no PKT_TX/PKT_RX/Slot
+    # lines; these are the only radio-activity signals it produces. The literal
+    # strings ("Packet send --", "Receiving LoRa packet") never appear in v2, so
+    # adding them here is safe for both versions. Used by duty_cycle.py to
+    # estimate v1 energy (continuous RX + measured TX airtime).
+    "v1_pkt_send": re.compile(
+        r"Packet send -- Size: (\d+) Src: ([0-9A-Fa-f]+) Dst: ([0-9A-Fa-f]+) "
+        r"Id: (\d+) Type: (\d+)"
+    ),
+    "v1_pkt_recv": re.compile(
+        r"Receiving LoRa packet: Size: (\d+) bytes RSSI: (-?\d+) SNR: (-?\d+)"
+    ),
+    # The line IMMEDIATELY AFTER "Receiving LoRa packet" carries the decoded header
+    # with the real Src/Dst (the RSSI/SNR line itself is address-blind). Pairing the two
+    # adjacent lines recovers per-packet source attribution for v1 — no RSSI heuristic.
+    # Verified empirically: in a full v1 log all 91 header lines sat exactly 1 line after
+    # their RSSI line (0 exceptions); ~13% of RSSI lines have no header (CRC-failed
+    # receives), which the pairing drops. Address fields are printed with leading zeros
+    # stripped (006C -> "6C").
+    "v1_pkt_received": re.compile(
+        r"Packet received -- Size: (\d+) Src: ([0-9A-Fa-f]+) Dst: ([0-9A-Fa-f]+) "
+        r"Id: (\d+) Type: (\d+)"
+    ),
     "data_sent": re.compile(
         r"Sending DATA to 0x([0-9A-Fa-f]+) via 0x([0-9A-Fa-f]+) "
         r"\(ttl=(\d+), seq=(\d+)\), payload_size=(\d+)"
@@ -94,6 +117,36 @@ class Event:
     fields: dict = field(default_factory=dict)
 
 
+# ── v1→v2 node-address remapping ─────────────────────────────────────────────
+# The two LoRaMesher versions derive a node's 16-bit address differently:
+#   v1  = low 2 bytes of the WiFi MAC (WiFiService::getLocalAddress)
+#   v2  = AddressGenerator::GenerateFromHardwareId(..., avoid_reserved_addresses)
+# v2's reserved-address avoidance clears bit 15 (the 0x8000 half is reserved),
+# so any node whose v1 address was >= 0x8000 reports `addr & 0x7FFF` under v2.
+# This was verified against the sim_*_v2 run logs: B4DC→34DC, C270→4270,
+# CB34→4B34, DD3C→5D3C, DD58→5D58, DF10→5F10, E464→6464 (nodes already < 0x8000
+# are unchanged). Config/testbed labels stay the v1 form (they are physical
+# serial/udev labels); analysis calls this to match them to v2 log addresses.
+
+def v2_runtime_addr(addr: str) -> str:
+    """Map a v1/config node address (4-hex string) to its v2 runtime form.
+
+    Returns the input's canonical uppercase 4-hex string with bit 15 cleared.
+    Non-hex input is returned uppercased unchanged (nothing to translate)."""
+    try:
+        return format(int(str(addr), 16) & 0x7FFF, "04X")
+    except (ValueError, TypeError):
+        return str(addr).upper()
+
+
+def is_v2_run(events: Iterable[Event]) -> bool:
+    """True if these events came from a v2 (T-LoRaMesher, TDMA) run.
+
+    v2 emits `Slot N transition` lines (parsed as `slot` events); v1 never does,
+    so a single slot event is a sufficient, address-independent version signal."""
+    return any(ev.kind == "slot" for ev in events)
+
+
 def _parse_ts(s: str) -> float:
     # gw-monitor.sh writes naive local time. We parse it as UTC here and then
     # subtract a detected local-to-UTC offset in `parse_run`; that lets event
@@ -143,6 +196,17 @@ def _extract_fields(kind: str, m: re.Match) -> dict:
         return {"src": g[0].upper(), "dst": g[1].upper(),
                 "type": g[2].upper(), "size": int(g[3]),
                 "rssi": float(g[4]), "snr": float(g[5])}
+    if kind == "v1_pkt_send":
+        return {"size": int(g[0]), "src": g[1].upper(), "dst": g[2].upper(),
+                "id": int(g[3]), "type": int(g[4])}
+    if kind == "v1_pkt_recv":
+        return {"size": int(g[0]), "rssi": int(g[1]), "snr": int(g[2])}
+    if kind == "v1_pkt_received":
+        # Zero-pad the leading-zero-stripped addresses back to 4 hex (6C -> 006C).
+        return {"size": int(g[0]),
+                "src": format(int(g[1], 16), "04X"),
+                "dst": format(int(g[2], 16), "04X"),
+                "id": int(g[3]), "type": int(g[4])}
     if kind == "data_sent":
         return {"dst": g[0].upper(), "via": g[1].upper(),
                 "ttl": int(g[2]), "seq": int(g[3]),

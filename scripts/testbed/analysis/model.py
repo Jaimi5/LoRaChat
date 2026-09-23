@@ -222,7 +222,14 @@ def metrics(sf: int, node_count: int, data_slots: int, duty_cycle: float,
 
     capacity_Bps      : mean per-node application throughput ceiling
     overhead_frac     : control+discovery+sync airtime / superframe airtime
-    recurrence_s      : interval between a node's own data slots (~latency bound)
+    recurrence_s      : MEAN interval between a node's own data slots. A rate
+                        (T_sf/s) -- goodput follows it. NOT the wait a packet
+                        sees; slots are granted contiguously, so use
+                        expected_wait_s for delay.
+    gap_s             : idle gap between a node's slot bursts
+    expected_wait_s   : expected wait for the next data slot, uniform arrivals,
+                        under the shipped contiguous allocator
+    expected_wait_interleaved_s : same, if the slots were spread evenly
     mean_current_mA   : radio-on energy proxy — an UPPER BOUND, see `representative`
     representative    : which node this describes ("worst_case_relay")
     superframe_s      : wall-clock superframe duration
@@ -248,6 +255,41 @@ def metrics(sf: int, node_count: int, data_slots: int, duty_cycle: float,
     overhead_slots = sframe.sync + sframe.control + sframe.discovery
     overhead_frac = overhead_slots / sframe.total_slots if sframe.total_slots else 0.0
     recurrence_s = superframe_s / per_node_data if per_node_data else math.inf
+
+    # Slot-access wait. The allocator grants a node its data slots CONTIGUOUSLY
+    # -- it emits all of node i's slots back-to-back before advancing to node
+    # i+1 (network_service.cpp:2219-2239, and slot_scheduler.cpp:315-327 in the
+    # standalone release). The slot order is deterministic (NM first, then
+    # ascending address), so nothing averages the phase away frame to frame.
+    #
+    # A node therefore sees a BURST of `s` slots spaced one slot apart, then an
+    # idle gap. `recurrence_s` = T_sf/s is the mean interval between slots, i.e.
+    # a RATE -- it is what goodput follows. It is NOT the wait a packet sees.
+    # For a packet arriving with uniform phase, the expected wait is the
+    # gap-length-biased mean over the s gaps ((s-1) short ones of one slot, plus
+    # the long one):
+    #
+    #     E[W] = [ gap^2 + (s-1) * slot^2 ] / (2 * T_sf)
+    #
+    # Verified by Monte Carlo (400k uniform arrivals) to within 0.1%.
+    #
+    # The consequence is counter-intuitive and worth stating plainly: raising
+    # the per-node data-slot request LOWERS recurrence but RAISES the wait,
+    # because each added slot lengthens the superframe more than it shortens the
+    # gap. At SF9/16 nodes, ds 1->4 takes recurrence 40.9 -> 21.6 s while the
+    # wait goes 20.4 -> 40.4 s. `expected_wait_interleaved_s` is what the same
+    # slot count would give if the allocator spread the slots evenly instead of
+    # bunching them -- the difference is the delay the current layout forfeits.
+    slot_s = sframe.slot_dur_ms / 1000.0
+    n_slots = per_node_data
+    if n_slots and superframe_s:
+        gap_s = superframe_s - (n_slots - 1) * slot_s
+        expected_wait_s = (gap_s ** 2 + (n_slots - 1) * slot_s ** 2) / (2 * superframe_s)
+        expected_wait_interleaved_s = recurrence_s / 2.0
+    else:
+        gap_s = math.inf
+        expected_wait_s = math.inf
+        expected_wait_interleaved_s = math.inf
 
     # Energy: a representative node TXs its data slots + 1 control, RXs EVERY
     # other active slot, and sleeps only what the frame budget leaves over.
@@ -286,6 +328,11 @@ def metrics(sf: int, node_count: int, data_slots: int, duty_cycle: float,
         "data_slots_granted": per_node_data, "bound_by": sframe.bound_by,
         "capacity_Bps": capacity_Bps, "overhead_frac": overhead_frac,
         "recurrence_s": recurrence_s, "mean_current_mA": mean_mA,
+        # Slot-access wait under the shipped contiguous allocator, and what the
+        # same slot count would give if the slots were interleaved instead.
+        # recurrence_s is a rate (goodput follows it); these are the delay.
+        "gap_s": gap_s, "expected_wait_s": expected_wait_s,
+        "expected_wait_interleaved_s": expected_wait_interleaved_s,
         # Names the node mean_current_mA describes, so a figure or doc cannot
         # present this upper bound as a central estimate without saying so.
         "representative": "worst_case_relay",

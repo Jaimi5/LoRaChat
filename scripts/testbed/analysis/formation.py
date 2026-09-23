@@ -29,7 +29,7 @@ if __name__ == "__main__":
     if _parent not in sys.path:
         sys.path.insert(0, _parent)
 
-from analysis.parse_logs import Event, parse_run
+from analysis.parse_logs import Event, is_v2_run, parse_run, v2_runtime_addr
 
 
 _JOIN_STATES = {3, 4}  # NORMAL_OPERATION, NETWORK_MANAGER
@@ -63,10 +63,43 @@ def _compute_join(events: Iterable[Event]) -> dict[str, float]:
     return out
 
 
+def _pick_addr_form(events: Iterable[Event], expected_peers: set[str],
+                    is_v2: bool):
+    """Choose the address normalisation that matches this run's RTENTRY `dest`
+    values: physical (identity) or v2 runtime (bit 15 cleared).
+
+    Returns the normalising callable. Whichever form covers more of the observed
+    destinations wins; ties and empty runs fall back to physical unless the run
+    has no physical evidence at all, in which case `is_v2` breaks the tie."""
+    dests = {ev.fields["dest"][-4:].upper() for ev in events
+             if ev.kind == "rtentry" and ev.fields.get("active")}
+    if not dests:
+        return v2_runtime_addr if is_v2 else (lambda a: str(a).upper())
+    physical = {str(p).upper() for p in expected_peers}
+    runtime = {v2_runtime_addr(p) for p in expected_peers}
+    if len(dests & runtime) > len(dests & physical):
+        return v2_runtime_addr
+    return lambda a: str(a).upper()
+
+
 def _compute_rt_complete(events: Iterable[Event],
-                         expected_peers: set[str]) -> dict[str, float]:
+                         expected_peers: set[str],
+                         is_v2: bool = False) -> dict[str, float]:
     """Per-node: first ts at which its active routing table contains every
-    expected peer (excluding itself)."""
+    expected peer (excluding itself).
+
+    Routing-table `dest` values may be either the physical/config address or the
+    *runtime* one: v2 clears bit 15 to dodge the reserved 0x8000 half (see
+    `v2_runtime_addr`), but whether a given log prints the physical or the
+    remapped form depends on the firmware/monitor build, not on the protocol
+    version — both forms occur in v2 batches. So rather than trusting `is_v2`,
+    pick the mapping that actually matches the observed `dest` values, and fall
+    back to physical on a tie (the identity mapping is the safer default: it
+    cannot invent matches, whereas an unnecessary remap silently makes every
+    routing table look incomplete). Results stay keyed by the physical short id
+    (`ev.node`) so downstream output is human-readable."""
+    norm = _pick_addr_form(events, expected_peers, is_v2)
+    target_all = {norm(p) for p in expected_peers}
     seen: dict[str, set[str]] = defaultdict(set)
     out: dict[str, float] = {}
     for ev in events:
@@ -77,14 +110,15 @@ def _compute_rt_complete(events: Iterable[Event],
         node = ev.node
         if node in out:
             continue
+        node_rt = norm(node)
         # `dest` in RTENTRY may be a longer-form hex; truncate to last 4 chars
-        # to match short_id.
+        # to match short_id. It is a runtime address (already v2 form in v2 logs).
         dest = ev.fields["dest"][-4:].upper()
-        if dest == node:
+        if dest == node_rt:
             continue
         seen[node].add(dest)
-        # Expected target: all expected_peers except self.
-        target = expected_peers - {node}
+        # Expected target: all expected peers except self (both in runtime form).
+        target = target_all - {node_rt}
         if target and seen[node] >= target:
             out[node] = ev.ts
     return out
@@ -127,7 +161,7 @@ def analyse(run_dir: Path) -> dict:
     expected = _active_devices(run_dir)
 
     joined = _compute_join(events)
-    rt_complete = _compute_rt_complete(events, expected)
+    rt_complete = _compute_rt_complete(events, expected, is_v2=is_v2_run(events))
 
     # Express everything relative to the earliest "join" — that's a usable
     # zero for cross-run comparison. Absolute epochs are useless across runs.

@@ -20,6 +20,7 @@ import math
 import re
 import statistics
 from collections import defaultdict
+from functools import partial
 from pathlib import Path
 
 # Allow direct script invocation from any cwd:
@@ -36,6 +37,8 @@ from analysis.capacity import analyse as analyse_capacity
 from analysis.duty_cycle import analyse as analyse_duty
 from analysis.formation import analyse as analyse_formation
 from analysis.load import analyse as analyse_load
+from analysis.parse_logs import load_measurement_window
+from analysis.radio_power import SOURCES, VOLTAGE_V
 from analysis.routing import analyse as analyse_routing
 
 
@@ -70,6 +73,10 @@ _RUNID_CELL_RE = re.compile(
 _SF_OF_CELL = re.compile(r"SF(\d+)")
 # Optional load token "_d<delay_ms>" / "-d<delay_ms>" in a sweep cell id.
 _DELAY_OF_CELL = re.compile(r"[_-]d(\d+)")
+# Optional payload-size token "_s<bytes>" / "-s<bytes>" in a packet-size sweep
+# cell id (e.g. "SF9_s120"). Used by plot_compare to key size-sweep cells so a
+# fixed-delay sweep does not collapse every size onto one (SF, delay) key.
+_SIZE_OF_CELL = re.compile(r"[_-]s(\d+)")
 
 
 def _cell_of(run_dir: Path) -> tuple[str, int] | None:
@@ -123,7 +130,7 @@ def _agg(values: list[float | None]) -> dict:
     }
 
 
-def _per_run_summary(run_dir: Path) -> dict | None:
+def _per_run_summary(run_dir: Path, source: str = "best") -> dict | None:
     """Run all per-metric analyses for one run; return None if logs are missing."""
     logs_dir = run_dir / "logs"
     if not logs_dir.is_dir() or not any(logs_dir.iterdir()):
@@ -134,7 +141,7 @@ def _per_run_summary(run_dir: Path) -> dict | None:
     routing = _safe(analyse_routing, run_dir)
     formation = _safe(analyse_formation, run_dir)
     capacity = _safe(analyse_capacity, run_dir)
-    duty = _safe(analyse_duty, run_dir)
+    duty = _safe(partial(analyse_duty, source=source), run_dir)
     load = _safe(analyse_load, run_dir)
     app = _safe(analyse_app_pdr, run_dir)
 
@@ -146,6 +153,24 @@ def _per_run_summary(run_dir: Path) -> dict | None:
     ]
     mean_current = (statistics.fmean(currents) if currents else None)
 
+    # Energy per delivered application bit, normalized over the FIXED lifecycle
+    # measurement window (identical for the v1 and v2 campaigns of the same
+    # cell), so the metric isn't distorted by v2's latency-stretched delivery
+    # span. delivered_bytes is window-independent (goodput_Bps × app window_s).
+    app_delivered = _dig(app, "totals", "delivered")
+    app_sent = _dig(app, "totals", "sent")
+    app_goodput = _dig(app, "totals", "goodput_Bps")
+    app_window_s = _dig(app, "totals", "window_s")
+    delivered_bytes = (app_goodput * app_window_s
+                       if app_goodput is not None and app_window_s else None)
+    start, end = load_measurement_window(run_dir)
+    meas_window_s = (end - start) if (start is not None and end is not None) \
+        else app_window_s
+    energy_per_bit_mJ = None
+    if mean_current is not None and delivered_bytes and meas_window_s:
+        energy_per_bit_mJ = (mean_current * VOLTAGE_V * meas_window_s
+                             / (delivered_bytes * 8.0))
+
     return {
         "routing": routing,
         "formation": formation,
@@ -153,10 +178,16 @@ def _per_run_summary(run_dir: Path) -> dict | None:
         "load": load,
         "app": app,
         "duty_cycle_mean_current_mA": mean_current,
+        "app_delivered": app_delivered,
+        "app_sent": app_sent,
+        "app_window_s": app_window_s,
+        "meas_window_s": meas_window_s,
+        "energy_per_bit_mJ": energy_per_bit_mJ,
     }
 
 
-def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
+def aggregate(batch_dir: Path, drop_first: int = 0,
+              source: str = "best") -> dict:
     per_run: dict[Path, dict] = {}
     per_cell: dict[str, list[Path]] = defaultdict(list)
     per_cell_reps: dict[str, list[tuple[int, Path]]] = defaultdict(list)
@@ -185,7 +216,7 @@ def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
     rejected: list[str] = []
     for cell, dirs in per_cell.items():
         for run_dir in dirs:
-            summary = _per_run_summary(run_dir)
+            summary = _per_run_summary(run_dir, source=source)
             if summary is None or "error" in summary:
                 rejected.append(run_dir.name)
                 continue
@@ -225,12 +256,32 @@ def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
                 [_dig(r, "load", "rho_max") for r in included]),
             # Version-neutral application-layer metrics (sim v1-vs-v2 comparison):
             "app_pdr": _agg([_dig(r, "app", "totals", "pdr") for r in included]),
+            # Fair, equal-offered-load PDR = delivered / intended, where intended =
+            # packet_count × DESIGNED sender count (see app_pdr.py). app_intended and
+            # the participation metric expose the denominator; sender_participation =
+            # observed/designed is the honesty companion (drops below 1.0 when sources
+            # failed to join, e.g. v1's remote cluster in sim_load_compare_full).
+            "app_pdr_fair": _agg(
+                [_dig(r, "app", "totals", "pdr_delivered_intended") for r in included]),
+            "app_intended": _agg(
+                [_dig(r, "app", "totals", "intended") for r in included]),
+            "sender_participation": _agg(
+                [_dig(r, "app", "totals", "sender_participation") for r in included]),
+            "n_designed_senders": _agg(
+                [_dig(r, "app", "totals", "n_designed_senders") for r in included]),
+            "sender_inject_rate": _agg(
+                [_dig(r, "app", "totals", "sender_inject_rate") for r in included]),
             "app_goodput_Bps": _agg(
                 [_dig(r, "app", "totals", "goodput_Bps") for r in included]),
             "app_latency_p50_ms": _agg(
                 [_dig(r, "app", "latency_ms_overall", "p50") for r in included]),
             "app_latency_p95_ms": _agg(
                 [_dig(r, "app", "latency_ms_overall", "p95") for r in included]),
+            # Energy efficiency at equal delivered data (v1-vs-v2 headline pair):
+            "energy_per_bit_mJ": _agg(
+                [r.get("energy_per_bit_mJ") for r in included]),
+            "app_delivered": _agg([r.get("app_delivered") for r in included]),
+            "app_sent": _agg([r.get("app_sent") for r in included]),
         }
 
     # Per-run scatter points: PDR/latency vs normalized load, one row per kept run.
@@ -251,6 +302,10 @@ def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
                 "packet_delay_ms": packet_delay_ms,
                 "pdr": _dig(r, "routing", "totals", "pdr"),
                 "latency_p50_ms": _dig(r, "routing", "latency_ms_overall", "p50"),
+                # None when the run never reached full routing (e.g. an
+                # unreachable peer), which is why a cell's convergence n can be
+                # lower than its n_runs.
+                "convergence_s": _dig(r, "formation", "network_convergence_at"),
                 "rho_node": load.get("rho_node"),
                 "rho_max": load.get("rho_max"),
                 "offered_pkt_per_min_per_node": load.get("offered_pkt_per_min_per_node"),
@@ -264,6 +319,7 @@ def aggregate(batch_dir: Path, drop_first: int = 0) -> dict:
     return {
         "batch_dir": str(batch_dir),
         "drop_first": drop_first,
+        "current_source": source,
         "cells": cells,
         "per_run_points": per_run_points,
         "rejected_runs": rejected,
@@ -277,10 +333,15 @@ def main() -> int:
                     help="e.g. scripts/testbed/runs/formation")
     ap.add_argument("-o", "--output", type=Path,
                     help="Path to write aggregated.json (default: <batch_dir>/aggregated.json)")
+    ap.add_argument("--source", choices=SOURCES, default="best",
+                    help="per-state current table (see analysis/radio_power.py): "
+                         "'measured' (default, power-keyed), 'datasheet', or "
+                         "'legacy' (flat 120 mA, reproduces pre-fix numbers)")
     ap.add_argument("--drop-first", type=int, default=0, metavar="N",
                     help="Drop the first N repetitions (sorted by rep number) of each cell before aggregating")
     args = ap.parse_args()
-    result = aggregate(args.batch_dir, drop_first=args.drop_first)
+    result = aggregate(args.batch_dir, drop_first=args.drop_first,
+                       source=args.source)
     out = args.output or (args.batch_dir / "aggregated.json")
     out.write_text(json.dumps(result, indent=2, sort_keys=True, default=list))
     print(f"wrote {out}")

@@ -1,0 +1,34 @@
+# Steady-state PDR / latency across the 13-node MAIN cluster in isolation.
+# This is routing.yaml minus the remote cluster (DD58, 14A4, 3428): disabling
+# them removes the unstable ~3.5 km long link (006C <-> 3428), whose weather-
+# dependent drops confound a clean delivery-ratio reading (cf. the formation
+# SF7 null). Headline metric: routing.totals.pdr per SF, mean +/- 95% CI.
+batch: main_cluster_pdr
+description: Steady-state PDR + latency on the isolated 13-node main cluster (SF7/9/12)
+base: ../experiments/example-baseline.yaml
+
+runs: 5
+duration_min: 30
+warmup_min: 15          # let the mesh converge before the measurement window opens
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: true        # r00 = flash + boot-verify, then synchronized reset -> r01
+
+cells:
+  - id: SF7
+    overrides:
+      lora_spreading_factor: 7
+    inactive_devices: &remote
+      - DD58
+      - 14A4
+      - '3428'
+  - id: SF9
+    overrides:
+      lora_spreading_factor: 9
+    inactive_devices: *remote
+  - id: SF12
+    overrides:
+      lora_spreading_factor: 12
+    warmup_min: 25        # SF12 convergence is slower; widen warmup before measuring
+    inactive_devices: *remote
