@@ -1,0 +1,112 @@
+# LoRaMesher v1-vs-v2 over the FULL 16-node topology INCLUDING the ~3.5 km long
+# link (006C <-> 3428). Sibling of sim_load_compare.yaml — same sim-based, version-
+# neutral method (APP_TX/APP_RX) and same fixed 40 B packet — but here the whole
+# network is active, so the remote cluster (DD58, 14A4, 3428) sits several hops
+# behind a marginal link. This is the deep-multi-hop regime where v2's routing is
+# expected to keep delivering while v1's flooding degrades.
+#
+# What is DIFFERENT from sim_load_compare
+# ---------------------------------------
+#   * NO `inactive_devices` — every node is active (both clusters + long link).
+#   * packet_size stays 40 B (one fair unfragmented packet on both versions) so
+#     this experiment isolates the TOPOLOGY variable; the payload-size variable is
+#     owned by sim_size_compare.yaml. Do not conflate them.
+#   * SF12 is the PRIMARY: the long link needs SF12 link budget to close 3.5 km
+#     (cf. long_link.yaml, which runs the link at SF12). SF9 is a SECONDARY probe
+#     and MAY not close the long link — if the remote cluster is unreachable at
+#     SF9 that is a link-budget result, not a routing result; check linkstats
+#     before attributing it to either library.
+#   * Wider warmup: 16 nodes + deeper hops converge slower than the 13-node cluster
+#     (warmup 25 min SF9 / 30 min SF12, with sim_testbed_warmup_ms to match).
+#
+# How to run  (WEATHER CONFOUND — read this)
+# ------------------------------------------
+#   The long link is weather-dependent and can drop mid-campaign; excluding it is
+#   the whole reason main_cluster_pdr exists. To keep v1-vs-v2 fair here:
+#     1. INTERLEAVE v1 and v2 per condition in one tight window rather than a full
+#        v1 pass then a v2 pass hours later. Version = DEFAULT_ENV per whole
+#        run_batch invocation, so interleaving means invoking one cell as v1 then
+#        immediately the same cell as v2, e.g. per SF:
+#          DEFAULT_ENV=ttgo-t-beam     ./runner/run_batch.py batches/sim_load_compare_full.yaml   # v1
+#          DEFAULT_ENV=ttgo-t-beam-v2  ./runner/run_batch.py batches/sim_load_compare_full.yaml   # v2
+#        run back-to-back, or drive a per-cell loop that alternates the env.
+#     2. LOG LINK HEALTH: the firmware already emits `linkstats` (RSSI/SNR/PDR;
+#        parsed by analysis/parse_logs.py). Capture the 006C<->3428 link before/
+#        after each pair (long_link.yaml characterises it in isolation) and DISCARD
+#        any condition where the link state differed materially between the paired
+#        v1 and v2 runs. Report the link trace alongside the result.
+#     3. If the link is currently DOWN, defer this batch and lead with
+#        sim_size_compare + the energy result, which do not need the long link.
+#
+# Analysis
+# --------
+#   Aggregate each campaign with analysis/multirun.py, then:
+#       analysis/plot_compare.py --v1 <v1_dir> --v2 <v2_dir> \
+#           --nodes 16 --max-hops 5 --out <fig_dir>
+#   (--nodes/--max-hops match the full topology so the energy sleep-crossover model
+#   projection is right; the bar panels are keyed by (SF, delay) as usual.)
+#   ROUTING STORY: beyond overall app_pdr, read app_pdr.py's `pdr_per_flow` for the
+#   remote-cluster sources (DD58, 14A4, 3428) behind the long link — that is where
+#   routing quality separates the versions. Convergence (analysis/formation.py) and
+#   route stability (analysis/routing.py) are supporting, version-characterising
+#   context.
+batch: sim_load_compare_full
+description: v1-vs-v2 end-to-end PDR over the full 16-node topology incl. the 3.5 km long link
+base: ../experiments/example-baseline.yaml
+
+runs: 1
+duration_min: 45          # per-cell overrides below take precedence
+warmup_min: 25            # convergence incl. the long-link cluster is slower
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  # ---- SF12 (PRIMARY — long link closes at SF12) -------------------------------
+  - id: SF12_d462000        # rho~1.0 anchor (13-node C/F; approximate here)
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 8
+      lora_spreading_factor: 12
+      packet_delay: 462000
+      sim_testbed_warmup_ms: 1800000    # = warmup_min 30
+    warmup_min: 30
+    duration_min: 76        # burst 61.6 + tail 14
+  - id: SF12_d308000        # rho~1.5 — overload
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 10
+      lora_spreading_factor: 12
+      packet_delay: 308000
+      sim_testbed_warmup_ms: 1800000
+    warmup_min: 30
+    duration_min: 66        # burst 51.3 + tail 14
+
+  # ---- SF9 (SECONDARY — long link may NOT close at SF9; verify via linkstats) ---
+  - id: SF9_d152000         # rho~0.5 — safe margin
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 18
+      lora_spreading_factor: 9
+      packet_delay: 152000
+      sim_testbed_warmup_ms: 1500000    # = warmup_min 25
+    warmup_min: 25
+    duration_min: 53        # burst 45.6 + tail 7
+  - id: SF9_d63000          # rho~1.2 — past relay saturation
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 25
+      lora_spreading_factor: 9
+      packet_delay: 63000
+      sim_testbed_warmup_ms: 1500000
+    warmup_min: 25
+    duration_min: 34        # burst 26.25 + tail 7

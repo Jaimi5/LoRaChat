@@ -46,9 +46,10 @@ public:
 };
 
 struct routing_entry {
-    uint32_t neighbor;
-    int8_t RxSNR;
-    unsigned long SRTT;
+    uint16_t neighbor = 0;
+    uint16_t next_hop = 0;
+    uint8_t link_quality = 0;
+    uint8_t hop_count = 0;
 };
 
 class monOneMessage : public DataMessageGeneric {
@@ -76,8 +77,9 @@ public:
         JsonArray rtArray = doc.createNestedArray("rt");
         for (int i = 0; i < number_of_neighbors; i++) {
             rtArray[i]["neighbor"] = rt[i].neighbor;
-            rtArray[i]["RxSNR"] = rt[i].RxSNR;
-            rtArray[i]["SRTT"] = rt[i].SRTT;
+            rtArray[i]["next_hop"] = rt[i].next_hop;
+            rtArray[i]["link_quality"] = rt[i].link_quality;
+            rtArray[i]["hop_count"] = rt[i].hop_count;
         }
     }
     void deserialize(JsonObject& doc) {
@@ -91,8 +93,9 @@ public:
         number_of_neighbors = doc["number_of_neighbors"];
         for (int i = 0; i < number_of_neighbors; i++) {
             rt[i].neighbor = doc["rt"][i]["neighbor"];
-            rt[i].RxSNR = doc["rt"][i]["RxSNR"];
-            rt[i].SRTT = doc["rt"][i]["SRTT"];
+            rt[i].next_hop = doc["rt"][i]["next_hop"];
+            rt[i].link_quality = doc["rt"][i]["link_quality"];
+            rt[i].hop_count = doc["rt"][i]["hop_count"];
         }
     }
 };

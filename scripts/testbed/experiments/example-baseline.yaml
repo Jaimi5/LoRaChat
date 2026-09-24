@@ -1,0 +1,81 @@
+experiment: example-baseline
+description: Template — copy to current.yaml and fill in credentials before use.
+defaults:
+  lora_bandwidth: 125.0
+  lora_coding_rate: 7
+  lora_frequency: 869.525
+  lora_manager_id: 0x006C
+  lora_spreading_factor: 9
+  lora_sync_word: 20
+  lora_duty_cycle: 0.10
+  mqtt_password: public
+  mqtt_port: 1883
+  mqtt_server: 192.168.192.1
+  mqtt_topic_out: to-server/
+  mqtt_topic_sub: from-server/
+  mqtt_username: admin
+devices:
+  006C:
+    lora_power: 14
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  '1484':
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  14A4:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  2A9C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  2AD4:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  '3428':
+    lora_power: 14
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  77A4:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  7B6C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  B4DC:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  CB34:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DD3C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DD58:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DF10:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  E464:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  7984:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  C270:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi

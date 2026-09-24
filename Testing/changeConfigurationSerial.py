@@ -3,6 +3,24 @@ import json
 import simConfiguration
 import numpy as np
 
+# v1 param name (defaultConfigValues.json) -> v2 #define name in loraMeshService.cpp
+V2_PARAM_MAP = {
+    "LM_BAND":              ("LORA_FREQUENCY",         lambda v: v),
+    "LM_BANDWIDTH":         ("LORA_BANDWIDTH",          lambda v: v),
+    "LM_LORASF":            ("LORA_SPREADING_FACTOR",   lambda v: v),
+    "LM_CODING_RATE":       ("LORA_CODING_RATE",        lambda v: v),
+    "LM_PREAMBLE_LENGTH":   ("LORA_PREAMBLE_LENGTH",    lambda v: v),
+    "LM_POWER":             ("LORA_POWER",              lambda v: v),
+    "LM_DUTY_CYCLE":        ("LORA_DUTY_CYCLE",         lambda v: f"{float(v)/100.0}f"),
+    "LM_MAX_PACKET_SIZE":   ("LORA_MAX_PACKET_SIZE",    lambda v: v),
+    # Direct v2 params (no conversion needed):
+    "LORA_MIN_SLEEP_FRACTION": ("LORA_MIN_SLEEP_FRACTION", lambda v: v),
+}
+
+
+def _is_v2_env(env):
+    return env.endswith("-v2")
+
 
 class ChangeConfigurationSerial:
     def __init__(self, configFile, environments):
@@ -81,58 +99,71 @@ class ChangeConfigurationSerial:
             file.write(srcData)
 
     def changeLoRaMesher(self):
-        # Read the file
-        with open(self.fileName, "r") as file:
-            data = file.read()
+        with open(self.fileName) as f:
+            json_data = json.loads(f.read())
 
-        # Parse the file
-        json_data = json.loads(data)
+        envs = self.getEnvironments()
+        v1_envs = [e for e in envs if not _is_v2_env(e)]
+        v2_envs = [e for e in envs if _is_v2_env(e)]
 
-        for environment in self.getEnvironments():
-            srcFile = os.path.join(os.path.dirname(__file__))
+        self._changeLoRaMesherV1(v1_envs, json_data)
+        self._changeLoRaMesherV2(v2_envs, json_data)
 
+    def _changeLoRaMesherV1(self, v1_envs, json_data):
+        """Modify BuildOptions.h for each v1 environment."""
+        for environment in v1_envs:
             pathName = os.path.dirname(__file__)
             if pathName.find("Testing") != -1:
-                # Find the LoRaMesher src file given the environment.
-                srcFile = os.path.dirname(__file__).replace("Testing", "")
-
-            srcFile = os.path.join(
-                srcFile,
-                ".pio",
-                "libdeps",
-                environment,
-                "LoRaMesher",
-                "src",
-                "BuildOptions.h",
-            )
-
-            # Check if the file exists
+                base = pathName.replace("Testing", "")
+            else:
+                base = pathName
+            srcFile = os.path.join(base, ".pio", "libdeps", environment,
+                                   "LoRaMesher", "src", "BuildOptions.h")
             if not os.path.isfile(srcFile):
                 print("File not found: " + srcFile)
                 continue
-
-            print(srcFile)
-
-            with open(srcFile, "r") as file:
-                srcData = file.read()
-
+            with open(srcFile) as f:
+                srcData = f.read()
             found_keys = []
-
-            # Find the line where the LoRaMesher is defined and change it
             for line in srcData.splitlines():
                 for key in json_data["LoRaMesher"]:
-                    if key in found_keys:
+                    if key in found_keys or key.startswith("_comment"):
                         continue
                     if line.find("#define " + key) != -1:
                         srcData = srcData.replace(
-                            line,
-                            "#define " + key + " " + str(json_data["LoRaMesher"][key]),
-                        )
+                            line, "#define " + key + " " + str(json_data["LoRaMesher"][key]))
                         found_keys.append(key)
+            with open(srcFile, "w") as f:
+                f.write(srcData)
 
-            # Save the file
-            with open(srcFile, "w") as file:
-                file.write(srcData)
+    def _changeLoRaMesherV2(self, v2_envs, json_data):
+        """Modify loraMeshService.cpp once (all v2 envs share the same source file)."""
+        if not v2_envs:
+            return
+        pathName = os.path.dirname(__file__)
+        if pathName.find("Testing") != -1:
+            base = pathName.replace("Testing", "")
+        else:
+            base = pathName
+        srcFile = os.path.join(base, "src", "loramesh", "loraMeshService.cpp")
+        if not os.path.isfile(srcFile):
+            print("v2 config source not found: " + srcFile)
+            return
+        with open(srcFile) as f:
+            srcData = f.read()
+        for v1_key, (v2_key, converter) in V2_PARAM_MAP.items():
+            if v1_key not in json_data["LoRaMesher"]:
+                continue
+            raw_value = json_data["LoRaMesher"][v1_key]
+            converted_value = converter(raw_value)
+            for line in srcData.splitlines():
+                if line.find("#define " + v2_key + " ") != -1:
+                    srcData = srcData.replace(
+                        line, "#define " + v2_key + " " + str(converted_value))
+                    break
+        with open(srcFile, "w") as f:
+            f.write(srcData)
+        print("v2 config written to: " + srcFile)
 
     def get_cpp_function(self, matrix):
         adjacencyGraphInCpp = "\tuint16_t localAddress = getLocalAddress();\n"
@@ -195,7 +226,14 @@ class ChangeConfigurationSerial:
         # Parse the file
         json_data = json.loads(data)
 
-        for environment in self.getEnvironments():
+        envs = self.getEnvironments()
+        v1_envs = [e for e in envs if not _is_v2_env(e)]
+        v2_envs = [e for e in envs if _is_v2_env(e)]
+
+        if v2_envs:
+            print("Adjacency graph not yet supported for v2 environments: " + str(v2_envs))
+
+        for environment in v1_envs:
             # Find the LoRaMesher src file given the environment.
             srcFile = os.path.join(
                 os.path.dirname(__file__),
@@ -227,7 +265,7 @@ class ChangeConfigurationSerial:
             with open(srcFile, "w") as file:
                 file.write(srcData)
 
-        for environment in self.getEnvironments():
+        for environment in v1_envs:
             # Find the LoRaMesher src file given the environment.
             srcFile = os.path.join(
                 os.path.dirname(__file__),

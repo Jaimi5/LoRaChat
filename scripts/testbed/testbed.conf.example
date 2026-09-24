@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# testbed.conf - Testbed device/gateway configuration
+#
+# TEMPLATE: cp testbed.conf.example testbed.conf, then fill in real values.
+# testbed.conf is gitignored — never commit gateway hosts or passwords.
+# Source this file from deploy.sh — do not execute directly.
+#
+# Fill in GW_SSH destinations with your actual user@ip values.
+# Fill in serial ports by running: ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
+# on each gateway to discover connected devices.
+
+# ── Global Settings ──────────────────────────────────────────────────────────
+
+# PlatformIO environment (override with `deploy.sh -e`, or by exporting
+# DEFAULT_ENV in the environment — e.g. `DEFAULT_ENV=ttgo-t-beam run_batch.py ...`
+# for a v1 campaign). Falls back to the v2 env when unset.
+DEFAULT_ENV="${DEFAULT_ENV:-ttgo-t-beam-v2}"
+
+# Git branch to pull on gateways
+GIT_BRANCH="new_loramesher"
+
+# Repo path on gateway machines
+REPO_PATH="/home/lora/LoRaChat"
+
+# PlatformIO bin directory on gateway machines (added to PATH for non-interactive SSH)
+PIO_PATH="/home/lora/platformio/bin"
+
+# Local directory to collect logs into (relative to where deploy.sh is run)
+LOCAL_LOG_DIR="./logs_testbed"
+
+# Delete logs older than this many days (used by deploy.sh clean)
+MAX_LOG_AGE_DAYS=7
+
+# SSH options (BatchMode is added automatically when no password is set)
+SSH_OPTS="-o ConnectTimeout=30 -o StrictHostKeyChecking=no -o ServerAliveInterval=60"
+
+# Number of SSH connection retries (with 5s delay between attempts)
+SSH_RETRIES=3
+
+# ── PlatformIO CPU Throttling ─────────────────────────────────────────────────
+# Limit how many cores `pio run` uses on each gateway, and lower its scheduling
+# priority so the gateway's own services stay responsive during a build.
+#
+# DEFAULT_PIO_JOBS  — value passed to `pio run -j N` (number of parallel compile
+#                     jobs ≈ cores allowed). Lower it on weak gateways (Pi).
+# DEFAULT_PIO_NICE  — priority wrapper prefixed to every pio command. Empty ""
+#                     disables it. `nice -n 19` = lowest CPU priority (yields to
+#                     other processes); `ionice -c3` = idle disk I/O (protects
+#                     the SD card). Use just "nice -n 19" on hosts lacking ionice.
+
+DEFAULT_PIO_JOBS=4
+DEFAULT_PIO_NICE="nice -n 19 ionice -c3"
+
+# Per-gateway overrides (fall back to the DEFAULT_* values above when unset).
+# Set jobs to the core count you want to allow on that gateway.
+
+declare -A GW_PIO_JOBS=(
+    [GW-6]=2      # Raspberry Pi + perl monitor — keep cores free
+    # [GW-7]=4    # stronger host can build faster
+)
+
+declare -A GW_PIO_NICE=(
+    # [GW-7]=""   # disable nice/ionice on a dedicated build host
+)
+
+# ── Gateway SSH Destinations ─────────────────────────────────────────────────
+# Format: [GW-ID]="user@ip_or_hostname"
+# Tip: use ~/.ssh/config entries or SSH keys for passwordless auth
+
+declare -A GW_SSH=(
+    [GW-1]="user@gw-1-host" # Script perl that runs on this gateway to send to the monitoring server
+    [GW-2]="user@gw-2-host"
+    [GW-3]="user@gw-3-host"
+    [GW-4]="user@gw-4-host"
+    [GW-5]="user@gw-5-host"
+    [GW-6]="user@gw-6-host"
+    [GW-7]="user@gw-7-host"
+)
+
+# ── Gateway Passwords (optional) ────────────────────────────────────────────
+# If set, sshpass is used automatically. Requires: apt install sshpass
+# Leave empty or remove entries to use SSH key auth instead.
+
+declare -A GW_PASS=(
+    [GW-1]=""
+    [GW-2]=""
+    [GW-3]=""
+    [GW-4]=""
+    [GW-5]=""
+    [GW-6]=""
+)
+
+# ── Gateway SSH Keys (optional) ──────────────────────────────────────────────
+# Path to private key file for gateways that use key-based auth.
+# Only set entries for gateways that need a specific key.
+
+declare -A GW_KEY=(
+    # [GW-X]="~/.ssh/id_gwX"
+    # [GW-7]="~/.ssh/id_ed25519"
+)
+
+# ── Gateway SSH Ports (optional) ─────────────────────────────────────────────
+# Non-standard SSH port for specific gateways. Default is 22.
+# Only set entries for gateways that use a different port.
+
+declare -A GW_PORT=(
+    # [GW-X]="2222"
+    # GW-7 SSH answers on default port 22 (22222 was stale/unreachable)
+)
+
+# ── Serial Port Convention ────────────────────────────────────────────────────
+# Serial ports use manually specified symlinks on each gateway:
+#   /home/lora/dev/lora-{SHORT_ID}
+# where SHORT_ID is the last 4 hex chars of the device name (e.g., E464, 77A4).
+# The port path is auto-generated from the DEVICE_ID, no need to specify it.
+
+SERIAL_PORT_PREFIX="/home/lora/dev/lora-"
+
+# ── Device Map ───────────────────────────────────────────────────────────────
+# Format: "DEVICE_ID:GW_ID"
+#
+# DEVICE_ID  — must match change-config-${DEVICE_ID}.sh script name
+# GW_ID      — which gateway this device is connected to
+#
+# Serial port is auto-derived: /home/lora/dev/lora-{SHORT_ID}
+# Example: C6E104-77A4 → /home/lora/dev/lora-77A4
+
+DEVICES=(
+    # GW-1: C6E104 (3 devices)
+    "C6E104-E464:GW-1"
+    "C6E104-77A4:GW-1"
+    "C6E104-DF10:GW-1"
+
+    # GW-2: C6213 (2 devices)
+    "C6213-006C:GW-2"
+    "C6213-7B6C:GW-2"
+
+    # GW-3: C6E206 (2 devices)
+    "C6E206-CB34:GW-3"
+    "C6E206-C270:GW-3"
+
+    # GW-4: C6E208 (3 devices)
+    "C6E208-2A9C:GW-4"
+    "C6E208-1484:GW-4"
+    "C6E208-2AD4:GW-4"
+
+    # GW-5: GV-int (2 devices)
+    "GV-DD58:GW-5"
+    "GV-14A4:GW-5"
+
+    # GW-6: GV-ext (1 device)
+    "GV-3428:GW-6"
+
+    # GW-7: C6105 (3 devices)
+    "C6105-7984:GW-7"
+    "C6105-B4DC:GW-7"
+    "C6105-DD3C:GW-7"
+)

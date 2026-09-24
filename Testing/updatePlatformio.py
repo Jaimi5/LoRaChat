@@ -37,12 +37,13 @@ import os
 import subprocess
 import threading
 import colorama
+import re
 from colorama import Fore
 from error import set_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Set, Optional
 from time import sleep
-
+                            
 # Timeouts in seconds
 TIMEOUT_BUILD = 60 * 20
 TIMEOUT_UPLOAD = 60 * 5
@@ -107,7 +108,27 @@ class _BuildPhase:
         return self.success
 
     def _build_environment(self, env: str) -> bool:
-        """Build a single environment"""
+        """Build a single environment, auto-cleaning on stale CMake cache error."""
+        for attempt in range(2):  # attempt 0 = normal, attempt 1 = after clean
+            if attempt == 1:
+                print(f"\n{Fore.YELLOW}Stale CMake cache detected for {env}, cleaning and retrying...{Fore.RESET}")
+                subprocess.run(
+                    ["pio", "run", "-e", env, "--target", "clean"],
+                    capture_output=True,
+                    timeout=120,
+                )
+            result, needs_clean = self._attempt_build(env)
+            if result:
+                return True
+            if not needs_clean or attempt == 1:
+                return False
+        return False
+
+    def _attempt_build(self, env: str) -> tuple:
+        """
+        Attempt to build env. Returns (success, needs_clean).
+        needs_clean=True means a stale CMake cache error was detected.
+        """
         print(f"\nStart building env: {env}")
 
         log_file = os.path.join(self.build_log_dir, f"{env}.ans")
@@ -131,6 +152,11 @@ class _BuildPhase:
                 with open(log_file, "a", encoding="utf-8") as f:
                     f.write(decoded)
 
+                # Stale CMake API reply — need a clean before retry
+                if "Couldn't find target config" in decoded:
+                    self._cleanup_process(process)
+                    return False, True
+
                 # Check for build failure
                 if "[FAILED]" in decoded or "error occurred" in decoded:
                     set_error(
@@ -139,7 +165,7 @@ class _BuildPhase:
                         f"Build failed {Fore.YELLOW}{env}{Fore.RESET}",
                     )
                     self._cleanup_process(process)
-                    return False
+                    return False, False
 
                 # Check for successful build completion
                 if "Successfully created esp32 image." in decoded:
@@ -160,10 +186,10 @@ class _BuildPhase:
                     self.shared_state_change,
                     f"Build failed for {env} with exit code {return_code}",
                 )
-                return False
+                return False, False
 
             self.processes.remove(process)
-            return True
+            return True, False
 
         except subprocess.TimeoutExpired:
             set_error(
@@ -172,14 +198,14 @@ class _BuildPhase:
                 f"Build timeout for environment {env}",
             )
             self._cleanup_process(process)
-            return False
+            return False, False
         except Exception as e:
             set_error(
                 self.shared_state,
                 self.shared_state_change,
                 f"Build error for {env}: {str(e)}",
             )
-            return False
+            return False, False
 
     def _cleanup_process(self, process: subprocess.Popen):
         """Clean up a process safely"""
@@ -320,8 +346,9 @@ class _MonitorPhase:
         self.shared_state = shared_state
         self.shared_state_change = shared_state_change
         self.processes: List[subprocess.Popen] = []
+        self.stopped = threading.Event()
 
-    def monitor_port(self, port: str) -> bool:
+    def monitor_port(self, port: str, env: str = "") -> bool:
         """
         Monitor a specific port for output and errors (runs indefinitely).
 
@@ -337,24 +364,20 @@ class _MonitorPhase:
         max_retries = 3
 
         for attempt in range(1, max_retries + 1):
+            if self.stopped.is_set():
+                return False
             if attempt > 1:
                 print(f"{Fore.YELLOW}Retry {attempt}/{max_retries} for monitoring port: {port}{Fore.RESET}")
 
             activity_timer = None
 
             try:
+                cmd = ["pio", "device", "monitor", "--port", port]
+                if env:
+                    cmd += ["-e", env]
+                cmd += ["-f", "esp32_exception_decoder", "-f", "time"]
                 process = subprocess.Popen(
-                    [
-                        "pio",
-                        "device",
-                        "monitor",
-                        "--port",
-                        port,
-                        "-f",
-                        "esp32_exception_decoder",
-                        "-f",
-                        "time",
-                    ],
+                    cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,  # Merge stderr into stdout to prevent deadlock
                 )
@@ -378,14 +401,20 @@ class _MonitorPhase:
                 else:
                     line_count = 0
 
+                initial_line_count = line_count
                 activity_timeout = False
 
                 def check_activity():
                     """Check if sufficient activity (50+ lines) occurred in first 60 seconds"""
                     nonlocal activity_timeout
-                    if line_count < 20:
+                    if line_count - initial_line_count < 20:
                         activity_timeout = True
-                        print(f"\n{Fore.YELLOW}Insufficient activity detected for {port} ({line_count} lines in 60s){Fore.RESET}")
+                        new_lines = line_count - initial_line_count
+                        print(f"\n{Fore.YELLOW}Insufficient activity detected for {port} ({new_lines} lines in 60s){Fore.RESET}")
+                        try:
+                            process.kill()
+                        except Exception:
+                            pass
 
                 # Start activity timer (60 seconds)
                 activity_timer = threading.Timer(60.0, check_activity)
@@ -402,8 +431,8 @@ class _MonitorPhase:
                     # Increment line count
                     line_count += 1
 
-                    # Cancel activity timer if we reached 50 lines
-                    if line_count >= 50 and activity_timer is not None:
+                    # Cancel activity timer if we reached 50 new lines
+                    if line_count - initial_line_count >= 50 and activity_timer is not None:
                         activity_timer.cancel()
                         activity_timer = None
 
@@ -411,7 +440,12 @@ class _MonitorPhase:
                     is_filter_error = (
                         "Esp32ExceptionDecoder:" in decoded_line or
                         decoded_line.strip().startswith("[WinError") or
-                        decoded_line.strip().startswith("Please manually remove")
+                        decoded_line.strip().startswith("Please manually remove") or
+                        "Couldn't find target config" in decoded_line or
+                        "[FAILED] Took" in decoded_line or
+                        "Reading CMake configuration" in decoded_line or
+                        "Please build project in debug configuration" in decoded_line or
+                        decoded_line.strip().startswith("---")
                     )
 
                     # Check for critical errors
@@ -432,7 +466,10 @@ class _MonitorPhase:
 
                     # Check for proper initialization (skip filter error lines)
                     if not initialized:
-                        if "POWERON_RESET" in decoded_line:
+                        if ("POWERON_RESET" in decoded_line or
+                                "cpu_start" in decoded_line or
+                                "app_main" in decoded_line or
+                                "Starting scheduler" in decoded_line):
                             initialized = True
                         elif not is_filter_error:
                             # Only count non-filter-error lines toward timeout
@@ -457,13 +494,22 @@ class _MonitorPhase:
                             return False
 
                     # Extract LoRa address
-                    if not address_found and "Local LoRa address" in decoded_line:
+                    if not address_found and ("Local LoRa address" in decoded_line or "Generated address" in decoded_line):
                         address_found = True
                         try:
-                            # Extract hex address from line
-                            hex_address = decoded_line.split(" ")[-1].strip()[:4]
-                            self.shared_state["deviceAddressAndCOM"][port] = int(hex_address, 16)
-                            self.shared_state_change.set()
+                            # Extract hex address from line (handles both formats:
+                            # "Local LoRa address: 3ADF" and
+                            # "Generated address 0x3ADF from unique ID (...)")                                                                            
+                                                                                                                     
+                            match = re.search(r'(?:Generated address|Local LoRa address[:\s]+)\s*(?:0x)?([0-9A-Fa-f]{4})', decoded_line)
+                            if match:
+                                hex_address = match.group(1)
+                                self.shared_state["deviceAddressAndCOM"][port] = int(hex_address, 16)
+                                if activity_timer is not None:
+                                    activity_timer.cancel()
+                                self.shared_state_change.set()
+                            else:
+                                raise ValueError(f"Could not find hex address in: {decoded_line}")
                         except (ValueError, IndexError) as e:
                             # Cancel activity timer
                             if activity_timer is not None:
@@ -495,6 +541,8 @@ class _MonitorPhase:
 
                     # If this is not the last attempt, retry
                     if attempt < max_retries:
+                        if self.stopped.is_set():
+                            return False
                         if init_failed:
                             print(f"{Fore.YELLOW}Initialization timeout for {port}, retrying...{Fore.RESET}")
                         # activity_timeout message already printed
@@ -511,7 +559,7 @@ class _MonitorPhase:
                             set_error(
                                 self.shared_state,
                                 self.shared_state_change,
-                                f"Insufficient activity in port: {port} (only {line_count} lines in 60s)",
+                                f"Insufficient activity in port: {port} (only {line_count - initial_line_count} lines in 60s)",
                             )
                         return False
 
@@ -546,6 +594,7 @@ class _MonitorPhase:
 
     def kill_all(self):
         """Kill all monitor processes"""
+        self.stopped.set()
         for process in self.processes[:]:
             try:
                 process.kill()
@@ -702,7 +751,7 @@ class UpdatePlatformIO:
 
             # Monitor phase
             if self.monitor_phase:
-                self.monitor_phase.monitor_port(port)
+                self.monitor_phase.monitor_port(port, env)
 
     def _mark_port_uploaded(self, port: str):
         """Mark a port as successfully uploaded"""

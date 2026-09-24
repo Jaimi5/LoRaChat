@@ -4,7 +4,9 @@
 
 #include "message/dataMessage.h"
 
+#ifndef USE_LORAMESHER_V2
 #include "LoraMesher.h"
+#endif
 
 #include "config.h"
 
@@ -21,6 +23,7 @@ enum SimCommand : uint8_t {
 };
 
 
+#ifndef USE_LORAMESHER_V2
 class SimMessageState {
 public:
     LM_State state;
@@ -55,6 +58,7 @@ public:
         doc["Num"] = state.packetHeader.number;
     }
 };
+#endif
 
 class SimPayloadMessage {
 public:
@@ -91,11 +95,13 @@ public:
         doc["simCommand"] = simCommand;
 
         switch (simCommand) {
+#ifndef USE_LORAMESHER_V2
             case ::SimCommand::Message: {
                 SimMessageState* message = (SimMessageState*)this->payload;
                 message->serializeState(doc);
                 break;
             }
+#endif
             case ::SimCommand::Payload: {
                 SimPayloadMessage* payloadMessage = (SimPayloadMessage*)this->payload;
                 payloadMessage->serializePayload(doc);

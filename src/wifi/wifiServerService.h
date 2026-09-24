@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LoraMesher.h"
+#include "loramesh/loraMeshService.h"
 
 #include "wifiCommandService.h"
 
@@ -98,6 +98,11 @@ private:
     bool connected = false;
 
     bool initialized = false;
+
+    bool wifiStarted = false;
+    unsigned long lastConnectAttemptMs = 0;
+    unsigned long connectBackoffMs = 5000;
+    static constexpr unsigned long MAX_CONNECT_BACKOFF_MS = 300000;
 
     bool addWiFiCredentialsFromConfig();
 };

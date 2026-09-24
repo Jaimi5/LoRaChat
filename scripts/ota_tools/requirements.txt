@@ -1,0 +1,5 @@
+detools>=0.50.0
+paho-mqtt>=1.6.1
+click>=8.0.0
+tqdm>=4.65.0
+crcmod>=1.7

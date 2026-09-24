@@ -12,6 +12,11 @@ from drawTimeoutsByExperimentsWithCI import draw_timeouts_by_experiments_with_ci
 from drawRTTByDevices import draw_rtt_by_devices
 from drawRTTByExperiments import draw_rtt_by_experiments
 from drawOverheadByExperiments import draw_overhead_by_experiments
+from drawV2OverheadByExperiments import draw_v2_overhead_by_experiments
+from drawV2SlotDistribution import draw_v2_slot_distribution
+from drawV2Convergence import draw_v2_convergence
+from drawV2OverheadEvolution import draw_v2_overhead_evolution
+from drawV2ReceptionRate import draw_v2_reception_rate
 from Testing.ui.drawFreeHeapByDevices import draw_free_heap_by_devices
 from drawExperimentComparisonCI import (
     draw_experiment_comparison_bar_ci,
@@ -284,5 +289,50 @@ button_loss_messages_by_experiments_ci = tk.Button(
 )
 
 button_loss_messages_by_experiments_ci.grid(row=8, column=1, sticky="ew")
+
+# Create a button to draw V2 protocol overhead by experiments
+button_v2_overhead = tk.Button(
+    root,
+    text="V2 Protocol Overhead",
+    command=lambda: find_file_and_execute_function(function=draw_v2_overhead_by_experiments),
+)
+
+button_v2_overhead.grid(row=9, column=0, sticky="ew")
+
+# Create a button to draw V2 slot type distribution by experiments
+button_v2_slot_dist = tk.Button(
+    root,
+    text="V2 Slot Distribution",
+    command=lambda: find_file_and_execute_function(function=draw_v2_slot_distribution),
+)
+
+button_v2_slot_dist.grid(row=9, column=1, sticky="ew")
+
+# Create a button to draw V2 convergence timeline (single experiment)
+button_v2_convergence = tk.Button(
+    root,
+    text="V2 Convergence Timeline",
+    command=lambda: find_file_and_execute_function(function=draw_v2_convergence),
+)
+
+button_v2_convergence.grid(row=10, column=0, sticky="ew")
+
+# Create a button to draw V2 overhead evolution (single experiment)
+button_v2_overhead_evo = tk.Button(
+    root,
+    text="V2 Overhead Evolution",
+    command=lambda: find_file_and_execute_function(function=draw_v2_overhead_evolution),
+)
+
+button_v2_overhead_evo.grid(row=10, column=1, sticky="ew")
+
+# Create a button to draw V2 per-device reception rate (single experiment)
+button_v2_reception = tk.Button(
+    root,
+    text="V2 Reception Rate",
+    command=lambda: find_file_and_execute_function(function=draw_v2_reception_rate),
+)
+
+button_v2_reception.grid(row=11, column=0, sticky="ew")
 
 root.mainloop()

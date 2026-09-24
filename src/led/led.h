@@ -12,7 +12,7 @@
 
 #include "config.h"
 
-#include "LoraMesher.h"
+#include "loramesh/loraMeshService.h"
 
 class Led : public MessageService {
 public:

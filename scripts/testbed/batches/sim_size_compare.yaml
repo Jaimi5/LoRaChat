@@ -1,0 +1,148 @@
+# LoRaMesher v1-vs-v2 PACKET-SIZE sweep: does end-to-end delivery/goodput hold as
+# the payload grows? Sibling of sim_load_compare.yaml — same sim-based, version-
+# neutral method (APP_TX/APP_RX), same clean isolated 13-node main cluster (the
+# remote cluster / long link is disabled, so there is NO weather confound), but
+# here the swept axis is `packet_size`, with the offered message RATE held fixed.
+#
+# Thesis
+# ------
+#   Larger payloads mean longer airtime. Under v1 (CSMA + flooding) longer airtime
+#   raises the probability of concurrent transmissions colliding, so delivery/
+#   goodput degrades as packets grow. Under v2 (TDMA) a bigger packet just makes a
+#   node's own data slot longer — transmissions stay time-separated by design — so
+#   v2 should degrade far more gracefully (paying LATENCY via extra fragment slots,
+#   not lost packets). The win to show: v2 goodput/PDR holds while v1's falls off.
+#
+# How the comparison works (identical to sim_load_compare)
+# -------------------------------------------------------
+#   Run THIS SAME batch twice on the same boards/topology:
+#       DEFAULT_ENV=ttgo-t-beam     ./runner/run_batch.py batches/sim_size_compare.yaml   # v1
+#       DEFAULT_ENV=ttgo-t-beam-v2  ./runner/run_batch.py batches/sim_size_compare.yaml   # v2
+#   Then aggregate each output dir with analysis/multirun.py and plot with:
+#       analysis/plot_compare.py --v1 <v1_dir> --v2 <v2_dir> --x size --out <fig_dir>
+#   `--x size` puts payload bytes on the x-axis (cells are matched across campaigns
+#   by (SF, size); the `_s<bytes>` token in each cell id carries the size).
+#
+# Design
+# ------
+#   * packet_delay is FIXED per SF (same value for every size cell and both
+#     versions) so the offered MESSAGE rate is identical across the sweep and the
+#     only variable is payload size. SF9 sits at rho~0.7 of the sustainable per-
+#     source rate C/F (~0.79 pkt/min => delay ~108 s) so there is headroom for
+#     size-driven degradation to show. SF12's sustainable rate is so low that a
+#     sub-saturation point is impractical (~11 min/packet), so SF12 reuses the
+#     rho~1.0 anchor delay (462 s) as a coarser confirmation — see sim_load_compare
+#     header, same rationale.
+#   * FAIRNESS: holding packet_delay fixed while raising packet_size raises offered
+#     BYTES/s — intentional and identical for both versions. The claim is graceful-
+#     vs-brittle degradation, not equal byte-load across sizes. Note where each
+#     version crosses into fragmentation: v1 fragments above ~90 B payload (fixed
+#     100 B PHY cap - header); v2 fragments above the per-SF cap (SF9 ~105 B PHY-
+#     payload, SF12 ~41 B). app_pdr is fragmentation-fair — a message counts as
+#     delivered only when fully reassembled at the sink.
+#   * Metric: app_pdr and app_goodput_Bps vs packet_size (headline); app_latency
+#     p50/p95 reported as the v2 cost (extra fragment slots => more recurrences).
+#
+# Timing
+# ------
+#   Same as sim_load_compare: app_pdr analyses the FULL log, so the burst need not
+#   align with run_batch's window. duration_min = burst + tail where burst =
+#   packet_count*packet_delay and tail covers the last message's end-to-end
+#   latency (a few * recurrence R=38 s SF9 / 114 s SF12, more for large fragmented
+#   messages under load). SF12 cells are long; trim packet_count or drop a size if
+#   time-constrained.
+batch: sim_size_compare
+description: v1-vs-v2 end-to-end PDR/goodput vs payload size at fixed message rate, SF9 + SF12
+base: ../experiments/example-baseline.yaml
+
+runs: 1                   # 1 measured rep/cell; ~13 senders x N packets is already
+                          # a large PDR sample. Raise to 2-3 for cross-run CI on any
+                          # size where v1-vs-v2 looks close.
+duration_min: 30          # per-cell overrides below take precedence
+warmup_min: 15            # mesh convergence; SF12 cells override to 25
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  # ---- SF9, delay fixed at 108000 ms (rho~0.7) — sweep payload 40/80/120/180 B ---
+  - id: SF9_s40
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 15
+      lora_spreading_factor: 9
+      packet_delay: 108000
+      sim_testbed_warmup_ms: 900000     # = warmup_min 15
+    warmup_min: 15
+    duration_min: 34        # burst 27 + tail 7
+    inactive_devices: &remote
+      - DD58
+      - 14A4
+      - '3428'
+  - id: SF9_s80
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 80
+      packet_count: 15
+      lora_spreading_factor: 9
+      packet_delay: 108000
+      sim_testbed_warmup_ms: 900000
+    warmup_min: 15
+    duration_min: 34
+    inactive_devices: *remote
+  - id: SF9_s120
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 120
+      packet_count: 15
+      lora_spreading_factor: 9
+      packet_delay: 108000
+      sim_testbed_warmup_ms: 900000
+    warmup_min: 15
+    duration_min: 36        # burst 27 + tail 9 (2-fragment messages stretch latency)
+    inactive_devices: *remote
+  - id: SF9_s180
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 180
+      packet_count: 15
+      lora_spreading_factor: 9
+      packet_delay: 108000
+      sim_testbed_warmup_ms: 900000
+    warmup_min: 15
+    duration_min: 38        # burst 27 + tail 11
+    inactive_devices: *remote
+
+  # ---- SF12, delay fixed at 462000 ms (rho~1.0) — coarse confirmation, 40/120 B --
+  # SF12 is slow (~7.7 min/packet); a sub-saturation point is impractical. Two
+  # sizes only. Drop or trim packet_count if time-constrained.
+  - id: SF12_s40
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 5
+      lora_spreading_factor: 12
+      packet_delay: 462000
+      sim_testbed_warmup_ms: 1500000    # = warmup_min 25
+    warmup_min: 25
+    duration_min: 53        # burst 38.5 + tail 14
+    inactive_devices: *remote
+  - id: SF12_s120
+    overrides:
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 120
+      packet_count: 5
+      lora_spreading_factor: 12
+      packet_delay: 462000
+      sim_testbed_warmup_ms: 1500000
+    warmup_min: 25
+    duration_min: 60        # burst 38.5 + tail 21 (3-fragment messages at SF12)
+    inactive_devices: *remote

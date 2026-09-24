@@ -1,0 +1,393 @@
+"""Parse one run's per-device monitor logs into a normalized event stream.
+
+The regex set mirrors loramesher/log_analyzer.html — every pattern here was
+read from that file so analysis stays in sync with what the GUI sees.
+
+A "run directory" has the layout produced by runner.run_batch:
+    runs/<batch>/<runid>/
+        config.yaml          # frozen per-run experiment config
+        lifecycle.json       # phase timestamps incl. measurement-start/end
+        logs/                # monitor-dev-<session>-<short_id>.log[.gz]
+
+Each line in a monitor log is prefixed by the gateway wrapper with
+`[YYYY-MM-DD HH:MM:SS.mmm] `; everything after that is the original ESP
+log line, possibly carrying ANSI color escapes.
+"""
+
+from __future__ import annotations
+
+import gzip
+import json
+import re
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterable
+
+
+# ── Regexes mirroring log_analyzer.html ──────────────────────────────────────
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_TS_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\]\s*(.*)$")
+
+_PATTERNS = {
+    "slot": re.compile(
+        r"Slot (\d+) transition: type=(\w+)(?:\s+start=(\d+))?"
+    ),
+    "pkt_tx": re.compile(
+        r"PKT_TX dst=0x([0-9A-Fa-f]+) src=0x([0-9A-Fa-f]+) type=0x([0-9A-Fa-f]+) size=(\d+)"
+    ),
+    "pkt_rx": re.compile(
+        r"PKT_RX src=0x([0-9A-Fa-f]+) dst=0x([0-9A-Fa-f]+) type=0x([0-9A-Fa-f]+) "
+        r"size=(\d+) rssi=(-?\d+\.?\d*) snr=(-?\d+\.?\d*)"
+    ),
+    # v1 (old LoRaMesher) PHY-level activity. v1 emits no PKT_TX/PKT_RX/Slot
+    # lines; these are the only radio-activity signals it produces. The literal
+    # strings ("Packet send --", "Receiving LoRa packet") never appear in v2, so
+    # adding them here is safe for both versions. Used by duty_cycle.py to
+    # estimate v1 energy (continuous RX + measured TX airtime).
+    "v1_pkt_send": re.compile(
+        r"Packet send -- Size: (\d+) Src: ([0-9A-Fa-f]+) Dst: ([0-9A-Fa-f]+) "
+        r"Id: (\d+) Type: (\d+)"
+    ),
+    "v1_pkt_recv": re.compile(
+        r"Receiving LoRa packet: Size: (\d+) bytes RSSI: (-?\d+) SNR: (-?\d+)"
+    ),
+    # The line IMMEDIATELY AFTER "Receiving LoRa packet" carries the decoded header
+    # with the real Src/Dst (the RSSI/SNR line itself is address-blind). Pairing the two
+    # adjacent lines recovers per-packet source attribution for v1 — no RSSI heuristic.
+    # Verified empirically: in a full v1 log all 91 header lines sat exactly 1 line after
+    # their RSSI line (0 exceptions); ~13% of RSSI lines have no header (CRC-failed
+    # receives), which the pairing drops. Address fields are printed with leading zeros
+    # stripped (006C -> "6C").
+    "v1_pkt_received": re.compile(
+        r"Packet received -- Size: (\d+) Src: ([0-9A-Fa-f]+) Dst: ([0-9A-Fa-f]+) "
+        r"Id: (\d+) Type: (\d+)"
+    ),
+    "data_sent": re.compile(
+        r"Sending DATA to 0x([0-9A-Fa-f]+) via 0x([0-9A-Fa-f]+) "
+        r"\(ttl=(\d+), seq=(\d+)\), payload_size=(\d+)"
+    ),
+    "data_delivered": re.compile(
+        r"DATA reached final destination: src=0x([0-9A-Fa-f]+), "
+        r"dest=0x([0-9A-Fa-f]+), seq=(\d+), payload_size=(\d+)"
+    ),
+    "data_forwarded": re.compile(
+        r"Forwarding DATA: src=0x([0-9A-Fa-f]+), dest=0x([0-9A-Fa-f]+), "
+        r"seq=(\d+), ttl=(\d+)"
+    ),
+    "data_ttl_expired": re.compile(
+        r"DATA TTL expired: src=0x([0-9A-Fa-f]+), dest=0x([0-9A-Fa-f]+), "
+        r"seq=(\d+), dropping"
+    ),
+    "data_no_route": re.compile(
+        r"No route to dest=0x([0-9A-Fa-f]+) for forwarding: src=0x([0-9A-Fa-f]+), seq=(\d+)"
+    ),
+    "data_duplicate": re.compile(
+        r"Dropping duplicate DATA from 0x([0-9A-Fa-f]+) seq=(\d+)"
+    ),
+    "rtentry": re.compile(
+        r"RTENTRY\s+dest=0x([0-9A-Fa-f]+)\s+via=0x([0-9A-Fa-f]+)\s+"
+        r"hops=(\d+)\s+quality=(\d+)\s+active=(\d+)(?:\s+nm=(\d+))?"
+    ),
+    "linkstats": re.compile(
+        r"LinkStats\s+0x([0-9A-Fa-f]+):\s+quality\s+(\d+)\s*->\s*(\d+)\s+"
+        r"\(ewma=(\d+)\s+remote=(\d+)\s+exp=(\d+)\s+recv=(\d+)\s+missed=(\d+)\)"
+    ),
+    # Version-neutral application-layer end-to-end markers (firmware emits these
+    # above the LoRaMesher library, so they are identical for v1 and v2):
+    #   APP_TX at the originator, APP_RX at the final destination.
+    "app_tx": re.compile(r"APP_TX src=0x([0-9A-Fa-f]+) seq=(\d+) size=(\d+)"),
+    "app_rx": re.compile(r"APP_RX src=0x([0-9A-Fa-f]+) seq=(\d+) app=(\d+)"),
+    "state_change": re.compile(r"Network service state changed to (\d+)"),
+    "route_updated": re.compile(
+        r"Route updated: dest=0x([0-9A-Fa-f]+) via=0x([0-9A-Fa-f]+) hops=(\d+)"
+    ),
+    "joined": re.compile(r"Successfully joined network 0x([0-9A-Fa-f]+)"),
+}
+
+_SHORT_ID_RE = re.compile(r"monitor-dev-.+?-([0-9A-Fa-f]{4})\.log(?:\.gz)?$")
+
+
+@dataclass
+class Event:
+    ts: float            # epoch seconds (UTC)
+    node: str            # gateway-derived short id (e.g. "E464")
+    kind: str            # one of _PATTERNS keys
+    fields: dict = field(default_factory=dict)
+
+
+# ── v1→v2 node-address remapping ─────────────────────────────────────────────
+# The two LoRaMesher versions derive a node's 16-bit address differently:
+#   v1  = low 2 bytes of the WiFi MAC (WiFiService::getLocalAddress)
+#   v2  = AddressGenerator::GenerateFromHardwareId(..., avoid_reserved_addresses)
+# v2's reserved-address avoidance clears bit 15 (the 0x8000 half is reserved),
+# so any node whose v1 address was >= 0x8000 reports `addr & 0x7FFF` under v2.
+# This was verified against the sim_*_v2 run logs: B4DC→34DC, C270→4270,
+# CB34→4B34, DD3C→5D3C, DD58→5D58, DF10→5F10, E464→6464 (nodes already < 0x8000
+# are unchanged). Config/testbed labels stay the v1 form (they are physical
+# serial/udev labels); analysis calls this to match them to v2 log addresses.
+
+def v2_runtime_addr(addr: str) -> str:
+    """Map a v1/config node address (4-hex string) to its v2 runtime form.
+
+    Returns the input's canonical uppercase 4-hex string with bit 15 cleared.
+    Non-hex input is returned uppercased unchanged (nothing to translate)."""
+    try:
+        return format(int(str(addr), 16) & 0x7FFF, "04X")
+    except (ValueError, TypeError):
+        return str(addr).upper()
+
+
+def is_v2_run(events: Iterable[Event]) -> bool:
+    """True if these events came from a v2 (T-LoRaMesher, TDMA) run.
+
+    v2 emits `Slot N transition` lines (parsed as `slot` events); v1 never does,
+    so a single slot event is a sufficient, address-independent version signal."""
+    return any(ev.kind == "slot" for ev in events)
+
+
+def _parse_ts(s: str) -> float:
+    # gw-monitor.sh writes naive local time. We parse it as UTC here and then
+    # subtract a detected local-to-UTC offset in `parse_run`; that lets event
+    # timestamps compare correctly against the UTC window from lifecycle.json.
+    dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def _strip_ansi(s: str) -> str:
+    return _ANSI_RE.sub("", s)
+
+
+def _open_log(path: Path):
+    if path.suffix == ".gz":
+        return gzip.open(path, "rt", errors="replace")
+    return path.open("r", errors="replace")
+
+
+def iter_log_events(path: Path, node: str) -> Iterable[Event]:
+    """Yield Events extracted from one device's monitor log file."""
+    with _open_log(path) as fh:
+        for line in fh:
+            m = _TS_RE.match(line)
+            if not m:
+                continue
+            ts_str, rest = m.group(1), _strip_ansi(m.group(2))
+            ts = _parse_ts(ts_str)
+
+            for kind, pat in _PATTERNS.items():
+                mm = pat.search(rest)
+                if not mm:
+                    continue
+                yield Event(ts=ts, node=node, kind=kind,
+                            fields=_extract_fields(kind, mm))
+                break  # one event per line
+
+
+def _extract_fields(kind: str, m: re.Match) -> dict:
+    g = m.groups()
+    if kind == "slot":
+        return {"slot": int(g[0]), "type": g[1],
+                "start": int(g[2]) if g[2] else None}
+    if kind == "pkt_tx":
+        return {"dst": g[0].upper(), "src": g[1].upper(),
+                "type": g[2].upper(), "size": int(g[3])}
+    if kind == "pkt_rx":
+        return {"src": g[0].upper(), "dst": g[1].upper(),
+                "type": g[2].upper(), "size": int(g[3]),
+                "rssi": float(g[4]), "snr": float(g[5])}
+    if kind == "v1_pkt_send":
+        return {"size": int(g[0]), "src": g[1].upper(), "dst": g[2].upper(),
+                "id": int(g[3]), "type": int(g[4])}
+    if kind == "v1_pkt_recv":
+        return {"size": int(g[0]), "rssi": int(g[1]), "snr": int(g[2])}
+    if kind == "v1_pkt_received":
+        # Zero-pad the leading-zero-stripped addresses back to 4 hex (6C -> 006C).
+        return {"size": int(g[0]),
+                "src": format(int(g[1], 16), "04X"),
+                "dst": format(int(g[2], 16), "04X"),
+                "id": int(g[3]), "type": int(g[4])}
+    if kind == "data_sent":
+        return {"dst": g[0].upper(), "via": g[1].upper(),
+                "ttl": int(g[2]), "seq": int(g[3]),
+                "payload_size": int(g[4])}
+    if kind == "data_delivered":
+        return {"src": g[0].upper(), "dst": g[1].upper(),
+                "seq": int(g[2]), "payload_size": int(g[3])}
+    if kind == "data_forwarded":
+        return {"src": g[0].upper(), "dst": g[1].upper(),
+                "seq": int(g[2]), "ttl": int(g[3])}
+    if kind == "data_ttl_expired":
+        return {"src": g[0].upper(), "dst": g[1].upper(), "seq": int(g[2])}
+    if kind == "data_no_route":
+        return {"dst": g[0].upper(), "src": g[1].upper(), "seq": int(g[2])}
+    if kind == "data_duplicate":
+        return {"src": g[0].upper(), "seq": int(g[1])}
+    if kind == "rtentry":
+        return {"dest": g[0].upper(), "via": g[1].upper(),
+                "hops": int(g[2]), "quality": int(g[3]),
+                "active": bool(int(g[4])),
+                "nm": (bool(int(g[5])) if g[5] else None)}
+    if kind == "linkstats":
+        return {"peer": g[0].upper(),
+                "quality_from": int(g[1]), "quality_to": int(g[2]),
+                "ewma": int(g[3]), "remote": int(g[4]),
+                "exp": int(g[5]), "recv": int(g[6]), "missed": int(g[7])}
+    if kind == "app_tx":
+        return {"src": g[0].upper(), "seq": int(g[1]), "size": int(g[2])}
+    if kind == "app_rx":
+        return {"src": g[0].upper(), "seq": int(g[1]), "app": int(g[2])}
+    if kind == "state_change":
+        return {"state": int(g[0])}
+    if kind == "route_updated":
+        return {"dest": g[0].upper(), "via": g[1].upper(), "hops": int(g[2])}
+    if kind == "joined":
+        return {"network": g[0].upper()}
+    return {}
+
+
+def short_id_from_filename(path: Path) -> str | None:
+    m = _SHORT_ID_RE.search(path.name)
+    return m.group(1).upper() if m else None
+
+
+def load_measurement_window(run_dir: Path) -> tuple[float | None, float | None]:
+    """Read lifecycle.json and return (start_epoch, end_epoch) for the
+    measurement window. Returns (None, None) if the file is missing or
+    incomplete — caller can fall back to "all events"."""
+    lc = run_dir / "lifecycle.json"
+    if not lc.is_file():
+        return (None, None)
+    phases = json.loads(lc.read_text())
+    start = end = None
+    for p in phases:
+        if p.get("name") == "measurement-start" and p.get("start"):
+            start = _iso_to_epoch(p["start"])
+        elif p.get("name") == "measurement-end" and p.get("start"):
+            end = _iso_to_epoch(p["start"])
+    return (start, end)
+
+
+def _iso_to_epoch(iso: str) -> float:
+    # Accept the milliseconds-precision UTC ISO format that RunRecorder writes.
+    return datetime.fromisoformat(iso).timestamp()
+
+
+def detect_local_offset(run_dir: Path) -> float:
+    """Recover the gateway-local → UTC offset in seconds.
+
+    gw-monitor.sh prefixes every log line with naive local time, while
+    lifecycle.json records UTC. We anchor on `monitor-start.start` (true UTC,
+    just before the wrapper begins emitting timestamps) and compare it to the
+    earliest log-line timestamp parsed as if it were UTC. The difference,
+    rounded to 15 min, is the local offset. Returns 0.0 when nothing usable
+    is found, so callers degrade to the pre-fix behavior.
+    """
+    lc = run_dir / "lifecycle.json"
+    if not lc.is_file():
+        return 0.0
+    try:
+        phases = json.loads(lc.read_text())
+    except (OSError, json.JSONDecodeError):
+        return 0.0
+
+    monitor_start: float | None = None
+    for p in phases:
+        if p.get("name") == "monitor-start" and p.get("start"):
+            monitor_start = _iso_to_epoch(p["start"])
+            break
+    if monitor_start is None:
+        return 0.0
+
+    logs_dir = run_dir / "logs"
+    if not logs_dir.is_dir():
+        return 0.0
+
+    earliest: float | None = None
+    for path in sorted(logs_dir.glob("monitor-dev-*.log*")):
+        if not _SHORT_ID_RE.search(path.name):
+            continue
+        try:
+            with _open_log(path) as fh:
+                for line in fh:
+                    m = _TS_RE.match(line)
+                    if not m:
+                        continue
+                    ts = _parse_ts(m.group(1))
+                    if earliest is None or ts < earliest:
+                        earliest = ts
+                    break
+        except OSError:
+            continue
+    if earliest is None:
+        return 0.0
+
+    # Round to 15-minute bins — covers every real-world TZ including the
+    # half/quarter-hour ones (India, Nepal, Chatham) and absorbs sub-second
+    # skew between gateway and host clocks.
+    offset = round((earliest - monitor_start) / 900.0) * 900.0
+    if abs(offset) > 14 * 3600:
+        return 0.0  # nonsense — likely a busted clock, ignore
+    return offset
+
+
+def parse_run(run_dir: Path,
+              window: tuple[float | None, float | None] | None = None,
+              ) -> list[Event]:
+    """Parse every monitor log in `run_dir/logs/` into one merged event list.
+
+    If `window` is None it is auto-loaded from lifecycle.json. Pass an empty
+    window (None, None) explicitly to get the full event stream.
+    """
+    if window is None:
+        window = load_measurement_window(run_dir)
+    start, end = window
+
+    local_offset = detect_local_offset(run_dir)
+
+    logs_dir = run_dir / "logs"
+    events: list[Event] = []
+    for path in sorted(logs_dir.glob("monitor-dev-*.log*")):
+        node = short_id_from_filename(path)
+        if not node:
+            continue
+        for ev in iter_log_events(path, node):
+            if local_offset:
+                ev.ts -= local_offset
+            if start is not None and ev.ts < start:
+                continue
+            if end is not None and ev.ts > end:
+                continue
+            events.append(ev)
+
+    events.sort(key=lambda e: e.ts)
+    return events
+
+
+def events_to_jsonl(events: list[Event], out_path: Path) -> int:
+    """Persist events to a JSON Lines file. Returns the number of lines."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w") as f:
+        for ev in events:
+            f.write(json.dumps(asdict(ev)) + "\n")
+    return len(events)
+
+
+def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="Parse one run's logs into events.jsonl")
+    ap.add_argument("run_dir", type=Path)
+    ap.add_argument("--all", action="store_true",
+                    help="Include events outside the measurement window")
+    args = ap.parse_args()
+
+    window = (None, None) if args.all else None
+    events = parse_run(args.run_dir, window=window)
+    out = args.run_dir / "events.jsonl"
+    n = events_to_jsonl(events, out)
+    print(f"wrote {n} events to {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

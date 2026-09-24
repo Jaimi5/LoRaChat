@@ -4,7 +4,7 @@
 void DisplayService::createDisplayTask() {
     xTaskCreatePinnedToCore(displayTask,         /* Task function. */
                             "DisplayTask",       /* name of task. */
-                            2048,                /* Stack size of task */
+                            4096,                /* Stack size of task */
                             this,                /* parameter of the task */
                             3,                   /* priority of the task */
                             &display_TaskHandle, /* Task handle to keep track of created task */
@@ -58,7 +58,7 @@ String DisplayService::displayOn(uint16_t dst) {
     if (!initialized)
         return "Display Service not initialized";
 
-    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
         DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayOn, dst);
         MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
 
@@ -77,7 +77,7 @@ String DisplayService::displayOff(uint16_t dst) {
     if (!initialized)
         return "Display Service not initialized";
 
-    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
         DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayOff, dst);
         MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
 
@@ -100,7 +100,7 @@ String DisplayService::displayBlink(uint16_t dst) {
     if (!initialized)
         return "Display Service not initialized";
 
-    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
         DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayBlink, dst);
         MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
 
@@ -138,7 +138,7 @@ String DisplayService::clearDisplay(uint16_t dst) {
     if (!initialized)
         return "Display Service not initialized";
 
-    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
         DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayClear, dst);
         MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
 
@@ -185,7 +185,7 @@ String DisplayService::displayLogo(uint16_t dst, uint16_t src) {
     if (!initialized)
         return "Display Service not initialized";
 
-    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
         DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayLogo, dst);
         MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
 
@@ -223,7 +223,7 @@ String DisplayService::displayText(uint16_t dst, String text, uint16_t src) {
     if (!initialized)
         return "Display Service not initialized";
 
-    if (dst != 0 && dst != LoraMesher::getInstance().getLocalAddress()) {
+    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
         DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayText, dst, text);
         MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
 
@@ -280,7 +280,7 @@ DataMessage* DisplayService::getDisplayMessage(DisplayCommand command, uint16_t 
     displayMessage->appPortSrc = appPort::DisplayApp;
     displayMessage->appPortDst = appPort::DisplayApp;
 
-    displayMessage->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    displayMessage->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     displayMessage->addrDst = dst;
 
     return ((DataMessage*)displayMessage);
@@ -390,7 +390,7 @@ void DisplayService::setupTextMovement(int line, const String& text) {
 }
 
 void DisplayService::setTitle() {
-    String title = "LoRaMesher - v0.0.8";
+    String title = "LoRaMesher - " + String(LORAMESHER_VERSION);
     String device_id =
         "Device ID: " + String(LoRaMeshService::getInstance().getLocalAddress(), HEX);
 

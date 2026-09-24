@@ -18,12 +18,20 @@ void MqttService::initMqtt(String lclName) {
     // Set the MQTT_CLIENT library logging level
     esp_log_level_set("MQTT_CLIENT", ESP_LOG_WARN);
 
+    // Silence the TLS/transport reconnect spam emitted every retry while the
+    // broker is unreachable; this UART/log-mutex traffic is what starves the
+    // LoRa tasks. The MQTT event handler still logs disconnect/error events.
+    esp_log_level_set("esp-tls", ESP_LOG_NONE);
+    esp_log_level_set("TRANSPORT_BASE", ESP_LOG_NONE);
+    esp_log_level_set("transport_base", ESP_LOG_NONE);
+
     ESP_LOGI(MQTT_TAG, "Mqtt initialized");
 }
 
 
 static esp_mqtt_client_handle_t client;
 bool mqtt_connected = false;
+static int mqtt_error_count = 0;
 
 void MqttService::createMqttTask() {
     int res = xTaskCreate(MqttLoop, "Mqtt Task", 4096, (void*)1, 2, &mqtt_TaskHandle);
@@ -78,22 +86,13 @@ bool MqttService::connect() {
 
     esp_mqtt_client_start(client);
 
-    ESP_LOGV(MQTT_TAG, "Waiting for MQTT connection to start");
-
-    int tries = 0;
-    while (!isDeviceConnected() && tries++ < MAX_CONNECTION_TRY) {
-        ESP_LOGV(MQTT_TAG, ".");
-        vTaskDelay(1000 / portTICK_PERIOD_MS);  // Wait 1 second
-    }
-
-    if (!isDeviceConnected()) {
-        ESP_LOGW(MQTT_TAG, "No MQTT connection");
-        return false;
-    }
-
-    ESP_LOGI(MQTT_TAG, "MQTT connected");
-
-    return true;
+    // Do not block the caller waiting for the connection. esp_mqtt reconnects
+    // on its own task and flips mqtt_connected via the event handler; busy-
+    // waiting here (up to MAX_CONNECTION_TRY seconds) ran on the caller — incl.
+    // the LoRa receive/forward path — and stalled time-critical work whenever
+    // the broker was unreachable. Callers fall back to the LoRa mesh gateway
+    // when this returns false (see MessageManager::sendMessageMqtt).
+    return isDeviceConnected();
 }
 
 void MqttService::disconnect() {
@@ -171,6 +170,7 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED: {
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
             mqtt_connected = true;
+            mqtt_error_count = 0;
             String topic = String(MQTT_TOPIC_SUB) + MqttService::getInstance().localName;
             esp_mqtt_client_subscribe(client, topic.c_str(), 2);
         } break;
@@ -190,7 +190,7 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_DATA: {
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA");
             MqttService& mqttService = MqttService::getInstance();
-            mqttService.process_message(event->topic, event->data);
+            mqttService.process_message(event->topic, event->topic_len, event->data, event->data_len);
         } break;
         case MQTT_EVENT_ERROR:
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_ERROR");
@@ -199,9 +199,17 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
                          strerror(event->error_handle->esp_transport_sock_errno));
             }
             if (WiFiServerService::getInstance().isConnected() && mqtt_connected) {
-                ESP_LOGI(MQTT_TAG, "MQTT restart (rebooting)");
-                esp_restart();
+                mqtt_connected = false;
+                mqtt_error_count++;
+                if (mqtt_error_count >= 3) {
+                    ESP_LOGI(MQTT_TAG, "MQTT restart (rebooting) after %d errors", mqtt_error_count);
+                    esp_restart();
+                } else {
+                    ESP_LOGI(MQTT_TAG, "MQTT error #%d — reconnecting (no reboot)", mqtt_error_count);
+                    esp_mqtt_client_reconnect(client);
+                }
             }
+            break;
         default:
             // ESP_LOGI(MQTT_TAG, "Other event id:%d", event->event_id);
             break;
@@ -240,7 +248,7 @@ void MqttService::mqtt_service_subscribe(const char* topic) {
 
 void MqttService::mqtt_service_send(const char* topic, const char* data, int len) {
     int msg_id;
-    msg_id = esp_mqtt_client_publish(client, topic, data, len, 2, 0);
+    msg_id = esp_mqtt_client_publish(client, topic, data, len, 1, 0);
     if (msg_id == -1) {
         ESP_LOGE(MQTT_TAG, "Error sending message to MQTT");
         return;
@@ -248,9 +256,9 @@ void MqttService::mqtt_service_send(const char* topic, const char* data, int len
     ESP_LOGI(MQTT_TAG, "sent publish successful, msg_id %d", msg_id);
 }
 
-void MqttService::process_message(const char* topic, const char* payload) {
-    String topicStr = String(topic);
-    String payloadStr = String(payload);
+void MqttService::process_message(const char* topic, int topic_len, const char* payload, int data_len) {
+    String topicStr = String(topic, topic_len);
+    String payloadStr = String(payload, data_len);
 
     MQTTQueueMessageV2* mqttMessageReceive = new MQTTQueueMessageV2();
     mqttMessageReceive->topic = topicStr;

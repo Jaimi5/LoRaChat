@@ -6,6 +6,7 @@
 // Log
 #include "esp32-hal-log.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 
 // Manager
 #include "message/messageManager.h"
@@ -47,6 +48,16 @@ MonService& mon_mqttService = MonService::getInstance();
 void init_mqtt_mon() {
     mon_mqttService.init();
 }
+#pragma endregion
+
+#pragma region OTA
+#ifdef OTA_ENABLED
+#include "ota/otaService.h"
+OTAService& otaService = OTAService::getInstance();
+void initOTA() {
+    otaService.init();
+}
+#endif
 #pragma endregion
 
 // Battery
@@ -122,8 +133,13 @@ void initWiFi() {
 LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
 
 void initLoRaMesher() {
+#if defined(NODE_ACTIVE) && (NODE_ACTIVE == 0)
+    ESP_LOGI(TAG, "NODE_ACTIVE=0: LoRa disabled, skipping mesh init");
+    return;
+#else
     // Init LoRaMesher
     loraMeshService.initLoraMesherService();
+#endif
 }
 
 #pragma endregion
@@ -209,6 +225,11 @@ void initManager() {
     manager.addMessageService(&displayService);
     ESP_LOGV(TAG, "Display service added to manager");
 
+#ifdef OTA_ENABLED
+    manager.addMessageService(&otaService);
+    ESP_LOGV(TAG, "OTA service added to manager");
+#endif
+
     Serial.println(manager.getAvailableCommands());
 }
 
@@ -233,8 +254,13 @@ void setup() {
     // Initialize Serial Monitor
     Serial.begin(115200);
 
-    // Set log level
-    esp_log_level_set("*", ESP_LOG_VERBOSE);
+    // Mark app valid so bootloader doesn't roll back
+    esp_ota_mark_app_valid_cancel_rollback();
+
+    // Set log level. INFO keeps operational and error logs while dropping the
+    // verbose/debug spam whose blocking UART flush (~7 ms/line at 115200) and
+    // log-mutex contention starve time-critical tasks during reconnect storms.
+    esp_log_level_set("*", ESP_LOG_INFO);
 
     ESP_LOGI(TAG, "Build environment name: %s", BUILD_ENV_NAME);
 
@@ -279,6 +305,15 @@ void setup() {
     initLoRaMesher();
     ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
 
+#ifdef WIFI_ENABLED
+    // WiFi may have connected before LoRaMesher was initialized, causing
+    // setGateway() to silently fail (mesher_ was NULL). Re-check now.
+    if (wiFiService.isConnected()) {
+        ESP_LOGI(TAG, "WiFi already connected at LoRaMesher init — setting gateway");
+        loraMeshService.setGateway();
+    }
+#endif
+
 #ifdef BLUETOOTH_ENABLED
     // Initialize Bluetooth
     initBluetooth();
@@ -316,6 +351,11 @@ void setup() {
     // Initialize MQTT_MON
     init_mqtt_mon();
     ESP_LOGV(TAG, "Heap after init_mqtt_mon: %d", ESP.getFreeHeap());
+#endif
+
+#ifdef OTA_ENABLED
+    initOTA();
+    ESP_LOGV(TAG, "Heap after initOTA: %d", ESP.getFreeHeap());
 #endif
 
     ESP_LOGV(TAG, "Setup finished");

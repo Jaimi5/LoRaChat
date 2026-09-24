@@ -1,11 +1,20 @@
 #pragma once
 
+// USE_LORAMESHER_V2 is set via platformio.ini build_flags (in base_v2 / *-v2 envs)
+// Defined: uses LoRaMesher v1.0.0 (Builder pattern, callbacks)
+// Not defined: uses LoRaMesher v0.0.11 (singleton, task-based)
+
 // Choose the device, choose it directly in the platformio.ini file
 // #define T_BEAM_V10 // ttgo-t-beam
 // #define T_BEAM_LORA_32 // ttgo-lora32-v1
 // #define NAYAD_V1
 // #define NAYAD_V1R2
-#define MAKERFABS_SENSELORA_MOISTURE
+// #define MAKERFABS_SENSELORA_MOISTURE
+#if defined USE_LORAMESHER_V2
+#define LORAMESHER_VERSION "v1.0.0"
+#else
+#define LORAMESHER_VERSION "v0.0.8"
+#endif
 
 #if defined(NAYAD_V1) || defined(NAYAD_V1R2)
 // #define GPS_ENABLED
@@ -17,19 +26,19 @@
 #define WIFI_ENABLED
 #define MQTT_ENABLED
 #define MQTT_MON_ENABLED
-#define BLUETOOTH_ENABLED
+// #define BLUETOOTH_ENABLED
 #define LORA_ENABLED
-// #define SIMULATION_ENABLED
+#define SIMULATION_ENABLED
 #elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
 #define DISPLAY_ENABLED
 // #define LED_ENABLED
 #define LORA_ENABLED
 #define WIFI_ENABLED
 #define MQTT_ENABLED
-// #define MQTT_MON_ENABLED
+#define MQTT_MON_ENABLED
 // #define BLUETOOTH_ENABLED
 // #define GPS_ENABLED
-#define SIMULATION_ENABLED
+// #define SIMULATION_ENABLED
 // #define NO_SENSOR_DATA // If the sensors are not connected
 #elif defined(T_BEAM_LORA_32)
 #define DISPLAY_ENABLED
@@ -43,6 +52,25 @@
 #define LORA_ENABLED
 #define WIFI_ENABLED
 #define MQTT_ENABLED
+#endif
+
+// ── PDR-comparison experiment (sim-based load generator) ─────────────────────
+// When SIM_PDR_COMPARE != 0 (set per-run by the testbed configtool) the board
+// runs the simulator as a fixed-rate, fixed-size LoRa load generator instead of
+// the MQTT monitor. This lets LoRaMesher v1 and v2 be compared at an identical,
+// controlled offered load. Default 0 keeps the normal MQTT-monitor behaviour.
+#define SIM_PDR_COMPARE 0
+#if SIM_PDR_COMPARE
+#undef MQTT_MON_ENABLED
+// Pure-LoRa load test: disable WiFi/MQTT entirely. The gateway/sink role is set
+// directly at boot (see sim.cpp), so the experiment must not depend on an AP. This
+// also prevents the WiFi-fail path (wifiServerService.cpp) from calling
+// removeGateway() and clobbering that role, and removes the MQTT connect log spam.
+#undef WIFI_ENABLED
+#undef MQTT_ENABLED
+#ifndef SIMULATION_ENABLED
+#define SIMULATION_ENABLED
+#endif
 #endif
 
 // Configuration
@@ -105,8 +133,8 @@
 #define MAX_CONNECTION_TRY 10
 
 // WiFi credentials
-#define WIFI_SSID "*********"
-#define WIFI_PASSWORD "*********"
+#define WIFI_SSID "******"
+#define WIFI_PASSWORD "******"
 #define WIFI_OVERRIDE_CREDENTIALS //If defined, every time the device is reset it will set the wifi credentials.
 
 // MQTT configuration
@@ -129,7 +157,11 @@
 #define METADATA_UPDATE_DELAY 300000  // ms
 
 // MQTT_MON configuration
-#define MON_SENDING_EVERY 30000  // ms
+#define MON_SENDING_EVERY 300000  // ms
+
+// Monitor reporting mode: define to report all valid routes (direct + multi-hop)
+// Undefine (default) to report only direct neighbors (1-hop), matching v1 behavior
+// #define MON_REPORT_ALL_ROUTES
 
 
 // Battery configuration
@@ -289,6 +321,8 @@
 #define LORA_IO1 33
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_IO1 7
+#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#define LORA_IO1 33
 #else
 #ifndef LORA_MODULE_SX1276
 #warning "LORA_IO1 not defined"
@@ -297,6 +331,41 @@
 #endif
 #endif
 
+// Testbed: 0 makes initLoRaMesher() return early, so the node boots with no
+// LoRa stack and never joins the mesh. Used by experiment runs that need a
+// silent-node subset (e.g. density sweeps within the 13-node main cluster).
+#define NODE_ACTIVE 1
+
+#define LORA_MANAGER_ID 0x006C
+
+// LoRa RF Parameters
+#define LORA_FREQUENCY 869.525F
+#define LORA_SPREADING_FACTOR 9U
+#define LORA_BANDWIDTH 125.0
+#define LORA_CODING_RATE 7U
+#define LORA_POWER 17
+#define LORA_SYNC_WORD 20U      // Network identifier (0-255)
+#define LORA_CRC true           // Enable CRC checking
+#define LORA_PREAMBLE_LENGTH 8U
+#define LORA_DUTY_CYCLE 1.0f
+#define LORA_MAX_PACKET_SIZE 255
+// Max monitor message bytes handed to LoRaMesher = packet size minus the
+// 10-byte LoRaMesher DATA overhead (6-byte BaseHeader + 4-byte DataHeader).
+#define MAX_MSG_SIZE 245
+#define LORA_MIN_SLEEP_FRACTION 0
+// Data slots each node requests at join. More slots amortize the fixed control
+// overhead (higher per-node throughput) at the cost of a longer superframe; the
+// sum across nodes is capped by the data-slot pool (max_network_nodes).
+#define LORA_DEFAULT_DATA_SLOTS 1
+// Maximum number of nodes admitted to the network (node-count cap only).
+#define LORA_MAX_NETWORK_NODES 50
+// Total data-slot pool: sum of every node's data slots. Independent of the node
+// cap (LoRaMesher separates the two). Raise above nodes x data_slots when
+// sweeping default_data_slots so late joiners aren't starved of data slots.
+#define LORA_MAX_DATA_SLOTS 50
+#ifdef USE_LORAMESHER_V2
+#define LORA_RADIO_TYPE loramesher::RadioType::kSx1276
+#endif
 
 // PMU configuration
 #if defined(T_BEAM_V10) || defined(T_BEAM_V12)
@@ -307,7 +376,7 @@
 
 // Simulation Configuration
 // The address of the device that will connect at the beginning of the simulation
-#define WIFI_ADDR_CONNECTED 20056
+#define WIFI_ADDR_CONNECTED 0x3ADF
 
 #define PACKET_COUNT 200
 #define PACKET_DELAY 120000
@@ -316,13 +385,17 @@
 #define LOG_MESHER 0
 
 // If defined, there only be one sender
-#define ONE_SENDER 35872
+#define ONE_SENDER 0
+
+// PDR-comparison testbed mode: time to wait after boot for the mesh to converge
+// (and a gateway to appear) before the load-generator burst begins.
+#define SIM_TESTBED_WARMUP_MS 60000
 
 // If defined 0 the packets will be sent unreliably
 #define SEND_RELIABLE 0
 
 // Simulator Delay Configuration (all times in milliseconds unless specified)
-#define SIM_NETWORK_PROPAGATION_MULTIPLIER 15
+#define SIM_NETWORK_PROPAGATION_MULTIPLIER 5
 #define SIM_INITIAL_WIFI_DELAY 30000
 #define SIM_POST_START_DELAY 30000
 #define SIM_UPLOAD_DELAY_CONNECTED 2000

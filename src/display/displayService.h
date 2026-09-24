@@ -16,7 +16,7 @@
 
 #include "config.h"
 
-#include "LoraMesher.h"
+#include "loramesh/loraMeshService.h"
 
 class DisplayService : public MessageService {
 public:

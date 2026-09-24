@@ -34,6 +34,7 @@ enum appPort : uint8_t {
     MetadataApp = 15,
     MonApp = 16,
     DisplayApp = 17,
+    OTAApp = 18,
 };
 
 class DataMessageGeneric {

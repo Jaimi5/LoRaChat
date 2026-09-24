@@ -11,7 +11,7 @@ void Display::drawDisplay() {
     printLine(displayText[3], x4, 27, 1, minX4, move4);
     printLine(displayText[4], x5, 36, 1, minX5, move5);
     printLine(displayText[5], x6, 45, 1, minX6, move6);
-    printLine(displayText[6], x7, 54, 1, minX7, move7);
+    // printLine(displayText[6], x7, 54, 1, minX7, move7);
 
     // if (routingSize > 1) {
     //     String line4Text;

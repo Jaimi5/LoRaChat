@@ -23,7 +23,7 @@ void SensorService::init() {
 String SensorService::getJSON(DataMessage* message) {
     SensorCommandMessage* sensorMessage = (SensorCommandMessage*)message;
 
-    StaticJsonDocument<2000> doc;
+    DynamicJsonDocument doc(2000);
 
     JsonObject root = doc.to<JsonObject>();
 
@@ -140,6 +140,9 @@ void SensorService::sendingLoop(void* parameter) {
 
             sensorService.createAndSendMessage();
 
+            // Static pacing: fixed SENSOR_SENDING_EVERY delay. Offered load is exactly
+            // this interval and reproducible; per-SF capacity matching is done by
+            // choosing SENSOR_SENDING_EVERY (see docs/paper/sf_offered_load_capacity.md).
             vTaskDelay(SENSOR_SENDING_EVERY / portTICK_PERIOD_MS);
 
             // Print the free heap memory
@@ -166,7 +169,7 @@ void SensorService::createAndSendMessage() {
 
     message->appPortDst = appPort::MQTTApp;
     message->appPortSrc = appPort::SensorApp;
-    message->addrSrc = LoraMesher::getInstance().getLocalAddress();
+    message->addrSrc = LoRaMeshService::getInstance().getLocalAddress();
     message->addrDst = 0;
     message->messageId = sensorMessageId;
 
