@@ -238,7 +238,7 @@ $EDITOR scripts/testbed/experiments/current.yaml    # fill in credentials
 That's it. `deploy.sh all` runs four phases:
 
 1. **stop-monitor** — kill any existing monitors.
-2. **upgrade** — `git pull` + `pio pkg update` on every gateway (brings
+2. **upgrade** — `git fetch` + hard sync to `origin/<branch>` + `pio pkg update` on every gateway (brings
    infra changes only; experiment YAMLs are gitignored).
 3. **push-config** — validates `current.yaml`, generates
    `scripts/testbed/change-config/change-config-{SHORT_ID}.sh` locally,
@@ -636,7 +636,9 @@ Shows gateway reachability, hostname, uptime, and any running `pio` processes.
 
 ### `upgrade` — Update code and libraries
 
-Runs `git pull` + `pio pkg update` on all gateways in parallel.
+Runs `git fetch`, hard-syncs to `origin/<branch>` (tolerates force-pushes; untracked
+per-device files are kept; previous HEAD saved as `backup/pre-sync`), then
+`pio pkg update` on all gateways in parallel.
 
 ```bash
 ./deploy.sh upgrade
