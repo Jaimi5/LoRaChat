@@ -1,7 +1,7 @@
 #pragma once
 
 // USE_LORAMESHER_V2 is set via platformio.ini build_flags (in base_v2 / *-v2 envs)
-// Defined: uses LoRaMesher v1.0.0 (Builder pattern, callbacks)
+// Defined: uses the TDMA-based LoRaMesher (v1.0.0 line, pinned commit, Builder pattern, callbacks)
 // Not defined: uses LoRaMesher v0.0.11 (singleton, task-based)
 
 // Choose the device, choose it directly in the platformio.ini file
@@ -13,7 +13,7 @@
 #if defined USE_LORAMESHER_V2
 #define LORAMESHER_VERSION "v1.0.0"
 #else
-#define LORAMESHER_VERSION "v0.0.8"
+#define LORAMESHER_VERSION "v0.0.11"
 #endif
 
 #if defined(NAYAD_V1) || defined(NAYAD_V1R2)
