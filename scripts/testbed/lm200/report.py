@@ -78,9 +78,9 @@ def verdict_of(state: dict, gres: dict, forced: str | None, reason: str | None) 
             caveats.append(f"stage {name} did not complete")
     for inc in state.get("incomplete", []):
         caveats.append(f"INCOMPLETE cell {inc['batch']}/{inc['cell']}")
-    for tag, rl in (state.get("radiolib") or {}).items():
-        if len({v for vs in rl.values() for v in vs}) > 1:
-            caveats.append(f"RadioLib differs between gateways ({tag}): {rl}")
+    # RadioLib is pinned in platformio.ini; the compiled version is checked per run
+    # from the upload dependency graph (radiolib gate check). The libdeps probe only
+    # sees LoRaMesher's own unpinned ^7.1.2 copy, which is not compiled.
     if blockers:
         return "NO-GO", blockers, caveats
     return ("GO-WITH-CAVEATS" if caveats else "GO"), blockers, caveats
@@ -164,9 +164,11 @@ def build(campaign_dir: Path, cfg: dict, forced: str | None, reason: str | None,
     rl = state.get("radiolib_prewarm")
     rlh = state.get("radiolib") or {}
     if rlh:
-        md += ["## RadioLib per gateway", "",
-               "Probed from each gateway's `.pio/libdeps/<env>/RadioLib` (transitive dep; `^7.1.2` lets "
-               "gateways keep different cached versions). Recorded only, never changed.", "",
+        md += ["## Unpinned RadioLib copy per gateway (not compiled)", "",
+               "Probed from each gateway's `.pio/libdeps/<env>/RadioLib`, which holds LoRaMesher's own "
+               "`^7.1.2` dependency. The firmware links the pinned `RadioLib@<version>` copy instead; "
+               "the compiled version is the `radiolib` check in each gate below, read from the upload "
+               "dependency graph. Recorded only, never changed.", "",
                "| When | Versions per gateway |", "|---|---|"]
         md += [f"| {k} | `{_md_escape(json.dumps(v))}` |" for k, v in rlh.items()] + [""]
     for g, res in gres.items():

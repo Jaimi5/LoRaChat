@@ -292,6 +292,14 @@ def scan_upload_logs(run_dir: Path) -> dict | None:
     """Parse logs/GW-*-upload.log. None when the run had no upload (reset-only rep)."""
     logs = sorted((run_dir / "logs").glob("GW-*-upload.log")) if (run_dir / "logs").is_dir() else []
     if not logs:
+        # Warmup reps (r00) flash but collect no logs into the run dir; deploy.sh
+        # keeps their upload logs under logs_testbed/<session>/.
+        for root in (TESTBED.parent.parent / "logs_testbed", TESTBED / "logs_testbed"):
+            if (root / run_dir.name).is_dir():
+                logs = sorted((root / run_dir.name).glob("GW-*-upload.log"))
+                if logs:
+                    break
+    if not logs:
         return None
     ok, failed, shas, chip, missing_gw = set(), set(), Counter(), 0, []
     radiolib: dict[str, list[str]] = {}

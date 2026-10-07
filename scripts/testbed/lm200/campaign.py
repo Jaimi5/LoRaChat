@@ -338,6 +338,24 @@ class Campaign:
             return False, f"no log={absent} no boot banner={missing}"
         return True, "ok"
 
+    def _validate_warmup_upload(self, run_dir: Path) -> tuple[bool, str]:
+        """The warmup rep flashes every board for the cell; its reps are only valid
+        if that upload succeeded with the expected LoRaMesher and RadioLib."""
+        up = gates.scan_upload_logs(run_dir)
+        if up is None:
+            return False, "warmup run has no upload logs"
+        cfg = gates.run_config(run_dir)
+        not_ok = sorted(set(cfg["devices"]) - set(up["ok"]))
+        if up["failed"] or not_ok:
+            return False, f"upload failed on {up['failed'] or not_ok}"
+        sha = self.expected_sha
+        if sha and any(not v.split("+sha.")[-1].startswith(sha) for v in up["lib_versions"]):
+            return False, f"wrong LoRaMesher built: {up['lib_versions']} (want {sha})"
+        exp_rl = (self.args.expect_radiolib if self.args.expect_radiolib is not None
+                  else self.cfg.get("expected_radiolib"))
+        probs = gates.radiolib_problems(up, exp_rl or None)
+        return (False, "RadioLib: " + "; ".join(probs)) if probs else (True, "ok")
+
     expected_sha = None
 
     def run_batch(self, yaml_rel: str, extra: list[str], env_name: str | None = None) -> list[Path]:
@@ -393,9 +411,15 @@ class Campaign:
                 if c is None:
                     continue
                 cell, rep = c
-                if rep == 0:  # warmup (flash + boot-verify) run
+                if rep == 0:  # warmup (flash + boot-verify) run: only its upload matters
+                    ok, why = self._validate_warmup_upload(p)
+                    if not ok:
+                        retry.add(cell)
+                        self.state["failed_runs"].append({"run": str(p), "why": why, "ts": now()})
+                        self.log(f"  INVALID warmup: {p.name}: {why}")
                     continue
-                first = (rep == 1)
+                # With a warmup run, r00 does the upload and r01 only push-config + reset.
+                first = (rep == 1 and not batch.warmup_run)
                 ok, why = self._validate_run(p, first)
                 if ok:
                     valid.append(p)
