@@ -19,7 +19,7 @@ git fetch origin
 # reset --hard only touches tracked files; untracked per-device configs stay.
 echo "=== sync to origin/$BRANCH (old HEAD -> backup/pre-sync) ==="
 git branch -f backup/pre-sync HEAD
-git checkout -B "$BRANCH" "origin/$BRANCH"
+git checkout -f -B "$BRANCH" "origin/$BRANCH"
 git reset --hard "origin/$BRANCH"
 
 echo "=== pio pkg update ==="
