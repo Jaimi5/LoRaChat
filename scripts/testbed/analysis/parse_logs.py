@@ -86,24 +86,89 @@ _PATTERNS = {
     "data_duplicate": re.compile(
         r"Dropping duplicate DATA from 0x([0-9A-Fa-f]+) seq=(\d+)"
     ),
+    # Optional `cap=0x.. slots=..` tail appears only when the firmware enables
+    # setLogRoutingCapabilities(true).
     "rtentry": re.compile(
         r"RTENTRY\s+dest=0x([0-9A-Fa-f]+)\s+via=0x([0-9A-Fa-f]+)\s+"
         r"hops=(\d+)\s+quality=(\d+)\s+active=(\d+)(?:\s+nm=(\d+))?"
+        r"(?:\s+cap=0x([0-9A-Fa-f]+)\s+slots=(\d+))?"
     ),
+    # The library prints `missed=%d%s)` where %s may be " PROBING"; accept it.
     "linkstats": re.compile(
         r"LinkStats\s+0x([0-9A-Fa-f]+):\s+quality\s+(\d+)\s*->\s*(\d+)\s+"
-        r"\(ewma=(\d+)\s+remote=(\d+)\s+exp=(\d+)\s+recv=(\d+)\s+missed=(\d+)\)"
+        r"\(ewma=(\d+)\s+remote=(\d+)\s+exp=(\d+)\s+recv=(\d+)\s+missed=(\d+)"
+        r"( PROBING)?\)"
     ),
     # Version-neutral application-layer end-to-end markers (firmware emits these
     # above the LoRaMesher library, so they are identical for v1 and v2):
     #   APP_TX at the originator, APP_RX at the final destination.
     "app_tx": re.compile(r"APP_TX src=0x([0-9A-Fa-f]+) seq=(\d+) size=(\d+)"),
     "app_rx": re.compile(r"APP_RX src=0x([0-9A-Fa-f]+) seq=(\d+) app=(\d+)"),
+    # LoRaChat feature-test markers (lm200 campaign). APP_ACK/APP_FAIL come from
+    # the reliable-delivery callback at the originator; `src` is the originator
+    # and `seq` the same app seq as its APP_TX line.
+    "app_ack": re.compile(
+        r"APP_ACK src=0x([0-9A-Fa-f]+) seq=(\d+) rtt=(\d+) by=0x([0-9A-Fa-f]+)"),
+    "app_fail": re.compile(
+        r"APP_FAIL src=0x([0-9A-Fa-f]+) seq=(\d+) reason=(\S+)"),
+    "group_tx": re.compile(
+        r"GROUP_TX src=0x([0-9A-Fa-f]+) grp=0x([0-9A-Fa-f]+) seq=(\d+) size=(\d+)"),
+    "group_rx": re.compile(
+        r"GROUP_RX src=0x([0-9A-Fa-f]+) grp=0x([0-9A-Fa-f]+) seq=(\d+)"),
+    "group_win": re.compile(
+        r"GROUP_WIN src=0x([0-9A-Fa-f]+) grp=0x([0-9A-Fa-f]+) seq=(\d+) acks=(\d+)"),
+    "stopstart": re.compile(
+        r"STOPSTART (stop|start) node=0x([0-9A-Fa-f]+)(?: ok=(\d+))?"),
+    "nm_failover": re.compile(
+        r"NM_FAILOVER node=0x([0-9A-Fa-f]+) uptime_ms=(\d+)"),
+    "health": re.compile(
+        r"HEALTH node=0x([0-9A-Fa-f]+) heap=(\d+) minheap=(\d+) "
+        r"role=(-?\d+) state=(-?\d+)"),
     "state_change": re.compile(r"Network service state changed to (\d+)"),
+    # Emitted by the June 2026 v2 builds (e.g. formation__lmv2); absent from
+    # 134ae25 and 2.0.0. Kept so historical event streams stay unchanged.
     "route_updated": re.compile(
         r"Route updated: dest=0x([0-9A-Fa-f]+) via=0x([0-9A-Fa-f]+) hops=(\d+)"
     ),
     "joined": re.compile(r"Successfully joined network 0x([0-9A-Fa-f]+)"),
+    # ── LoRaMesher 2.0.0 join / election / routing diagnostics ──
+    "join_scheduled": re.compile(r"Join request scheduled in discovery slot (\d+)"),
+    # 2.0.0 logs one line per unanswered attempt; 134ae25 logged
+    # "Join retry #N, next backoff: B superframes" at the same point, so both
+    # map onto one event and retry counts compare across versions.
+    "join_unanswered": re.compile(
+        r"(?:Join attempt unanswered \(retry #(\d+)\), backoff: (\d+) superframes"
+        r"|Join retry #(\d+), next backoff: (\d+) superframes)"),
+    "ctrl_slot_reuse": re.compile(
+        r"Reusing control slot index (\d+) for re-joining node 0x([0-9A-Fa-f]+)"),
+    "sync_discard": re.compile(
+        r"Discarding sync beacon from 0x([0-9A-Fa-f]+): depth (\d+), (\d+) total slots"),
+    "election_backoff": re.compile(
+        r"Election backoff expired \(priority=(\d+)\)"),
+    "adverts_ignored": re.compile(
+        r"Ignoring (\d+) advertised routes from 0x([0-9A-Fa-f]+): not an active direct"),
+    "reliable_not_queued": re.compile(
+        r"Reliable seq=(\d+) (attempt not queued|could not be queued)"),
+    "toa_mismatch": re.compile(
+        r"Time-on-air looks wrong for (\d+) bytes"),
+    "rt_msg_created": re.compile(
+        r"Created routing table message src: 0x([0-9A-Fa-f]+), dest: 0x([0-9A-Fa-f]+), "
+        r"NM: 0x([0-9A-Fa-f]+), table v\.: (\d+), entry count: (\d+), "
+        r"caps: 0x([0-9A-Fa-f]+), data_slots: (\d+)(?:, ctrl_idx: (\d+))?"),
+    # gw-reset.sh writes this right before a deliberate reset; the `rst:0x`
+    # that follows it is expected, not a crash.
+    "gw_reset": re.compile(r"--- RESET via gw-reset\.sh"),
+    # Crash / reboot markers. `rst:0x` also appears on every normal boot;
+    # iter_log_events tags each with `boot_index` and `expected`.
+    "crash": re.compile(
+        r"(Guru Meditation|Stack canary|stack overflow|abort\(\) was called"
+        r"|Backtrace:|rst:0x[0-9A-Fa-f]+)"),
+}
+
+_CRASH_KIND = {
+    "Guru Meditation": "guru", "Stack canary": "stack_canary",
+    "stack overflow": "stack_overflow", "abort() was called": "abort",
+    "Backtrace:": "backtrace",
 }
 
 _SHORT_ID_RE = re.compile(r"monitor-dev-.+?-([0-9A-Fa-f]{4})\.log(?:\.gz)?$")
@@ -166,7 +231,14 @@ def _open_log(path: Path):
 
 
 def iter_log_events(path: Path, node: str) -> Iterable[Event]:
-    """Yield Events extracted from one device's monitor log file."""
+    """Yield Events extracted from one device's monitor log file.
+
+    `crash` events of kind "reset" (an `rst:0x` boot line) carry
+    `boot_index` (0 = first boot in this file) and `expected` (True for the
+    first boot or one preceded by a gw-reset.sh marker); an unexpected reset
+    is a reboot the testbed did not ask for."""
+    boots = 0
+    gw_reset_pending = False
     with _open_log(path) as fh:
         for line in fh:
             m = _TS_RE.match(line)
@@ -179,8 +251,15 @@ def iter_log_events(path: Path, node: str) -> Iterable[Event]:
                 mm = pat.search(rest)
                 if not mm:
                     continue
-                yield Event(ts=ts, node=node, kind=kind,
-                            fields=_extract_fields(kind, mm))
+                fields = _extract_fields(kind, mm)
+                if kind == "gw_reset":
+                    gw_reset_pending = True
+                elif kind == "crash" and fields["kind"] == "reset":
+                    fields["boot_index"] = boots
+                    fields["expected"] = boots == 0 or gw_reset_pending
+                    boots += 1
+                    gw_reset_pending = False
+                yield Event(ts=ts, node=node, kind=kind, fields=fields)
                 break  # one event per line
 
 
@@ -224,25 +303,82 @@ def _extract_fields(kind: str, m: re.Match) -> dict:
     if kind == "data_duplicate":
         return {"src": g[0].upper(), "seq": int(g[1])}
     if kind == "rtentry":
-        return {"dest": g[0].upper(), "via": g[1].upper(),
-                "hops": int(g[2]), "quality": int(g[3]),
-                "active": bool(int(g[4])),
-                "nm": (bool(int(g[5])) if g[5] else None)}
+        out = {"dest": g[0].upper(), "via": g[1].upper(),
+               "hops": int(g[2]), "quality": int(g[3]),
+               "active": bool(int(g[4])),
+               "nm": (bool(int(g[5])) if g[5] else None)}
+        if g[6] is not None:
+            out["cap"] = g[6].upper()
+            out["slots"] = int(g[7])
+        return out
     if kind == "linkstats":
         return {"peer": g[0].upper(),
                 "quality_from": int(g[1]), "quality_to": int(g[2]),
                 "ewma": int(g[3]), "remote": int(g[4]),
-                "exp": int(g[5]), "recv": int(g[6]), "missed": int(g[7])}
+                "exp": int(g[5]), "recv": int(g[6]), "missed": int(g[7]),
+                "probing": g[8] is not None}
     if kind == "app_tx":
         return {"src": g[0].upper(), "seq": int(g[1]), "size": int(g[2])}
     if kind == "app_rx":
         return {"src": g[0].upper(), "seq": int(g[1]), "app": int(g[2])}
+    if kind == "app_ack":
+        return {"src": g[0].upper(), "seq": int(g[1]), "rtt": int(g[2]),
+                "by": g[3].upper()}
+    if kind == "app_fail":
+        return {"src": g[0].upper(), "seq": int(g[1]), "reason": g[2]}
+    if kind == "group_tx":
+        return {"src": g[0].upper(), "grp": g[1].upper(), "seq": int(g[2]),
+                "size": int(g[3])}
+    if kind == "group_rx":
+        return {"src": g[0].upper(), "grp": g[1].upper(), "seq": int(g[2])}
+    if kind == "group_win":
+        return {"src": g[0].upper(), "grp": g[1].upper(), "seq": int(g[2]),
+                "acks": int(g[3])}
+    if kind == "stopstart":
+        return {"action": g[0], "addr": g[1].upper(),
+                "ok": (bool(int(g[2])) if g[2] is not None else None)}
+    if kind == "nm_failover":
+        return {"addr": g[0].upper(), "uptime_ms": int(g[1])}
+    if kind == "health":
+        return {"addr": g[0].upper(), "heap": int(g[1]), "minheap": int(g[2]),
+                "role": int(g[3]), "state": int(g[4])}
     if kind == "state_change":
         return {"state": int(g[0])}
     if kind == "route_updated":
         return {"dest": g[0].upper(), "via": g[1].upper(), "hops": int(g[2])}
     if kind == "joined":
         return {"network": g[0].upper()}
+    if kind == "join_scheduled":
+        return {"slot": int(g[0])}
+    if kind == "join_unanswered":
+        if g[0] is not None:
+            return {"retry": int(g[0]), "backoff": int(g[1]), "form": "2.0.0"}
+        return {"retry": int(g[2]), "backoff": int(g[3]), "form": "134ae25"}
+    if kind == "ctrl_slot_reuse":
+        return {"index": int(g[0]), "addr": g[1].upper()}
+    if kind == "sync_discard":
+        return {"src": g[0].upper(), "depth": int(g[1]), "total_slots": int(g[2])}
+    if kind == "election_backoff":
+        return {"priority": int(g[0])}
+    if kind == "adverts_ignored":
+        return {"count": int(g[0]), "src": g[1].upper()}
+    if kind == "reliable_not_queued":
+        return {"seq": int(g[0]),
+                "final": g[1] == "could not be queued"}
+    if kind == "toa_mismatch":
+        return {"size": int(g[0])}
+    if kind == "rt_msg_created":
+        return {"src": g[0].upper(), "dest": g[1].upper(), "nm": g[2].upper(),
+                "table_version": int(g[3]), "entries": int(g[4]),
+                "caps": g[5].upper(), "data_slots": int(g[6]),
+                "ctrl_idx": (int(g[7]) if g[7] is not None else None)}
+    if kind == "gw_reset":
+        return {}
+    if kind == "crash":
+        tok = g[0]
+        if tok.startswith("rst:0x"):
+            return {"kind": "reset", "code": tok[4:]}
+        return {"kind": _CRASH_KIND.get(tok, tok)}
     return {}
 
 

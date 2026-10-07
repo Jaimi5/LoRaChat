@@ -62,6 +62,16 @@ _SYNC_SIZE = _BASE_HEADER + 14           # sync_beacon_header.hpp SyncBeaconFiel
 _RT_FIXED = _BASE_HEADER + 6             # routing_table_header.hpp RoutingTableFieldsSize()=6
 _RT_ENTRY = 10                           # routing_table_entry.hpp Size()
 
+# Library version the model mirrors. "134ae25" (default) is the new_loramesher
+# build behind every July/paper v2 figure. "2.0.0" (release/2.0.0, 764b893):
+#   - RoutingTableFieldsSize() = 7 (adds source_control_slot_index)
+#   - data slot k belongs to control index k / default_data_slots; an index
+#     whose slots would pass max_data_slots gets NONE (134ae25 shared the pool
+#     out partially), and the NM always budgets default_data_slots.
+# NOTE: the 2.0.0 library default max_data_slots is 100; LoRaChat pins 50.
+LM_VERSIONS = ("134ae25", "2.0.0")
+_RT_FIXED_BY_VERSION = {"134ae25": _BASE_HEADER + 6, "2.0.0": _BASE_HEADER + 7}
+
 def max_packet_for_sf(sf: int, bw_khz: float = 125.0) -> int:
     """RadioConfig::GetMaxPacketSizeForSf — SF-derived max payload (bytes)."""
     base = {7: 242, 8: 242, 9: 115, 10: 51, 11: 51, 12: 51}.get(sf, 51)
@@ -111,10 +121,11 @@ def slot_duration_ms(sf: int, bw_khz: float = 125.0, cr_denom: int = 7,
 
 
 def _nm_tx_time_ms(sf: int, node_count: int, nm_data_slots: int,
-                   bw_khz: float, cr_denom: int, max_packet: int) -> float:
+                   bw_khz: float, cr_denom: int, max_packet: int,
+                   rt_fixed: int = _RT_FIXED) -> float:
     """CalculateNMTxTimeMs: ToA(sync) + ToA(routing table) + data * ToA(maxpkt)."""
     rt_entries = max(node_count - 1, 0)
-    rt_size = min(_RT_FIXED + rt_entries * _RT_ENTRY, 255)
+    rt_size = min(rt_fixed + rt_entries * _RT_ENTRY, 255)
     return (toa_ms(sf, _SYNC_SIZE, bw_khz, cr_denom)
             + toa_ms(sf, rt_size, bw_khz, cr_denom)
             + nm_data_slots * toa_ms(sf, max_packet, bw_khz, cr_denom))
@@ -133,6 +144,7 @@ class Superframe:
     bound_by: str        # which term set total_slots:
                          # duty | kmin | active+churn | min-sleep | slot-index cap
     data_slots_granted: float  # mean data slots actually granted per node
+    starved_nodes: int = 0     # nodes granted zero data slots (2.0.0 layout only)
 
 
 def superframe(sf: int, node_count: int, data_slots: int, duty_cycle: float,
@@ -142,7 +154,8 @@ def superframe(sf: int, node_count: int, data_slots: int, duty_cycle: float,
                guard_ms: int = DEFAULT_GUARD_MS,
                max_packet: int | None = None,
                min_sleep_fraction: float = 0.0,
-               max_slots: int = MAX_SLOTS) -> Superframe:
+               max_slots: int = MAX_SLOTS,
+               lm_version: str = "134ae25") -> Superframe:
     """Reproduce the firmware superframe slot budget for one config.
 
     `min_sleep_fraction` forces a sleep floor by padding the frame, independently
@@ -152,7 +165,12 @@ def superframe(sf: int, node_count: int, data_slots: int, duty_cycle: float,
 
     `max_slots` is the wire-field ceiling. Default 255 (the shipped uint8_t);
     MAX_SLOTS_UINT16 models a widened field.
+
+    `lm_version` selects the library slot rules (see LM_VERSIONS). The default
+    keeps the 134ae25 behaviour so the paper figures reproduce unchanged.
     """
+    if lm_version not in LM_VERSIONS:
+        raise ValueError(f"lm_version must be one of {LM_VERSIONS}, got {lm_version!r}")
     mp = max_packet if max_packet is not None else max_packet_for_sf(sf, bw_khz)
     slot_dur = slot_duration_ms(sf, bw_khz, cr_denom, guard_ms, mp)
 
@@ -162,6 +180,13 @@ def superframe(sf: int, node_count: int, data_slots: int, duty_cycle: float,
     requested_total = node_count * data_slots
     total_data = min(requested_total, max_data_slots)
     granted_per_node = total_data / node_count if node_count else 0.0
+    starved = 0
+    if lm_version == "2.0.0" and data_slots > 0:
+        # Whole blocks of `data_slots` per control index; the remainder of the
+        # band (if max is not a multiple) belongs to nobody.
+        served = min(node_count, max_data_slots // data_slots)
+        starved = node_count - served
+        granted_per_node = served * data_slots / node_count if node_count else 0.0
 
     sync = max_hops + 1
     control = node_count
@@ -171,7 +196,10 @@ def superframe(sf: int, node_count: int, data_slots: int, duty_cycle: float,
     nm_data = min(data_slots, max(1, max_data_slots - (node_count - 1) * data_slots)) \
         if requested_total > max_data_slots else data_slots
     nm_data = max(nm_data, 1)
-    tx_time = _nm_tx_time_ms(sf, node_count, nm_data, bw_khz, cr_denom, mp)
+    if lm_version == "2.0.0":
+        nm_data = data_slots  # slot_scheduler budgets default_data_slots for the NM
+    tx_time = _nm_tx_time_ms(sf, node_count, nm_data, bw_khz, cr_denom, mp,
+                             rt_fixed=_RT_FIXED_BY_VERSION[lm_version])
     duty_driven = math.ceil(tx_time / (slot_dur * duty_cycle)) if duty_cycle > 0 else 0
     active_plus_margin = active + churn
 
@@ -212,7 +240,8 @@ def superframe(sf: int, node_count: int, data_slots: int, duty_cycle: float,
     return Superframe(sf=sf, total_slots=int(total), sync=sync, control=control,
                       discovery=discovery, data=int(total_data),
                       sleep=int(total - active), slot_dur_ms=slot_dur,
-                      bound_by=bound, data_slots_granted=granted_per_node)
+                      bound_by=bound, data_slots_granted=granted_per_node,
+                      starved_nodes=starved)
 
 
 def metrics(sf: int, node_count: int, data_slots: int, duty_cycle: float,

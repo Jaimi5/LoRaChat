@@ -8,6 +8,19 @@ Network-wide:
     convergence_at   max(rt_complete_at) over all participating nodes
     churn_per_min    mean RTENTRY (dest,via) flip rate during steady state
 
+    join_retries_total  unanswered join attempts (2.0.0 "Join attempt
+                     unanswered", 134ae25 "Join retry #") up to window end
+    flaps_total      times a node left the joined state (3/4 -> other state,
+                     or an unexpected reboot while joined) inside the window
+    rejoins_total    re-entries into the joined state after a node's first join
+    max_concurrent_nm / dual_nm_seconds
+                     overlap of NETWORK_MANAGER (state 4) intervals inside the
+                     window; >1 means two managers at once
+
+The NM/flap/retry metrics are computed on the full log stream (state set during
+warmup carries into the window) and then clipped to the measurement window;
+the cumulative join/convergence metrics above are unchanged.
+
 Expected peer set defaults to all other active devices in the run's config.yaml.
 """
 
@@ -29,10 +42,137 @@ if __name__ == "__main__":
     if _parent not in sys.path:
         sys.path.insert(0, _parent)
 
-from analysis.parse_logs import Event, is_v2_run, parse_run, v2_runtime_addr
+from analysis.parse_logs import (Event, is_v2_run, load_measurement_window,
+                                 parse_run, v2_runtime_addr)
 
 
 _JOIN_STATES = {3, 4}  # NORMAL_OPERATION, NETWORK_MANAGER
+_NM_STATE = 4
+
+
+def _is_unexpected_reboot(ev: Event) -> bool:
+    return (ev.kind == "crash" and ev.fields.get("kind") == "reset"
+            and not ev.fields.get("expected", True))
+
+
+def _is_reboot(ev: Event) -> bool:
+    return ev.kind == "crash" and ev.fields.get("kind") == "reset" \
+        and ev.fields.get("boot_index", 0) > 0
+
+
+def state_timeline(events: Iterable[Event]) -> dict[str, list[tuple[float, int]]]:
+    """Per node, the ordered (ts, state) transitions from `state_change`
+    events. A reboot after the first boot inserts state 0 (INITIALIZING),
+    since the protocol restarts from scratch."""
+    out: dict[str, list[tuple[float, int]]] = defaultdict(list)
+    for ev in events:
+        if ev.kind == "state_change":
+            out[ev.node].append((ev.ts, ev.fields["state"]))
+        elif _is_reboot(ev):
+            out[ev.node].append((ev.ts, 0))
+    return dict(out)
+
+
+def nm_timeline(events: Iterable[Event],
+                window: tuple[float | None, float | None] = (None, None),
+                ) -> list[tuple[str, float, float]]:
+    """NETWORK_MANAGER intervals as (node, start, end), clipped to `window`.
+
+    Pass the *full* event stream (parse_run(run, window=(None, None))) so an
+    NM elected during warmup is still seen. Open intervals end at the window
+    end, or at the node's last event when no window end is given."""
+    events = list(events)
+    w0, w1 = window
+    last_ts: dict[str, float] = {}
+    for ev in events:
+        last_ts[ev.node] = ev.ts
+    out: list[tuple[str, float, float]] = []
+    for node, trans in state_timeline(events).items():
+        start: float | None = None
+        for ts, st in trans:
+            if st == _NM_STATE and start is None:
+                start = ts
+            elif st != _NM_STATE and start is not None:
+                out.append((node, start, ts))
+                start = None
+        if start is not None:
+            out.append((node, start, w1 if w1 is not None else last_ts[node]))
+    clipped = []
+    for node, a, b in out:
+        if w0 is not None:
+            a = max(a, w0)
+        if w1 is not None:
+            b = min(b, w1)
+        if b > a:
+            clipped.append((node, a, b))
+    return sorted(clipped, key=lambda x: x[1])
+
+
+def nm_overlap(intervals: list[tuple[str, float, float]]) -> dict:
+    """Sweep the NM intervals: max simultaneous managers, total seconds with
+    two or more, and the overlapping spans themselves."""
+    pts = []
+    for node, a, b in intervals:
+        pts.append((a, 1, node))
+        pts.append((b, -1, node))
+    pts.sort(key=lambda p: (p[0], p[1]))  # ends before starts at equal ts
+    cur: set[str] = set()
+    max_c = 0
+    dual_s = 0.0
+    spans: list[dict] = []
+    prev_ts: float | None = None
+    for ts, d, node in pts:
+        if prev_ts is not None and len(cur) >= 2 and ts > prev_ts:
+            dual_s += ts - prev_ts
+            if spans and spans[-1]["end"] == prev_ts and \
+                    spans[-1]["nodes"] == sorted(cur):
+                spans[-1]["end"] = ts
+            else:
+                spans.append({"start": prev_ts, "end": ts, "nodes": sorted(cur)})
+        if d > 0:
+            cur.add(node)
+        else:
+            cur.discard(node)
+        max_c = max(max_c, len(cur))
+        prev_ts = ts
+    return {"max_concurrent_nm": max_c, "dual_nm_seconds": dual_s,
+            "dual_nm_spans": spans}
+
+
+def _compute_flaps(events: list[Event],
+                   window: tuple[float | None, float | None]) -> tuple[dict, dict]:
+    """Per node (flaps, rejoins) inside the window. A flap is leaving the
+    joined state (3/4 -> any other state, or a reboot while joined); a rejoin
+    is entering it again after the node's first join."""
+    w0, w1 = window
+
+    def inside(ts: float) -> bool:
+        return (w0 is None or ts >= w0) and (w1 is None or ts <= w1)
+
+    flaps: dict[str, int] = defaultdict(int)
+    rejoins: dict[str, int] = defaultdict(int)
+    for node, trans in state_timeline(events).items():
+        joined = False
+        ever = False
+        for ts, st in trans:
+            now = st in _JOIN_STATES
+            if joined and not now and inside(ts):
+                flaps[node] += 1
+            if now and not joined:
+                if ever and inside(ts):
+                    rejoins[node] += 1
+                ever = True
+            joined = now
+    return dict(flaps), dict(rejoins)
+
+
+def _compute_join_retries(events: Iterable[Event],
+                          window_end: float | None) -> dict[str, int]:
+    out: dict[str, int] = defaultdict(int)
+    for ev in events:
+        if ev.kind == "join_unanswered" and (window_end is None or ev.ts <= window_end):
+            out[ev.node] += 1
+    return dict(out)
 
 
 def _active_devices(run_dir: Path) -> set[str]:
@@ -156,8 +296,18 @@ def _compute_churn(events: Iterable[Event], window_start: float | None,
     return sum(total_per_node) / len(total_per_node)
 
 
+def _in_window(events: list[Event], window) -> list[Event]:
+    start, end = window
+    return [ev for ev in events
+            if not (start is not None and ev.ts < start)
+            and not (end is not None and ev.ts > end)]
+
+
 def analyse(run_dir: Path) -> dict:
-    events = parse_run(run_dir)
+    # Parse once without a window, then filter exactly as parse_run would.
+    window = load_measurement_window(run_dir)
+    all_events = parse_run(run_dir, window=(None, None))
+    events = _in_window(all_events, window)
     expected = _active_devices(run_dir)
 
     joined = _compute_join(events)
@@ -174,6 +324,11 @@ def analyse(run_dir: Path) -> dict:
 
     convergence_at = max(rt_complete.values()) if rt_complete else None
 
+    nm_int = nm_timeline(all_events, window)
+    overlap = nm_overlap(nm_int)
+    flaps, rejoins = _compute_flaps(all_events, window)
+    retries = _compute_join_retries(all_events, window[1])
+
     return {
         "expected_peers": sorted(expected),
         "joined_at": {n: rel(ts) for n, ts in sorted(joined.items())},
@@ -183,6 +338,20 @@ def analyse(run_dir: Path) -> dict:
         "n_active_devices": len(expected),
         "n_nodes_joined": len(joined),
         "n_nodes_rt_complete": len(rt_complete),
+        "join_retries_total": sum(retries.values()),
+        "join_retries": dict(sorted(retries.items())),
+        "flaps_total": sum(flaps.values()),
+        "flaps": dict(sorted(flaps.items())),
+        "rejoins_total": sum(rejoins.values()),
+        "rejoins": dict(sorted(rejoins.items())),
+        "nm_nodes": sorted({n for n, _, _ in nm_int}),
+        "nm_intervals": [{"node": n, "start": rel(a), "end": rel(b)}
+                         for n, a, b in nm_int],
+        "max_concurrent_nm": overlap["max_concurrent_nm"],
+        "dual_nm_seconds": overlap["dual_nm_seconds"],
+        "dual_nm_spans": [{"start": rel(sp["start"]), "end": rel(sp["end"]),
+                           "nodes": sp["nodes"]}
+                          for sp in overlap["dual_nm_spans"]],
     }
 
 
@@ -190,9 +359,11 @@ def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Compute formation metrics for one run")
     ap.add_argument("run_dir", type=Path)
+    ap.add_argument("--out", type=Path, default=None,
+                    help="output JSON path (default: <run_dir>/formation.json)")
     args = ap.parse_args()
     result = analyse(args.run_dir)
-    out = args.run_dir / "formation.json"
+    out = args.out or (args.run_dir / "formation.json")
     out.write_text(json.dumps(result, indent=2, sort_keys=True))
     print(f"wrote {out}")
     return 0
