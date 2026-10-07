@@ -1,0 +1,94 @@
+# LoRaMesher 2.0.0 eval, long-link deploy config: 006C and 3428 at 20 dBm (SF10 is set by the cell)
+#
+# Derived from experiments/example-baseline.yaml. ALL lm200 feature flags are set in
+# `defaults` (0 unless a cell overrides them): change-config's sed edits ONE shared
+# src/config.h per gateway, so a flag set only on one device would leak into the next
+# device flashed on that gateway. Per-device values below override defaults.
+# sim_group_addr is deliberately left at the firmware default (config.h).
+experiment: lm200_longlink
+description: 'LoRaMesher 2.0.0 eval, long-link deploy config: 006C and 3428 at 20 dBm (SF10 is set by the cell)'
+defaults:
+  lora_bandwidth: 125.0
+  lora_coding_rate: 7
+  lora_frequency: 869.525
+  lora_manager_id: '0x006C'
+  lora_spreading_factor: 9
+  lora_sync_word: 20
+  lora_duty_cycle: 0.1
+  mqtt_password: public
+  mqtt_port: 1883
+  mqtt_server: 192.168.192.1
+  mqtt_topic_out: to-server/
+  mqtt_topic_sub: from-server/
+  mqtt_username: admin
+  sim_reliable: 0
+  sim_group: 0
+  sim_stopstart: 0
+  sim_stopstart_period_ms: 600000
+  sim_stopstart_off_ms: 120000
+  sim_nm_failover_ms: 0
+devices:
+  006C:
+    lora_power: 20
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  '1484':
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  14A4:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  2A9C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  2AD4:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  '3428':
+    lora_power: 20
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  77A4:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  7B6C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  B4DC:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  CB34:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DD3C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DD58:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DF10:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  E464:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  '7984':
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  C270:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi

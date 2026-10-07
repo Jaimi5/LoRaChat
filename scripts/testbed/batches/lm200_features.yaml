@@ -1,0 +1,89 @@
+# LoRaMesher 2.0.0 evaluation — Tier 2 feature/stress cells that need only `defaults`
+# (gate G2). Per-device cells (group sender, Stop/Start subset, long-link power) live in
+# lm200_features_{group,stopstart,longlink,highsf}.yaml; all share `batch: lm200_features`
+# so every feature run lands in runs/lm200_features/.
+#
+# Every cell sets every lm200 flag explicitly (the base sets them to 0 too) so nothing
+# is inherited from a previously-edited src/config.h on a gateway.
+batch: lm200_features
+description: 2.0.0 features - reliable unicast, NM failover, data-slot overflow
+base: ../lm200/experiments/lm200_base.yaml
+
+runs: 1
+duration_min: 20
+warmup_min: 15
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  # Reliable unicast (SendReliable + delivery callback) at moderate load, SF7.
+  - id: reliable_SF7_d60000
+    overrides: &reliable
+      lora_spreading_factor: 7
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 15
+      packet_delay: 60000            # rho ~0.8 at SF7 (vs 40000 = past saturation)
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 1
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0
+    warmup_min: 15
+    duration_min: 20                 # burst 15 + retry tail 5
+    inactive_devices: &remote [DD58, 14A4, '3428']
+
+  # Reliable unicast, SF9, moderate load.
+  - id: reliable_SF9_d95000
+    overrides:
+      <<: *reliable
+      lora_spreading_factor: 9
+      packet_count: 10
+      packet_delay: 95000            # rho ~0.8 at SF9
+    warmup_min: 15
+    duration_min: 23                 # burst ~15.8 + retry tail 7
+    inactive_devices: *remote
+
+  # NM failover: whichever node is network manager when its uptime reaches 20 min
+  # restarts itself (firmware SIM_NM_FAILOVER_MS); light sim traffic spans the event.
+  - id: nm_failover_SF9
+    overrides:
+      lora_spreading_factor: 9
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 28
+      packet_delay: 90000            # 42 min of traffic starting at 15 min uptime
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 1200000    # NM restarts 5 min into the measurement window
+    warmup_min: 15
+    duration_min: 45
+    inactive_devices: *remote
+
+  # Data-slot pool smaller than nodes x slots: in 2.0.0 control-slot indices >= 8 get
+  # ZERO data slots (134ae25 shared the pool partially). Expect those nodes to stay
+  # alive and joined but unable to send.
+  - id: slot_overflow_SF9_max8
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 8
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 13
+      packet_delay: 63000
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0
+    warmup_min: 15
+    duration_min: 21
+    inactive_devices: *remote

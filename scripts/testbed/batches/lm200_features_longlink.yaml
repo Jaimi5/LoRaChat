@@ -1,0 +1,31 @@
+# LoRaMesher 2.0.0 evaluation — Tier 2 long link at the deployment config (see
+# lm200_features.yaml). SF10 + 20 dBm on 006C/3428 is the fix for the SF9 flapping seen
+# in full_deploy4; 2 h with all 16 nodes and light sim load checks that the remote
+# cluster routes through 006C<->3428, hop depth is right, and the 2.0.0 routing changes
+# (ignore adverts from non-neighbours, unidirectional-link grace) do not blackhole it.
+batch: lm200_features
+description: 2.0.0 features - long link SF10/20 dBm, 16 nodes, 2 h
+base: ../lm200/experiments/lm200_longlink.yaml
+
+runs: 1
+duration_min: 120
+warmup_min: 20
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: long_link_SF10
+    overrides:
+      lora_spreading_factor: 10
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40              # <= 41 B SF10 payload
+      packet_count: 40
+      packet_delay: 150000         # 100 min of light traffic
+      sim_testbed_warmup_ms: 1200000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0

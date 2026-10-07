@@ -417,7 +417,16 @@ def main() -> int:
     ap.add_argument("--caption", type=str, default=None,
                     help="limitations footnote drawn under the PDR/participation/goodput "
                          "figures (e.g. the non-interleaved / marginal-link caveat)")
+    ap.add_argument("--v1-label", type=str, default=None,
+                    help="legend label for --v1 (default: Previous LoRaMesher), "
+                         "e.g. for an A/B of two LoRaMesher versions")
+    ap.add_argument("--v2-label", type=str, default=None,
+                    help="legend label for --v2 (default: T-LoRaMesher)")
     args = ap.parse_args()
+    if args.v1_label:
+        _V1["label"] = args.v1_label
+    if args.v2_label:
+        _V2["label"] = args.v2_label
     render(args.v1, args.v2, args.out, nodes=args.nodes, max_hops=args.max_hops,
            x=args.x, caption=args.caption, source=args.source,
            tx_power_dbm=args.tx_power)

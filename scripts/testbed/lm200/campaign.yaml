@@ -1,0 +1,108 @@
+# LoRaMesher release/2.0.0 unattended testbed campaign — configuration.
+#
+# Read by lm200/campaign.py (orchestration) and lm200/gates.py (pass/fail thresholds).
+# Paths are relative to scripts/testbed/. See lm200/README.md.
+
+campaign_dir: runs/lm200_campaign          # state.json, campaign.log, gates/, report/
+
+envs:
+  new: ttgo-t-beam-v2                      # LoRaMesher 2.0.0 (platformio.ini [base_v2])
+  old: ttgo-t-beam-v2-old                  # LoRaMesher 134ae25 ([base_v2_old]), A/B + rollback
+
+lib_sha:
+  new: 764b893                             # release/2.0.0 — matched against "LoRaMesher @ x+sha.<sha>"
+  old: 134ae25                             # new_loramesher baseline (July/paper data)
+
+# platformio.ini pins jgromes/RadioLib@7.5.0 in [base_v2] and [base_v2_old]; every gateway's
+# upload dependency graph must show exactly this ("|-- RadioLib @ 7.5.0"). A different or
+# missing version (while LoRaMesher was built) invalidates the run / FAILs G0.
+expected_radiolib: "7.5.0"
+
+# Stages run in this order. A stage is skipped once recorded complete in state.json.
+#   batches: [[yaml, extra run_batch args], ...] — each is one run_batch.py invocation
+#   gate:    which gate to evaluate on the stage's batch dirs afterwards
+stages:
+  - name: T0
+    title: Deploy + smoke
+    gate: g0
+    stop_on_fail: true                     # a broken build must not burn 20 h of testbed
+    gate_attempts: 2                       # re-run the smoke once before stopping
+    batches:
+      - [batches/lm200_smoke.yaml, []]
+  - name: T1a
+    title: Core regression vs July 134ae25
+    gate: g1
+    batches:
+      - [batches/lm200_formation.yaml, ["--runs", "3"]]
+      - [batches/lm200_13node.yaml, []]
+      - [batches/lm200_reach16.yaml, []]
+      - [batches/lm200_dataslots.yaml, []]
+  - name: T1b                              # only when G1 is GREY and auto_ab is true
+    title: Interleaved A/B 134ae25 vs 2.0.0
+    conditional: g1_grey
+    ab:
+      batch: lm200ab_13node
+      rounds: 3
+      v1_tag: lm134
+      v2_tag: lm200
+      v1_label: "LoRaMesher 134ae25"
+      v2_label: "LoRaMesher 2.0.0"
+  - name: T2
+    title: Feature and stress tests
+    gate: g2
+    batches:
+      - [batches/lm200_features.yaml, []]
+      - [batches/lm200_features_group.yaml, []]
+      - [batches/lm200_features_stopstart.yaml, []]
+      - [batches/lm200_features_highsf.yaml, []]
+      - [batches/lm200_features_longlink.yaml, []]
+
+auto_ab: true
+
+# July 134ae25 reference runs (never modified; read only). G1 baseline values are
+# computed from these with the same code path as the new runs and cached in
+# <campaign_dir>/baseline.json.
+baseline:
+  lm200_formation: runs/formation__lmv2
+  lm200_13node: runs/sim_load_compare_13node__lmv2
+  lm200_reach16: runs/sim_load_compare_reach16__lmv2
+  lm200_dataslots: runs/dataslots_check__lmv2
+  long_link: runs/long_link__lmv2
+
+retries:
+  status_wait_min: 30                      # wait up to this long for all gateways to answer
+  prewarm_attempts: 3                      # per gateway, before wiping its LoRaMesher libdeps
+  prewarm_after_wipe_attempts: 2
+  cell_attempts: 3                         # 1 run + 2 retries per invalid run, then INCOMPLETE
+  upgrade_attempts: 3
+
+notify: ""                                 # e.g. 'curl -s -d "{summary}" ntfy.sh/my-topic'
+                                           # placeholders: {status} {summary} {report}
+
+# Remote cluster: the long link makes their join depend on link margin, not the library.
+remote_nodes: [DD58, 14A4, "3428"]
+
+thresholds:
+  g_minus1:
+    max_ram_pct: 90                        # static DRAM use
+    max_flash_pct: 95
+  g0:
+    min_fair_pdr: 0.95
+    superframe_grey_rel: 0.25              # |new - July same-SF| / July beyond this → GREY
+  g1:
+    pdr_13node_drop: 0.02                  # PASS if fair PDR >= July mean - this
+    pdr_reach16_drop: 0.05                 # per cell
+    join_margin_superframes: 1             # convergence median <= July median + N superframes
+    join_retry_grey_factor: 2.0            # retries > factor x July → GREY
+  g2:
+    ack_ratio: 0.95
+    rtt_p95_max_s: 900
+    not_queued_grey_frac: 0.05             # "could not be queued" / reliable sends
+    group_rx_fail: 0.50
+    group_rx: 0.90
+    group_dup: 0.01
+    rejoin_superframes: 3
+    min_stack_free_bytes: 512
+    nm_takeover_max_s: 900
+    longlink_min_remote_joined: 3
+    min_heap_bytes: 10000                  # HEALTH minheap below this → GREY

@@ -26,6 +26,9 @@
 #   ROUNDS=5              number of reps per cell per version (the CI sample size)
 #   BATCHES="a b"         batch names/paths (default: the two redo batches)
 #   V1_ENV / V2_ENV       PlatformIO envs (default ttgo-t-beam / ttgo-t-beam-v2)
+#   V1_TAG / V2_TAG       run-dir / checkpoint suffixes (default lmv1 / lmv2), e.g.
+#                         lm134 / lm200 for a library-version A/B of two v2 builds
+#   V1_LABEL / V2_LABEL   optional plot_compare legend labels (default: its own)
 #   INTER_ROUND_SLEEP=0   seconds to sleep between rounds (raise to spread rounds
 #                         over hours/days for more weather variation; 0=continuous)
 #   FIG_ROOT              figure output root (default docs/paper/figures)
@@ -37,6 +40,10 @@ set -uo pipefail
 ROUNDS="${ROUNDS:-5}"
 V1_ENV="${V1_ENV:-ttgo-t-beam}"
 V2_ENV="${V2_ENV:-ttgo-t-beam-v2}"
+V1_TAG="${V1_TAG:-lmv1}"
+V2_TAG="${V2_TAG:-lmv2}"
+V1_LABEL="${V1_LABEL:-}"
+V2_LABEL="${V2_LABEL:-}"
 INTER_ROUND_SLEEP="${INTER_ROUND_SLEEP:-0}"
 FIG_ROOT="${FIG_ROOT:-docs/paper/figures}"
 SKIP_UPGRADE="${SKIP_UPGRADE:-0}"
@@ -138,14 +145,17 @@ run_unit() {
 
 analyse() {
   local yaml="$1" name="$2"
-  local v1="runs/${name}__lmv1" v2="runs/${name}__lmv2"
+  local v1="runs/${name}__${V1_TAG}" v2="runs/${name}__${V2_TAG}"
   [[ "$SKIP_ANALYSIS" == "1" ]] && { log "SKIP_ANALYSIS=1 — leaving $v1 / $v2 unaggregated"; return; }
   [[ -d "$v1" && -d "$v2" ]] || { log "skip analysis for $name — missing $v1 or $v2"; return; }
   banner "$name — aggregate + plot v1 vs v2"
   python3 analysis/multirun.py "$v1" || { OVERALL_RC=1; log "multirun failed on $v1"; }
   python3 analysis/multirun.py "$v2" || { OVERALL_RC=1; log "multirun failed on $v2"; }
   local topo=(--nodes 13 --max-hops 3); case "$name" in *reach16*|*full*) topo=(--nodes 16 --max-hops 5) ;; esac
-  python3 analysis/plot_compare.py --v1 "$v1" --v2 "$v2" --out "${FIG_ROOT}/${name}" "${topo[@]}" \
+  local labels=()
+  [[ -n "$V1_LABEL" ]] && labels+=(--v1-label "$V1_LABEL")
+  [[ -n "$V2_LABEL" ]] && labels+=(--v2-label "$V2_LABEL")
+  python3 analysis/plot_compare.py --v1 "$v1" --v2 "$v2" --out "${FIG_ROOT}/${name}" "${topo[@]}" ${labels[@]+"${labels[@]}"} \
     && log "figures -> ${FIG_ROOT}/${name}" || { OVERALL_RC=1; log "plot_compare failed for $name"; }
   # Independent raw-log audit + long-link health for the reach batch.
   python3 analysis/audit_app_pdr.py --v1 "$v1" --v2 "$v2" --out "${FIG_ROOT}/${name}" 2>/dev/null \
@@ -165,7 +175,7 @@ for a in "${BATCHES[@]}"; do
 done
 
 banner "v1-vs-v2 full redo — $(date -u) — ROUNDS=$ROUNDS"
-log "v1 env: $V1_ENV    v2 env: $V2_ENV    batches: ${NAMES[*]}"
+log "v1 env: $V1_ENV [$V1_TAG]    v2 env: $V2_ENV [$V2_TAG]    batches: ${NAMES[*]}"
 grand=0
 for i in "${!YAMLS[@]}"; do
   m="$(est_minutes_of "${YAMLS[$i]}")"; per=$(( m * 2 * ROUNDS ))
@@ -202,8 +212,8 @@ fi
 for r in $(seq 1 "$ROUNDS"); do
   banner "===== ROUND $r / $ROUNDS ====="
   for i in "${!YAMLS[@]}"; do
-    run_unit "${YAMLS[$i]}" "${NAMES[$i]}" "$V1_ENV" lmv1 "$r"
-    run_unit "${YAMLS[$i]}" "${NAMES[$i]}" "$V2_ENV" lmv2 "$r"
+    run_unit "${YAMLS[$i]}" "${NAMES[$i]}" "$V1_ENV" "$V1_TAG" "$r"
+    run_unit "${YAMLS[$i]}" "${NAMES[$i]}" "$V2_ENV" "$V2_TAG" "$r"
   done
   if [[ "$r" -lt "$ROUNDS" && "$INTER_ROUND_SLEEP" -gt 0 ]]; then
     log "inter-round sleep ${INTER_ROUND_SLEEP}s"; sleep "$INTER_ROUND_SLEEP"

@@ -1,0 +1,30 @@
+# LoRaMesher 2.0.0 evaluation — Tier 2 group messaging (see lm200_features.yaml header).
+# Base lm200_group.yaml: every node joins the firmware's SIM_GROUP_ADDR (sim_group=1),
+# 7B6C is the sole group sender (sim_group=2, ACK-requesting SendGroup).
+batch: lm200_features
+description: 2.0.0 features - group messaging with ACKs (one sender, 12 members)
+base: ../lm200/experiments/lm200_group.yaml
+
+runs: 1
+duration_min: 20
+warmup_min: 15
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: group_SF9
+    overrides:
+      lora_spreading_factor: 9
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 20
+      packet_delay: 45000            # 15 min of group sends
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0
+      # sim_group comes from the base: 1 everywhere, 2 on 7B6C
+    inactive_devices: [DD58, 14A4, '3428']

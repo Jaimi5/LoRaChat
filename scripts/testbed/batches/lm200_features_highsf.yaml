@@ -1,0 +1,26 @@
+# LoRaMesher 2.0.0 evaluation — Tier 2 high-SF cold-start join (see lm200_features.yaml).
+# 2.0.0 fixes lockstep join collisions at SF10-SF12 (random even discovery slot, 0-3
+# superframe backoff, 13-superframe join timeout). SF12 cold start is already covered
+# 3x by lm200_formation; this adds SF11 (never measured before), formation-style: no
+# sim traffic, warmup run r00 then synchronized resets so every rep starts cold.
+batch: lm200_features
+description: 2.0.0 features - SF11 cold-start join of all 16 nodes (2 reps)
+base: ../lm200/experiments/lm200_base.yaml
+
+runs: 2
+duration_min: 40
+warmup_min: 0
+cooldown_min: 1
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: true
+
+cells:
+  - id: highsf_join_SF11
+    overrides:
+      lora_spreading_factor: 11
+      sim_pdr_compare: 0
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0

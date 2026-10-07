@@ -1,0 +1,33 @@
+# LoRaMesher 2.0.0 evaluation — Tier 2 Stop/Start churn (see lm200_features.yaml header).
+# Base lm200_stopstart.yaml: CB34, 2A9C, B4DC call Stop() for sim_stopstart_off_ms every
+# sim_stopstart_period_ms, then Start(); all senders keep a light load running so
+# rejoin, sequence continuity and deadlock-freedom are observable.
+batch: lm200_features
+description: 2.0.0 features - Stop/Start churn on 3 nodes (10 min period, 2 min off)
+base: ../lm200/experiments/lm200_stopstart.yaml
+
+runs: 1
+duration_min: 50
+warmup_min: 15
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: stopstart_SF9
+    overrides:
+      lora_spreading_factor: 9
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 30
+      packet_delay: 90000            # 45 min of traffic
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart_period_ms: 600000
+      sim_stopstart_off_ms: 120000
+      sim_nm_failover_ms: 0
+      # sim_stopstart comes from the base: 1 on CB34/2A9C/B4DC, 0 elsewhere
+    inactive_devices: [DD58, 14A4, '3428']
