@@ -13,10 +13,10 @@ lib_sha:
   new: 764b893                             # release/2.0.0 — matched against "LoRaMesher @ x+sha.<sha>"
   old: 134ae25                             # new_loramesher baseline (July/paper data)
 
-# platformio.ini pins jgromes/RadioLib@7.5.0 in [base_v2] and [base_v2_old]; every gateway's
-# upload dependency graph must show exactly this ("|-- RadioLib @ 7.5.0"). A different or
+# platformio.ini pins jgromes/RadioLib@7.7.1 in [base_v2] and [base_v2_old]; every gateway's
+# upload dependency graph must show exactly this ("|-- RadioLib @ 7.7.1"). A different or
 # missing version (while LoRaMesher was built) invalidates the run / FAILs G0.
-expected_radiolib: "7.5.0"
+expected_radiolib: "7.7.1"
 
 # Stages run in this order. A stage is skipped once recorded complete in state.json.
 #   batches: [[yaml, extra run_batch args], ...] — each is one run_batch.py invocation

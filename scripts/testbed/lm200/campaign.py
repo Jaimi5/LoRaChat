@@ -255,9 +255,9 @@ class Campaign:
     def probe_radiolib(self, env: str, tag: str):
         """Record (never change) the RadioLib each gateway has in .pio/libdeps/<env>.
 
-        RadioLib is a transitive dependency, so pio's upload-time dependency graph
-        does not print it; ^7.1.2 lets every gateway keep whatever it cached (7.5.0
-        on the testbed vs 7.8.1 on a fresh install). Written to state.json and to
+        Unpinned, RadioLib is a transitive dependency that pio's upload-time graph does
+        not print, and ^7.1.2 lets every gateway keep whatever it cached (7.7.1 on the
+        testbed in July vs 7.8.1 on a fresh install). Written to state.json and to
         <campaign_dir>/radiolib.json, which gates.py uses when upload logs lack it."""
         if self.args.dry_run:
             return
