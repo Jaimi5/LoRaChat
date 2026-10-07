@@ -394,6 +394,23 @@
 // If defined 0 the packets will be sent unreliably
 #define SEND_RELIABLE 0
 
+// --- LoRaMesher 2.0.0 feature tests (v2 only; all 0 = previous behaviour) ---
+// 1 = sim packets go out with SendReliable (ACK/retry); outcome logged as APP_ACK/APP_FAIL
+#define SIM_RELIABLE 0
+// 0 = off, 1 = join SIM_GROUP_ADDR as a member only (no unicast burst),
+// 2 = join and send the sim burst to the group with ACKs (GROUP_TX/GROUP_RX/GROUP_WIN)
+#define SIM_GROUP 0
+// Group address, must be in the library's group range [0x8000, 0xFFFE]
+#define SIM_GROUP_ADDR 0xFF00
+// Group ACK collection window per message (ms); spans several superframes at high SF
+#define SIM_GROUP_WINDOW_MS 120000
+// 1 = periodically Stop() the mesher for SIM_STOPSTART_OFF_MS every SIM_STOPSTART_PERIOD_MS
+#define SIM_STOPSTART 0
+#define SIM_STOPSTART_PERIOD_MS 600000
+#define SIM_STOPSTART_OFF_MS 120000
+// >0: if this node is Network Manager when uptime enters [X, X+60 s], log NM_FAILOVER and restart
+#define SIM_NM_FAILOVER_MS 0
+
 // Simulator Delay Configuration (all times in milliseconds unless specified)
 #define SIM_NETWORK_PROPAGATION_MULTIPLIER 5
 #define SIM_INITIAL_WIFI_DELAY 30000

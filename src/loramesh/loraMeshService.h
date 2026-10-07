@@ -85,6 +85,13 @@ public:
     size_t GetTxQueueSize() const;
 
     uint32_t getTimeUntilNextDataSlot(uint32_t guard_time_ms = 200) const;
+
+    // LoRaMesher 2.0.0 feature tests (see SIM_GROUP / SIM_RELIABLE in config.h).
+    // Send `message` to SIM_GROUP_ADDR with ACK collection; logs GROUP_TX.
+    bool sendGroup(DataMessage* message);
+
+    // True once the node is in NORMAL_OPERATION or acting as Network Manager.
+    bool isJoined();
 #else
     void loopReceivedPackets();
 
@@ -110,6 +117,35 @@ private:
 
     static void loraReceiveLoop(void* pvParameters);
     void createReceiveTask();
+
+    // Common inbound path for SetDataCallback / SetDataCallbackEx. Group
+    // traffic (dest in the group range) only logs GROUP_RX, so it never shows
+    // up as APP_RX in the unicast PDR.
+    void handleReceived(loramesher::AddressType source, loramesher::AddressType dest,
+                        const uint8_t* data, size_t len);
+
+    void onDelivery(const loramesher::LoraMesher::DeliveryResult& result);
+
+    // MessageId -> app seq for reliable/group sends, so delivery outcomes can be
+    // logged with the APP_TX seq. Written from the app task, read from the
+    // protocol task's delivery callback.
+    struct TrackedMessage {
+        uint64_t key;
+        uint32_t appSeq;
+        bool group;
+        bool used;
+    };
+    static constexpr size_t kMaxTracked = 16;
+    TrackedMessage tracked_[kMaxTracked] = {};
+    size_t trackedNext_ = 0;
+    portMUX_TYPE trackedMux_ = portMUX_INITIALIZER_UNLOCKED;
+
+    void trackMessage(uint64_t key, uint32_t appSeq, bool group);
+    bool findTracked(uint64_t key, bool remove, uint32_t* appSeq, bool* group);
+
+    // Once-a-second housekeeping: HEALTH line, SIM_STOPSTART and SIM_NM_FAILOVER_MS.
+    TaskHandle_t diagTask_Handle = nullptr;
+    static void diagLoop(void* pvParameters);
 #else
     LoraMesher& radio = LoraMesher::getInstance();
 

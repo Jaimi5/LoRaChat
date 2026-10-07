@@ -111,6 +111,15 @@ PARAMS: dict[str, Param] = {p.yaml_key: p for p in [
     Param("packet_delay",          "PACKET_DELAY",          "uint",   "Sim load generator: inter-packet delay (ms); the offered-load knob"),
     Param("one_sender",            "ONE_SENDER",            "uint",   "0=all active nodes send; non-zero=only that node address sends"),
     Param("sim_testbed_warmup_ms", "SIM_TESTBED_WARMUP_MS", "uint",   "Sim PDR mode: post-boot wait before the burst; align with the run's warmup so the burst lands inside the measurement window"),
+    # --- LoRaMesher 2.0.0 feature tests (v2 only; 0 = previous behaviour) ----
+    Param("sim_reliable",          "SIM_RELIABLE",          "uint",   "1=sim burst uses SendReliable; outcomes logged as APP_ACK/APP_FAIL"),
+    Param("sim_group",             "SIM_GROUP",             "uint",   "0=off, 1=group member only (no burst), 2=member + send the burst to SIM_GROUP_ADDR"),
+    Param("sim_group_addr",        "SIM_GROUP_ADDR",        "hex16",  "Group address in [0x8000, 0xFFFE]"),
+    Param("sim_group_window_ms",   "SIM_GROUP_WINDOW_MS",   "uint",   "Group ACK collection window per message (ms)"),
+    Param("sim_stopstart",         "SIM_STOPSTART",         "uint",   "1=periodically Stop()/Start() the mesher on this node"),
+    Param("sim_stopstart_period_ms", "SIM_STOPSTART_PERIOD_MS", "uint", "Time running between stops (ms)"),
+    Param("sim_stopstart_off_ms",  "SIM_STOPSTART_OFF_MS",  "uint",   "Time stopped before Start() (ms)"),
+    Param("sim_nm_failover_ms",    "SIM_NM_FAILOVER_MS",    "uint",   ">0: the Network Manager restarts itself when uptime enters [X, X+60 s]"),
     # --- WiFi + MQTT credentials ---------------------------------------------
     Param("wifi_ssid",             "WIFI_SSID",             "str",    "WiFi SSID"),
     Param("wifi_password",         "WIFI_PASSWORD",         "str",    "WiFi password"),
@@ -135,7 +144,7 @@ def max_packet_size_for_sf(sf: int, bw_khz: float) -> int:
     Mirrors LoRaMesher's RadioConfig::GetMaxPacketSizeForSf: a BW125 base per
     SF, doubled at 250 kHz and quadrupled at 500 kHz, clamped to 1..255.
     """
-    base = {7: 242, 8: 242, 9: 115}.get(int(sf), 51)
+    base = {7: 242, 8: 242, 9: 115, 10: 51, 11: 51, 12: 51}.get(int(sf), 51)
     if bw_khz >= 500.0 - 0.1:
         scaled = base * 4
     elif bw_khz >= 250.0 - 0.1:

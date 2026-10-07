@@ -64,34 +64,22 @@ void LoRaMeshService::initLoraMesherService() {
 
     loraReceiveQueue_ = xQueueCreate(10, sizeof(LoRaQueueMessage*));
 
+#ifdef LM_HAS_RECEIVED_DATA
+    // 2.0.0: the extended callback reports the destination, so group traffic can
+    // be told apart from unicast. Only this one is registered (both would fire).
+    mesher_->SetDataCallbackEx([](const loramesher::ReceivedData& msg) {
+        LoRaMeshService::getInstance().handleReceived(msg.source, msg.dest, msg.payload.data(),
+                                                      msg.payload.size());
+    });
+#else
     mesher_->SetDataCallback([](loramesher::AddressType source, const std::vector<uint8_t>& data) {
-        ESP_LOGV(LMS_TAG, "v2 data callback from %04X, size=%d", source, data.size());
-
-        if (data.size() < sizeof(LoRaMeshMessage)) {
-            ESP_LOGW(LMS_TAG, "Received packet too small");
-            return;
-        }
-
-        const LoRaMeshMessage* lmMsg = reinterpret_cast<const LoRaMeshMessage*>(data.data());
-        uint32_t payloadSize = data.size() - sizeof(LoRaMeshMessage);
-        DataMessage* dm = (DataMessage*)pvPortMalloc(sizeof(DataMessage) + payloadSize);
-        if (!dm) return;
-
-        dm->appPortDst = lmMsg->appPortDst;
-        dm->appPortSrc = lmMsg->appPortSrc;
-        dm->messageId = lmMsg->messageId;
-        dm->addrSrc = source;
-        dm->addrDst = LoRaMeshService::getInstance().getLocalAddress();
-        dm->messageSize = payloadSize;
-        memcpy(dm->message, lmMsg->dataMessage, payloadSize);
-
-        auto* qMsg = new LoRaQueueMessage{source, dm};
         auto& svc = LoRaMeshService::getInstance();
-        if (xQueueSend(svc.loraReceiveQueue_, &qMsg, 0) != pdTRUE) {
-            vPortFree(dm);
-            delete qMsg;
-            ESP_LOGW(LMS_TAG, "Receive queue full, dropping packet");
-        }
+        svc.handleReceived(source, svc.getLocalAddress(), data.data(), data.size());
+    });
+#endif
+
+    mesher_->SetDeliveryCallback([](const loramesher::LoraMesher::DeliveryResult& result) {
+        LoRaMeshService::getInstance().onDelivery(result);
     });
 
     heap_caps_check_integrity_all(true);
@@ -100,10 +88,219 @@ void LoRaMeshService::initLoraMesherService() {
     if (result) {
         ESP_LOGI(LMS_TAG, "LoraMesher v2 initialized");
         createReceiveTask();
+#if SIM_GROUP != 0
+        if (!mesher_->JoinGroup(SIM_GROUP_ADDR)) {
+            ESP_LOGE(LMS_TAG, "JoinGroup(0x%04X) failed", SIM_GROUP_ADDR);
+        } else {
+            ESP_LOGI(LMS_TAG, "Joined group 0x%04X", SIM_GROUP_ADDR);
+        }
+#endif
+        xTaskCreate(diagLoop, "LMS_Diag", 4096, nullptr, 1, &diagTask_Handle);
     } else {
         ESP_LOGE(LMS_TAG, "LoraMesher v2 Start failed");
     }
 #endif
+}
+
+void LoRaMeshService::handleReceived(loramesher::AddressType source,
+                                     loramesher::AddressType dest, const uint8_t* data,
+                                     size_t len) {
+    ESP_LOGV(LMS_TAG, "v2 data callback from %04X to %04X, size=%d", source, dest, len);
+
+    if (len < sizeof(LoRaMeshMessage)) {
+        ESP_LOGW(LMS_TAG, "Received packet too small");
+        return;
+    }
+
+    const LoRaMeshMessage* lmMsg = reinterpret_cast<const LoRaMeshMessage*>(data);
+
+    // Group range [0x8000, 0xFFFE]; 0xFFFF is broadcast and keeps the old path.
+    if (dest >= 0x8000 && dest <= 0xFFFE) {
+        ESP_LOGI(LMS_TAG, "GROUP_RX src=0x%04X grp=0x%04X seq=%u", source, dest,
+                 (unsigned)lmMsg->messageId);
+        return;
+    }
+
+    uint32_t payloadSize = len - sizeof(LoRaMeshMessage);
+    DataMessage* dm = (DataMessage*)pvPortMalloc(sizeof(DataMessage) + payloadSize);
+    if (!dm) return;
+
+    dm->appPortDst = lmMsg->appPortDst;
+    dm->appPortSrc = lmMsg->appPortSrc;
+    dm->messageId = lmMsg->messageId;
+    dm->addrSrc = source;
+    dm->addrDst = getLocalAddress();
+    dm->messageSize = payloadSize;
+    memcpy(dm->message, lmMsg->dataMessage, payloadSize);
+
+    auto* qMsg = new LoRaQueueMessage{source, dm};
+    if (xQueueSend(loraReceiveQueue_, &qMsg, 0) != pdTRUE) {
+        vPortFree(dm);
+        delete qMsg;
+        ESP_LOGW(LMS_TAG, "Receive queue full, dropping packet");
+    }
+}
+
+void LoRaMeshService::trackMessage(uint64_t key, uint32_t appSeq, bool group) {
+    portENTER_CRITICAL(&trackedMux_);
+    size_t slot = kMaxTracked;
+    for (size_t i = 0; i < kMaxTracked; i++) {
+        if (!tracked_[i].used) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == kMaxTracked) {
+        // Full: overwrite round-robin (the library tracks at most 8 at a time).
+        slot = trackedNext_;
+        trackedNext_ = (trackedNext_ + 1) % kMaxTracked;
+    }
+    tracked_[slot] = {key, appSeq, group, true};
+    portEXIT_CRITICAL(&trackedMux_);
+}
+
+bool LoRaMeshService::findTracked(uint64_t key, bool remove, uint32_t* appSeq, bool* group) {
+    bool found = false;
+    portENTER_CRITICAL(&trackedMux_);
+    for (size_t i = 0; i < kMaxTracked; i++) {
+        if (tracked_[i].used && tracked_[i].key == key) {
+            *appSeq = tracked_[i].appSeq;
+            *group = tracked_[i].group;
+            if (remove)
+                tracked_[i].used = false;
+            found = true;
+            break;
+        }
+    }
+    portEXIT_CRITICAL(&trackedMux_);
+    return found;
+}
+
+void LoRaMeshService::onDelivery(const loramesher::LoraMesher::DeliveryResult& result) {
+    using Outcome = loramesher::protocols::reliability::Outcome;
+    const uint64_t key = static_cast<uint64_t>(result.id.value());
+    const bool final = result.outcome != Outcome::Delivered;
+    uint32_t appSeq = 0;
+    bool group = false;
+    // A group send reports Delivered once per acknowledging member, then
+    // GroupWindowClosed; only the final outcome releases the entry.
+    if (!findTracked(key, final, &appSeq, &group)) {
+        ESP_LOGW(LMS_TAG, "Delivery outcome %d for untracked message seq=%u",
+                 (int)result.outcome, (unsigned)result.id.seq);
+        return;
+    }
+
+    const uint16_t local = getLocalAddress();
+    switch (result.outcome) {
+        case Outcome::Delivered:
+            if (group) {
+                ESP_LOGI(LMS_TAG, "GROUP_ACK src=0x%04X grp=0x%04X seq=%u by=0x%04X rtt=%u", local,
+                         SIM_GROUP_ADDR, (unsigned)appSeq, result.by, (unsigned)result.rtt_ms);
+            } else {
+                ESP_LOGI(LMS_TAG, "APP_ACK src=0x%04X seq=%u rtt=%u by=0x%04X", local,
+                         (unsigned)appSeq, (unsigned)result.rtt_ms, result.by);
+            }
+            break;
+        case Outcome::GroupWindowClosed:
+            ESP_LOGI(LMS_TAG, "GROUP_WIN src=0x%04X grp=0x%04X seq=%u acks=%u", local,
+                     SIM_GROUP_ADDR, (unsigned)appSeq, (unsigned)result.ack_count);
+            break;
+        case Outcome::Failed:
+        default:
+            if (group) {
+                ESP_LOGI(LMS_TAG, "GROUP_WIN src=0x%04X grp=0x%04X seq=%u acks=%u", local,
+                         SIM_GROUP_ADDR, (unsigned)appSeq, (unsigned)result.ack_count);
+            } else {
+                ESP_LOGI(LMS_TAG, "APP_FAIL src=0x%04X seq=%u reason=failed", local,
+                         (unsigned)appSeq);
+            }
+            break;
+    }
+}
+
+bool LoRaMeshService::isJoined() {
+    if (!mesher_)
+        return false;
+    const int state = static_cast<int>(mesher_->GetNetworkStatus().current_state);
+    return state == 3 || state == 4;  // NORMAL_OPERATION / NETWORK_MANAGER
+}
+
+bool LoRaMeshService::sendGroup(DataMessage* message) {
+    if (!mesher_)
+        return false;
+
+    LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
+    if (!loraMeshMessage)
+        return false;
+
+    const size_t totalSize = sizeof(LoRaMeshMessage) + message->messageSize;
+    const uint16_t local = getLocalAddress();
+    ESP_LOGI(LMS_TAG, "GROUP_TX src=0x%04X grp=0x%04X seq=%u size=%u", local, SIM_GROUP_ADDR,
+             (unsigned)message->messageId, (unsigned)totalSize);
+
+    loramesher::GroupSendOptions options;
+    options.request_acks = true;
+    options.window_ms = SIM_GROUP_WINDOW_MS;
+    auto id = mesher_->SendGroup(
+        SIM_GROUP_ADDR,
+        std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(loraMeshMessage), totalSize),
+        options);
+    vPortFree(loraMeshMessage);
+
+    if (id.source == 0) {
+        ESP_LOGI(LMS_TAG, "GROUP_WIN src=0x%04X grp=0x%04X seq=%u acks=0", local, SIM_GROUP_ADDR,
+                 (unsigned)message->messageId);
+        ESP_LOGW(LMS_TAG, "SendGroup rejected");
+        return false;
+    }
+    trackMessage(static_cast<uint64_t>(id.value()), message->messageId, true);
+    return true;
+}
+
+void LoRaMeshService::diagLoop(void*) {
+    auto& svc = LoRaMeshService::getInstance();
+    uint32_t lastHealthMs = 0;
+#if SIM_STOPSTART
+    uint32_t phaseStartMs = millis();
+    bool stopped = false;
+#endif
+    for (;;) {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        const uint32_t now = millis();
+        const uint16_t local = svc.getLocalAddress();
+
+        if (now - lastHealthMs >= 60000) {
+            lastHealthMs = now;
+            auto status = svc.mesher_->GetNetworkStatus();
+            ESP_LOGI(LMS_TAG, "HEALTH node=0x%04X heap=%u minheap=%u role=%d state=%d", local,
+                     (unsigned)esp_get_free_heap_size(),
+                     (unsigned)esp_get_minimum_free_heap_size(),
+                     (int)svc.mesher_->GetNodeRole(), (int)status.current_state);
+        }
+
+#if SIM_STOPSTART
+        if (!stopped && now - phaseStartMs >= SIM_STOPSTART_PERIOD_MS) {
+            ESP_LOGI(LMS_TAG, "STOPSTART stop node=0x%04X", local);
+            svc.mesher_->Stop();
+            stopped = true;
+            phaseStartMs = now;
+        } else if (stopped && now - phaseStartMs >= SIM_STOPSTART_OFF_MS) {
+            const bool ok = static_cast<bool>(svc.mesher_->Start());
+            ESP_LOGI(LMS_TAG, "STOPSTART start node=0x%04X ok=%d", local, ok ? 1 : 0);
+            stopped = false;
+            phaseStartMs = now;
+        }
+#endif
+
+#if SIM_NM_FAILOVER_MS > 0
+        if (now >= SIM_NM_FAILOVER_MS && now < SIM_NM_FAILOVER_MS + 60000 &&
+            static_cast<int>(svc.mesher_->GetNetworkStatus().current_state) == 4) {
+            ESP_LOGI(LMS_TAG, "NM_FAILOVER node=0x%04X uptime_ms=%u", local, (unsigned)now);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+            esp_restart();
+        }
+#endif
+    }
 }
 
 void LoRaMeshService::createReceiveTask() {
@@ -165,6 +362,21 @@ void LoRaMeshService::send(DataMessage* message) {
     heap_caps_check_integrity_all(true);
     std::vector<uint8_t> payload(reinterpret_cast<uint8_t*>(loraMeshMessage),
                                  reinterpret_cast<uint8_t*>(loraMeshMessage) + totalSize);
+
+#if SIM_RELIABLE
+    if (message->appPortSrc == appPort::SimApp) {
+        auto id = mesher_->SendReliable(message->addrDst, payload);
+        if (id.source == 0) {
+            ESP_LOGI(LMS_TAG, "APP_FAIL src=0x%04X seq=%u reason=rejected", getLocalAddress(),
+                     (unsigned)message->messageId);
+        } else {
+            trackMessage(static_cast<uint64_t>(id.value()), message->messageId, false);
+        }
+        vPortFree(loraMeshMessage);
+        heap_caps_check_integrity_all(true);
+        return;
+    }
+#endif
 
     auto result = mesher_->Send(message->addrDst, payload);
     if (!result) {

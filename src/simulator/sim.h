@@ -55,6 +55,11 @@ public:
 
     void sendPacketsToServer(size_t packetCount, size_t packetSize, size_t delayMs);
 
+#ifdef USE_LORAMESHER_V2
+    // SIM_GROUP == 2: same burst as sendPacketsToServer, sent to SIM_GROUP_ADDR.
+    void sendPacketsToGroup(size_t packetCount, size_t packetSize, size_t delayMs);
+#endif
+
 private:
     Sim() : MessageService(SimApp, "Sim") {
         simCommandService = new SimCommandService();

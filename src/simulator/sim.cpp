@@ -112,6 +112,26 @@ void Sim::simLoop(void* pvParameters) {
     // nodes are the sinks (SSID != "nowifi"). Set the gateway role directly at boot so
     // the pure-LoRa experiment doesn't hinge on AP reachability. The sink sends no burst;
     // messageManager.cpp logs APP_RX for every packet that reaches it.
+#if defined(USE_LORAMESHER_V2) && SIM_GROUP != 0
+    // Group feature-test cell: group traffic only, no unicast burst. Every node
+    // joined SIM_GROUP_ADDR at init; only SIM_GROUP == 2 nodes send to it.
+    if (SIM_GROUP != 2) {
+        ESP_LOGI(SIM_TAG, "Simulator (testbed group mode) member only (no burst)");
+        vTaskDelete(NULL);
+        return;
+    }
+    vTaskDelay(SIM_TESTBED_WARMUP_MS / portTICK_PERIOD_MS);
+    while (!LoRaMeshService::getInstance().isJoined()) {
+        ESP_LOGI(SIM_TAG, "Simulator (testbed group mode) waiting to join");
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    ESP_LOGI(SIM_TAG, "Simulator (testbed group mode) sending %d packets of %d B every %d ms",
+             PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+    sim.sendPacketsToGroup(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+    ESP_LOGI(SIM_TAG, "Simulator (testbed group mode) finished burst");
+    vTaskDelete(NULL);
+    return;
+#endif
     if (strcmp(WIFI_SSID, "nowifi") != 0) {
         LoRaMeshService::getInstance().setGateway();
         ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) acting as gateway/sink (no burst)");
@@ -319,6 +339,23 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
 
     vPortFree(simPayloadMessage);
 }
+
+#ifdef USE_LORAMESHER_V2
+void Sim::sendPacketsToGroup(size_t packetCount, size_t packetSize, size_t delayMs) {
+    SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
+    for (size_t i = 0; i < packetCount; i++) {
+        simPayloadMessage->messageId = i;
+        ESP_LOGI(SIM_TAG, "radio config: %s",
+                 LoRaMeshService::getInstance().getRadioInfo().c_str());
+        // GROUP_TX (logged by sendGroup) replaces APP_TX so group traffic stays
+        // out of the unicast PDR.
+        LoRaMeshService::getInstance().sendGroup((DataMessage*)simPayloadMessage);
+        vTaskDelay(delayMs / portTICK_PERIOD_MS);
+        ESP_LOGI(SIM_TAG, "FREE HEAP: %d", ESP.getFreeHeap());
+    }
+    vPortFree(simPayloadMessage);
+}
+#endif
 
 SimMessage* Sim::createSimPayloadMessage(size_t packetSize) {
     // packetSize = desired LoRaMesher payload bytes.
