@@ -52,7 +52,7 @@ from analysis.parse_logs import is_v2_run, parse_run  # noqa: E402
 
 PASS, GREY, INCOMPLETE, FAIL = "PASS", "GREY", "INCOMPLETE", "FAIL"
 _RANK = {PASS: 0, GREY: 1, INCOMPLETE: 2, FAIL: 3}
-SUMMARY_VERSION = 4  # bump to invalidate cached run summaries
+SUMMARY_VERSION = 5  # bump to invalidate cached run summaries
 
 # ── small helpers ─────────────────────────────────────────────────────────────
 
@@ -433,9 +433,21 @@ def _full_formation(run_dir: Path, active: list[str]) -> dict:
     windows to the measurement window, which misses joins made during warmup)."""
     events = parse_run(run_dir, window=(None, None))
     expected = set(active)
+    v2 = is_v2_run(events)
     joined = _formation._compute_join(events)
-    rt = _formation._compute_rt_complete(events, expected, is_v2=is_v2_run(events))
-    res = {"joined": sorted(joined), "rt_complete": sorted(rt)}
+    rt = _formation._compute_rt_complete(events, expected, is_v2=v2)
+    # Membership seen by others: a node that is an active destination in another
+    # node's routing table is in the network even when serial capture dropped its
+    # own join line, and its own table cannot be "complete" while any remote node
+    # is missing. Map routing-table (runtime, bit 15 cleared on v2) addresses back
+    # to the physical ids used in config and log names.
+    norm = _formation._pick_addr_form(events, expected, v2)
+    to_phys = {norm(p): p for p in expected}
+    seen = {to_phys[d] for e in events
+            if e.kind == "rtentry" and e.fields.get("active")
+            and (d := e.fields["dest"][-4:].upper()) in to_phys and to_phys[d] != e.node}
+    res = {"joined": sorted(set(joined) | seen), "rt_complete": sorted(rt),
+           "join_lines": sorted(joined), "seen_by_others": sorted(seen)}
     if hasattr(_formation, "nm_timeline") and hasattr(_formation, "nm_overlap"):
         ov = _formation.nm_overlap(_formation.nm_timeline(events, (None, None)))
         res["max_concurrent_nm_full"] = ov["max_concurrent_nm"]
