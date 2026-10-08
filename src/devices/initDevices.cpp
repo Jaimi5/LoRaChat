@@ -1,6 +1,8 @@
 #include "initDevices.h"
 #include <Arduino.h>
 #include "config.h"
+
+#include <functional>
 #if defined(T_BEAM)
 #include <XPowersLib.h>
 #endif
@@ -9,7 +11,43 @@
 
 #ifdef HAS_PMU
 XPowersLibInterface* PMU = NULL;
+
+static TaskHandle_t powerKeyTaskHandle = nullptr;
+static std::function<void()> powerKeyHandler;
+
+static void onPmuIrq() {
+    BaseType_t woken = pdFALSE;
+    vTaskNotifyGiveFromISR(powerKeyTaskHandle, &woken);
+    if (woken) portYIELD_FROM_ISR();
+}
+
+// The PMU holds its IRQ line low until the status is cleared over I2C, which cannot be done
+// from the interrupt handler.
+static void powerKeyTask(void*) {
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        PMU->getIrqStatus();
+        bool pressed = PMU->isPekeyShortPressIrq();
+        PMU->clearIrqStatus();
+        if (pressed && powerKeyHandler) powerKeyHandler();
+    }
+}
+
+void InitDevices::startPowerKeyTask() {
+    if (xTaskCreate(powerKeyTask, "PowerKey", 3072, nullptr, 2, &powerKeyTaskHandle) != pdPASS) {
+        ESP_LOGE("InitDevices", "Power key task creation failed");
+        return;
+    }
+    pinMode(PMU_IRQ, INPUT);
+    attachInterrupt(PMU_IRQ, onPmuIrq, FALLING);
+}
 #endif
+
+void InitDevices::onPowerKeyShortPress(std::function<void()> handler) {
+#ifdef HAS_PMU
+    powerKeyHandler = std::move(handler);
+#endif
+}
 
 void InitDevices::init() {
 #if defined(T_BEAM)
@@ -74,38 +112,25 @@ bool InitDevices::beginPower() {
 
 
     if (PMU->getChipModel() == XPOWERS_AXP192) {
+        // ESP32
         PMU->setProtectedChannel(XPOWERS_DCDC3);
-
-        // lora
-        PMU->setPowerChannelVoltage(XPOWERS_LDO2, 3300);
-        // gps
-        PMU->setPowerChannelVoltage(XPOWERS_LDO3, 3300);
-        // oled
+        // OLED and the 3.3 V header pins
         PMU->setPowerChannelVoltage(XPOWERS_DCDC1, 3300);
-
-        PMU->enablePowerOutput(XPOWERS_LDO2);
-        PMU->enablePowerOutput(XPOWERS_LDO3);
-
-        // protected oled power source
         PMU->setProtectedChannel(XPOWERS_DCDC1);
-        // protected esp32 power source
-        PMU->setProtectedChannel(XPOWERS_DCDC3);
-        // enable oled power
         PMU->enablePowerOutput(XPOWERS_DCDC1);
-
-        // disable not use channel
+        // LoRa radio
+        PMU->setPowerChannelVoltage(XPOWERS_LDO2, 3300);
+        PMU->enablePowerOutput(XPOWERS_LDO2);
+        // GPS (not used) and the unused DCDC2
+        PMU->disablePowerOutput(XPOWERS_LDO3);
         PMU->disablePowerOutput(XPOWERS_DCDC2);
 
+        PMU->setChargeTargetVoltage(XPOWERS_AXP192_CHG_VOL_4V2);
+
         PMU->disableIRQ(XPOWERS_AXP192_ALL_IRQ);
-
-        PMU->enableIRQ(XPOWERS_AXP192_VBUS_REMOVE_IRQ | XPOWERS_AXP192_VBUS_INSERT_IRQ |
-                       XPOWERS_AXP192_BAT_CHG_DONE_IRQ | XPOWERS_AXP192_BAT_CHG_START_IRQ |
-                       XPOWERS_AXP192_BAT_REMOVE_IRQ | XPOWERS_AXP192_BAT_INSERT_IRQ |
-                       XPOWERS_AXP192_PKEY_SHORT_IRQ);
-
+        PMU->enableIRQ(XPOWERS_AXP192_PKEY_SHORT_IRQ);
     } else if (PMU->getChipModel() == XPOWERS_AXP2101) {
-#if defined(CONFIG_IDF_TARGET_ESP32)
-        // Unuse power channel
+        // Unused channels
         PMU->disablePowerOutput(XPOWERS_DCDC2);
         PMU->disablePowerOutput(XPOWERS_DCDC3);
         PMU->disablePowerOutput(XPOWERS_DCDC4);
@@ -116,27 +141,26 @@ bool InitDevices::beginPower() {
         PMU->disablePowerOutput(XPOWERS_BLDO2);
         PMU->disablePowerOutput(XPOWERS_DLDO1);
         PMU->disablePowerOutput(XPOWERS_DLDO2);
+        // GPS (not used) and its backup supply
+        PMU->disablePowerOutput(XPOWERS_ALDO3);
+        PMU->disablePowerOutput(XPOWERS_VBACKUP);
 
-        // GNSS RTC PowerVDD 3300mV
-        PMU->setPowerChannelVoltage(XPOWERS_VBACKUP, 3300);
-        PMU->enablePowerOutput(XPOWERS_VBACKUP);
-
-        // ESP32 VDD 3300mV
-        //  ! No need to set, automatically open , Don't close it
-        //  PMU->setPowerChannelVoltage(XPOWERS_DCDC1, 3300);
-        //  PMU->setProtectedChannel(XPOWERS_DCDC1);
+        // ESP32, OLED and the 3.3 V header pins
         PMU->setProtectedChannel(XPOWERS_DCDC1);
-
-        // LoRa VDD 3300mV
+        // LoRa radio
         PMU->setPowerChannelVoltage(XPOWERS_ALDO2, 3300);
         PMU->enablePowerOutput(XPOWERS_ALDO2);
 
-        // GNSS VDD 3300mV
-        PMU->setPowerChannelVoltage(XPOWERS_ALDO3, 3300);
-        PMU->enablePowerOutput(XPOWERS_ALDO3);
+        // The T-Beam has no thermistor on the TS pin; with the measurement on, the PMU can
+        // treat the battery as out of temperature range and stop charging.
+        PMU->disableTSPinMeasure();
+        PMU->setChargeTargetVoltage(XPOWERS_AXP2101_CHG_VOL_4V2);
 
-#endif /*CONFIG_IDF_TARGET_ESP32*/
+        PMU->disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
+        PMU->enableIRQ(XPOWERS_AXP2101_PKEY_SHORT_IRQ);
     }
+    PMU->clearIrqStatus();
+    startPowerKeyTask();
 
     PMU->enableSystemVoltageMeasure();
     PMU->enableVbusVoltageMeasure();

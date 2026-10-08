@@ -161,6 +161,9 @@ void setup() {
     initWire();
 
     // Initialize Devices
+#ifdef DISPLAY_ENABLED
+    InitDevices::onPowerKeyShortPress([] { displayService.wake(); });
+#endif
     InitDevices::init();
     bootGuard.reportCheck(SelfTestCheck::PMU, InitDevices::pmuResponds());
 

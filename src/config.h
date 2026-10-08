@@ -56,6 +56,8 @@
 #define DISPLAY_WIDTH 128
 #define DISPLAY_HEIGHT 64
 #define DISPLAY_ADDRESS 0x3C
+// Time the display stays on after boot or after a short press of the power button
+#define DISPLAY_AWAKE_MS 60000
 
 // Monitor: routing table report to MQTT
 #define MON_SENDING_EVERY 300000  // ms

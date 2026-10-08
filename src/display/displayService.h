@@ -3,6 +3,8 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Arduino.h>
+
+#include <atomic>
 #include <SPI.h>
 #include <Wire.h>
 
@@ -34,6 +36,9 @@ public:
     DisplayCommandService* displayCommandService = nullptr;
 
     void init();
+
+    /** Turns the display on for DISPLAY_AWAKE_MS; it then goes to sleep. */
+    void wake();
 
     String displayOn(uint16_t dst);
 
@@ -85,6 +90,10 @@ private:
     void addText(String text);
     void setupTextMovement(int line, const String& text);
     void setTitle();
+
+    // esp_timer time at which the display goes to sleep
+    std::atomic<int64_t> sleepAtUs{0};
+    bool panelOn = true;
 
     bool displayOnFlag = true;
     bool displayingLogo = false;

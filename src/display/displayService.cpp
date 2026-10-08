@@ -2,6 +2,7 @@
 #include "images.h"
 
 #include "esp_ota_ops.h"
+#include "esp_timer.h"
 
 void DisplayService::createDisplayTask() {
     xTaskCreatePinnedToCore(displayTask,         /* Task function. */
@@ -47,10 +48,18 @@ void DisplayService::init() {
     // Set the title
     setTitle();
 
+    initialized = true;
+    sleepAtUs = esp_timer_get_time() + static_cast<int64_t>(DISPLAY_AWAKE_MS) * 1000;
+
     // Create display task
     createDisplayTask();
+}
 
-    initialized = true;
+void DisplayService::wake() {
+    if (!initialized)
+        return;
+    sleepAtUs = esp_timer_get_time() + static_cast<int64_t>(DISPLAY_AWAKE_MS) * 1000;
+    xTaskNotifyGive(display_TaskHandle);
 }
 
 String DisplayService::displayOn(uint16_t dst) {
@@ -68,6 +77,7 @@ String DisplayService::displayOn(uint16_t dst) {
 
     DisplayService& displayService = DisplayService::getInstance();
     displayService.displayOnFlag = true;
+    displayService.wake();
 
     return "Display On";
 }
@@ -86,10 +96,8 @@ String DisplayService::displayOff(uint16_t dst) {
     }
 
     DisplayService& displayService = DisplayService::getInstance();
-    displayService.displayOnFlag = false;
-
-    displayService.display.clearDisplay();
-    displayService.display.display();
+    displayService.sleepAtUs = 0;
+    xTaskNotifyGive(displayService.display_TaskHandle);
 
     return "Display Off";
 }
@@ -168,6 +176,21 @@ void DisplayService::displayTask(void* pvParameters) {
     displayService.displayLogo(0);
 
     for (;;) {
+        if (esp_timer_get_time() >= displayService.sleepAtUs) {
+            if (displayService.panelOn) {
+                displayService.display.ssd1306_command(SSD1306_DISPLAYOFF);
+                displayService.panelOn = false;
+                ESP_LOGI(DISPLAY_TAG, "Display sleeping");
+            }
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            continue;
+        }
+        if (!displayService.panelOn) {
+            displayService.display.ssd1306_command(SSD1306_DISPLAYON);
+            displayService.panelOn = true;
+            ESP_LOGI(DISPLAY_TAG, "Display awake");
+        }
+
         if (displayService.displayingLogo) {
             vTaskDelay(10000 / portTICK_PERIOD_MS);
             displayService.displayingLogo = false;
