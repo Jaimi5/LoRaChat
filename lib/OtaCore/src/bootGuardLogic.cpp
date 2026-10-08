@@ -4,12 +4,12 @@
 
 namespace {
 
-constexpr uint8_t bit(SelfTestCheck check) {
+constexpr uint8_t checkBit(SelfTestCheck check) {
     return static_cast<uint8_t>(1u << static_cast<uint8_t>(check));
 }
 
-constexpr uint8_t BASIC_CHECKS = bit(SelfTestCheck::RADIO) | bit(SelfTestCheck::HEAP) |
-                                 bit(SelfTestCheck::PMU) | bit(SelfTestCheck::OTA_PATH);
+constexpr uint8_t BASIC_CHECKS = checkBit(SelfTestCheck::RADIO) | checkBit(SelfTestCheck::HEAP) |
+                                 checkBit(SelfTestCheck::PMU) | checkBit(SelfTestCheck::OTA_PATH);
 
 FailReason reasonFor(SelfTestCheck check) {
     switch (check) {
@@ -36,6 +36,16 @@ BootDecision resolved(BootAction action, OtaRecord record) {
 }
 
 }  // namespace
+
+constexpr uint32_t BootGuardLogic::DEADLINE_MS;
+constexpr uint32_t BootGuardLogic::MESH_WINDOW_MS;
+constexpr uint32_t BootGuardLogic::MESH_WINDOW_SUPERFRAMES;
+constexpr uint32_t BootGuardLogic::DEADLINE_MARGIN_MS;
+constexpr uint32_t BootGuardLogic::WATCHDOG_MARGIN_MS;
+constexpr uint32_t BootGuardLogic::MAX_SUPERFRAME_MS;
+constexpr uint32_t BootGuardLogic::MIN_FREE_HEAP;
+constexpr uint32_t BootGuardLogic::MIN_LARGEST_BLOCK;
+constexpr uint8_t BootGuardLogic::MAX_UNEXPLAINED_ROLLBACKS;
 
 BootDecision BootGuardLogic::onBoot(ImageState state, const ShaPrefix& runningSha,
                                     const OtaRecord& stored) {
@@ -130,18 +140,18 @@ void SelfTest::report(SelfTestCheck check, bool ok) {
         failReason_ = reasonFor(check);
         return;
     }
-    passed_ |= bit(check);
+    passed_ |= checkBit(check);
 }
 
 SelfTestVerdict SelfTest::evaluate(uint32_t nowMs) {
     if (failReason_ != FailReason::NONE) return SelfTestVerdict::FAIL;
 
     uint8_t required = BASIC_CHECKS;
-    if (requireMeshFrame_) required |= bit(SelfTestCheck::MESH_FRAME);
+    if (requireMeshFrame_) required |= checkBit(SelfTestCheck::MESH_FRAME);
     if ((passed_ & required) == required) return SelfTestVerdict::PASS;
 
     uint32_t elapsed = nowMs - startMs_;
-    bool meshMissing = requireMeshFrame_ && !(passed_ & bit(SelfTestCheck::MESH_FRAME));
+    bool meshMissing = requireMeshFrame_ && !(passed_ & checkBit(SelfTestCheck::MESH_FRAME));
     if (meshMissing && elapsed >= timing_.meshWindowMs) {
         failReason_ = FailReason::MESH_SILENT;
         return SelfTestVerdict::FAIL;

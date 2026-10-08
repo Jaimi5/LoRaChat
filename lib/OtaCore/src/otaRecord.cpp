@@ -10,6 +10,10 @@ constexpr size_t HEADER_SIZE = 4;
 
 }  // namespace
 
+constexpr size_t Blacklist::CAPACITY;
+constexpr uint8_t OtaRecordCodec::VERSION;
+constexpr size_t OtaRecordCodec::V1_SIZE;
+
 void Blacklist::add(const ShaPrefix& sha) {
     if (contains(sha)) return;
     if (count_ < CAPACITY) {
