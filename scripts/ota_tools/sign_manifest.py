@@ -5,6 +5,7 @@ Commands:
   keygen --out key.pem                 new ECDSA P-256 key; prints the public key for otaKeys.cpp
   sign RELEASE_DIR --key key.pem --key-id N [--allow-downgrade] [--skip-mesh-check]
                                        writes manifest.bin (192 B) and bundle.bin (manifest + image)
+  show manifest.bin [--key key.pem]    prints the fields; with a key also checks the signature
   vectors                              regenerates the test vectors in test/vectors/ and the
                                        firmware's copy of the test key (src/ota/otaTestKey.h)
 
@@ -92,6 +93,34 @@ def load_key(path: Path) -> ec.EllipticCurvePrivateKey:
     if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
         raise ManifestError(f"{path} is not an ECDSA P-256 private key")
     return key
+
+
+def load_public_key(path: Path) -> bytes:
+    """@return the uncompressed public key of a private or public PEM key file."""
+    data = path.read_bytes()
+    try:
+        return public_key_bytes(load_key(path))
+    except (ValueError, TypeError, ManifestError):
+        key = serialization.load_pem_public_key(data)
+    if not isinstance(key, ec.EllipticCurvePublicKey) or key.curve.name != "secp256r1":
+        raise ManifestError(f"{path} is not an ECDSA P-256 key")
+    return key.public_bytes(serialization.Encoding.X962,
+                            serialization.PublicFormat.UncompressedPoint)
+
+
+def show(manifest_path: Path, key_path: Optional[Path]) -> bool:
+    """Prints the fields of a signed manifest. @return false if a key is given and fails."""
+    signed = manifest_path.read_bytes()
+    if len(signed) < BODY_SIZE + SIGNATURE_SIZE:
+        raise ManifestError(f"{manifest_path} is {len(signed)} bytes, a manifest is 192")
+    for name, value in decode_body(signed[:BODY_SIZE]).items():
+        shown = f"0x{value:08X}" if name in ("key_id", "version") else value
+        print(f"{name}: {shown}")
+    if key_path is None:
+        return True
+    valid = verify(signed, load_public_key(key_path))
+    print(f"signature: {'valid' if valid else 'INVALID'} for {key_path}")
+    return valid
 
 
 def public_key_bytes(key: ec.EllipticCurvePrivateKey) -> bytes:
@@ -218,6 +247,9 @@ def main(argv: Optional[list] = None) -> int:
     sign.add_argument("--key-id", type=lambda v: int(v, 0), required=True)
     sign.add_argument("--allow-downgrade", action="store_true")
     sign.add_argument("--skip-mesh-check", action="store_true")
+    sh = commands.add_parser("show")
+    sh.add_argument("manifest", type=Path)
+    sh.add_argument("--key", type=Path, help="private or public PEM key to check the signature")
     vec = commands.add_parser("vectors")
     vec.add_argument("--key", type=Path, default=TEST_KEY)
     vec.add_argument("--out", type=Path, default=VECTORS_DIR)
@@ -234,6 +266,9 @@ def main(argv: Optional[list] = None) -> int:
                      | (FLAG_SKIP_MESH_CHECK if args.skip_mesh_check else 0))
             sign_release(args.release_dir, load_key(args.key), args.key_id, flags)
             print(f"{args.release_dir}: manifest.bin and bundle.bin written")
+        elif args.command == "show":
+            if not show(args.manifest, args.key):
+                return 1
         else:
             write_vectors(load_key(args.key), args.out)
             print(f"test vectors written to {args.out}")

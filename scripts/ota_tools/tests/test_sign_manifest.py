@@ -121,3 +121,20 @@ def test_firmware_test_key_header_matches_the_vectors():
     manifest = c_array_bytes(header, "OTA_SELF_TEST_MANIFEST")
     assert manifest.hex() == vectors["vectors"]["valid"]["manifest"]
     assert sm.verify(manifest, public)
+
+
+def test_show_prints_fields_and_checks_the_signature(tmp_path, capsys):
+    release, _ = make_release(tmp_path)
+    key_path = tmp_path / "key.pem"
+    sm.keygen(key_path)
+    sm.sign_release(release, sm.load_key(key_path), 0x100)
+    manifest = release / "manifest.bin"
+
+    assert sm.main(["show", str(manifest), "--key", str(key_path)]) == 0
+    out = capsys.readouterr().out
+    assert "version_string: 0.1.3+gabc1234" in out and "signature: valid" in out
+
+    other = tmp_path / "other.pem"
+    sm.keygen(other)
+    assert sm.main(["show", str(manifest), "--key", str(other)]) == 1
+    assert "signature: INVALID" in capsys.readouterr().out
