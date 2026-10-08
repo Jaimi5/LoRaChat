@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <cstdint>
+#include <vector>
 #include "config.h"
 
 #ifdef USE_LORAMESHER_V2
@@ -13,8 +14,6 @@
 #include "message/messageService.h"
 #include "monCommandService.h"
 #include "monServiceMessage.h"
-
-#define MON_MQTT_ONE_MESSAGE
 
 class MonService : public MessageService {
 public:
@@ -35,19 +34,17 @@ public:
 private:
     MonService() : MessageService(MonApp, "Mon") { commandService = monCommandService_; };
     void createSendingTask();
-#if defined(MON_MQTT_ONE_MESSAGE)
     static void sendingLoopOneMessage(void*);
     static int getOneMessageSize(int neighbors) {
         return sizeof(monOneMessage) + sizeof(routing_entry) * neighbors;
-    } ;
+    };
     monOneMessage* createMONPayloadMessage(int number_of_neighbors);
-#else
-    static void sendingLoop(void*);
 #ifdef USE_LORAMESHER_V2
-    void createAndSendMessage(uint16_t mcount, const loramesher::RouteEntry& route);
-#else
-    void createAndSendMessage(uint16_t mcount, RouteNode*);
-#endif
+    /** @return the routes this node reports: valid direct neighbours, or all valid routes. */
+    static std::vector<routing_entry> collectReportedRoutes();
+
+    /** Sends @p entries to MQTT in as many messages as MAX_MSG_SIZE requires. */
+    void sendRoutes(const std::vector<routing_entry>& entries);
 #endif
     TaskHandle_t sending_TaskHandle = NULL;
     bool running = false;
