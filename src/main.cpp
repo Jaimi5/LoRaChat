@@ -7,6 +7,7 @@
 #include "esp32-hal-log.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_timer.h"
 
 // Manager
 #include "message/messageManager.h"
@@ -17,12 +18,6 @@
 // WiFi
 #include "wifi/wifiServerService.h"
 
-// Sensors
-#include "sensor/sensorService.h"
-
-// Metadata
-#include "sensor/metadata/metadata.h"
-
 // Display
 #include "display/displayService.h"
 
@@ -32,93 +27,27 @@
 // OTA boot guard
 #include "ota/otaBootGuard.h"
 
+// MQTT
+#include "mqtt/mqttService.h"
+
+// Monitor
+#include "monitor/monService.h"
+
 static const char* TAG = "Main";
 
-// Display
 #pragma region Display
 DisplayService& displayService = DisplayService::getInstance();
 void initDisplay() {
     displayService.init();
 }
-
 #pragma endregion
 
-
 #pragma region MQTT_MON
-#include "monitor/monService.h"
 MonService& mon_mqttService = MonService::getInstance();
 void init_mqtt_mon() {
     mon_mqttService.init();
 }
 #pragma endregion
-
-#pragma region OTA
-#ifdef OTA_ENABLED
-#include "ota/otaService.h"
-OTAService& otaService = OTAService::getInstance();
-void initOTA() {
-    otaService.init();
-}
-#endif
-#pragma endregion
-
-// Battery
-#pragma region Battery
-
-#include "battery/battery.h"
-
-Battery& battery = Battery::getInstance();
-
-void initBattery() {
-    battery.init();
-}
-
-#pragma endregion
-
-// Simulator
-#pragma region Simulator
-
-#include "simulator/sim.h"
-
-Sim& simulator = Sim::getInstance();
-
-void initSimulator() {
-    // Init Simulator
-    simulator.init();
-}
-#pragma endregion
-
-#pragma region Led
-#include "led/led.h"
-
-Led& led = Led::getInstance();
-
-void initLed() {
-    led.init();
-}
-
-#pragma endregion
-
-#pragma region Metadata
-
-Metadata& metadata = Metadata::getInstance();
-
-void initMetadata() {
-    metadata.initMetadata();
-}
-
-#pragma endregion
-
-#pragma region Sensors
-
-SensorService& sensorService = SensorService::getInstance();
-
-void initSensors() {
-    sensorService.init();
-}
-
-#pragma endregion
-
 
 #pragma region WiFi
 
@@ -148,7 +77,6 @@ void initLoRaMesher() {
 
 
 #pragma region MQTT
-#include "mqtt/mqttService.h"
 
 MqttService& mqttService = MqttService::getInstance();
 
@@ -159,80 +87,26 @@ void initMQTT() {
 #pragma endregion
 
 
-#pragma region GPS
-
-#include "gps/gpsService.h"
-
-GPSService& gpsService = GPSService::getInstance();
-
-void initGPS() {
-    // Initialize GPS
-    gpsService.initGPS();
-}
-
-#pragma endregion
-
-#ifdef BLUETOOTH_ENABLED
-#pragma region SerialBT
-#include "bluetooth/bluetoothService.h"
-BluetoothService& bluetoothService = BluetoothService::getInstance();
-
-void initBluetooth() {
-    bluetoothService.initBluetooth(String(loraMeshService.getLocalAddress(), HEX));
-}
-
-#pragma endregion
-#endif
-
 #pragma region Manager
 
 MessageManager& manager = MessageManager::getInstance();
 
 void initManager() {
     manager.init();
-    ESP_LOGV(TAG, "Manager initialized");
-
-#ifdef BLUETOOTH_ENABLED
-    manager.addMessageService(&bluetoothService);
-    ESP_LOGV(TAG, "Bluetooth service added to manager");
-#endif
-
-    manager.addMessageService(&gpsService);
-    ESP_LOGV(TAG, "GPS service added to manager");
 
     manager.addMessageService(&loraMeshService);
-    ESP_LOGV(TAG, "LoRaMesher service added to manager");
-
+#ifdef WIFI_ENABLED
     manager.addMessageService(&wiFiService);
-    ESP_LOGV(TAG, "WiFi service added to manager");
-
-    manager.addMessageService(&mqttService);
-    ESP_LOGV(TAG, "MQTT service added to manager");
-
-    manager.addMessageService(&led);
-    ESP_LOGV(TAG, "Led service added to manager");
-
-    manager.addMessageService(&metadata);
-    ESP_LOGV(TAG, "Metadata service added to manager");
-
-    manager.addMessageService(&sensorService);
-    ESP_LOGV(TAG, "Sensors service added to manager");
-
-    manager.addMessageService(&simulator);
-    ESP_LOGV(TAG, "Simulator service added to manager");
-
-    manager.addMessageService(&mon_mqttService);
-    ESP_LOGV(TAG, "MON-MQTT service added to manager");
-
-    manager.addMessageService(&displayService);
-    ESP_LOGV(TAG, "Display service added to manager");
-
-#ifdef OTA_ENABLED
-    manager.addMessageService(&otaService);
-    ESP_LOGV(TAG, "OTA service added to manager");
 #endif
-
-    Serial.println(manager.getAvailableCommands());
+#ifdef MQTT_ENABLED
+    manager.addMessageService(&mqttService);
+#endif
+#ifdef MQTT_MON_ENABLED
+    manager.addMessageService(&mon_mqttService);
+#endif
+#ifdef DISPLAY_ENABLED
+    manager.addMessageService(&displayService);
+#endif
 }
 
 #pragma endregion
@@ -245,10 +119,27 @@ void initWire() {
 
 #pragma endregion
 
-// TODO: The following line could be removed if we add the files in /src to /lib. However, at this
-// moment, it generates a lot of errors
-// TODO:
-// https://docs.platformio.org/en/stable/advanced/unit-testing/structure/shared-code.html#unit-testing-shared-code
+#pragma region HeapReport
+
+constexpr uint64_t HEAP_REPORT_PERIOD_US = 200ULL * 1000 * 1000;
+
+void logHeap(void*) {
+    ESP_LOGI(TAG, "FREE HEAP: %u", ESP.getFreeHeap());
+    ESP_LOGI(TAG, "Min, Max: %u, %u", ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+}
+
+void startHeapReport() {
+    esp_timer_create_args_t args = {};
+    args.callback = &logHeap;
+    args.name = "heapReport";
+    esp_timer_handle_t timer = nullptr;
+    if (esp_timer_create(&args, &timer) != ESP_OK ||
+        esp_timer_start_periodic(timer, HEAP_REPORT_PERIOD_US) != ESP_OK) {
+        ESP_LOGE(TAG, "Heap report timer could not be started");
+    }
+}
+
+#pragma endregion
 
 #ifndef PIO_UNIT_TESTING
 
@@ -304,12 +195,6 @@ void setup() {
     ESP_LOGV(TAG, "Heap after initDisplay: %d", ESP.getFreeHeap());
 #endif
 
-#ifdef GPS_ENABLED
-    // Initialize GPS
-    initGPS();
-    ESP_LOGV(TAG, "Heap after initGPS: %d", ESP.getFreeHeap());
-#endif
-
     // Initialize LoRaMesh
     initLoRaMesher();
     ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
@@ -328,87 +213,22 @@ void setup() {
     }
 #endif
 
-#ifdef BLUETOOTH_ENABLED
-    // Initialize Bluetooth
-    initBluetooth();
-    ESP_LOGV(TAG, "Heap after initBluetooth: %d", ESP.getFreeHeap());
-#endif
-
-#ifdef LED_ENABLED
-    // Initialize Led
-    initLed();
-#endif
-
-#ifdef METADATA_ENABLED
-    // Initialize Metadata
-    initMetadata();
-    ESP_LOGV(TAG, "Heap after initMetadata: %d", ESP.getFreeHeap());
-#endif
-
-#ifdef SENSORS_ENABLED
-    // Initialize Sensors
-    initSensors();
-    ESP_LOGV(TAG, "Heap after init Sensors: %d", ESP.getFreeHeap());
-#endif
-
-#ifdef SIMULATION_ENABLED
-    // Initialize Simulator
-    initSimulator();
-#endif
-
-#ifdef BATTERY_ENABLED
-    // Initialize Battery
-    initBattery();
-#endif
-
 #ifdef MQTT_MON_ENABLED
     // Initialize MQTT_MON
     init_mqtt_mon();
     ESP_LOGV(TAG, "Heap after init_mqtt_mon: %d", ESP.getFreeHeap());
 #endif
 
-#ifdef OTA_ENABLED
-    initOTA();
-    ESP_LOGV(TAG, "Heap after initOTA: %d", ESP.getFreeHeap());
-#endif
-
     bootGuard.reportSetupDone();
 
-    ESP_LOGV(TAG, "Setup finished");
+    startHeapReport();
 
-#ifdef LED_ENABLED
-    // Blink 2 times to show that the device is ready
-    led.ledBlink();
-#endif
+    ESP_LOGV(TAG, "Setup finished");
 }
 
 void loop() {
-    vTaskDelay(200000 / portTICK_PERIOD_MS);
-
-    Serial.printf("FREE HEAP: %d\n", ESP.getFreeHeap());
-    Serial.printf("Min, Max: %d, %d\n", ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
-
-#ifdef BATTERY_ENABLED
-    if (battery.getVoltagePercentage() < 20) {
-        ESP_LOGE(TAG, "Battery is low, deep sleeping for %d s", DEEP_SLEEP_TIME);
-        mqttService.disconnect();
-        wiFiService.disconnectWiFi();
-        esp_wifi_deinit();
-
-        ESP.deepSleep(DEEP_SLEEP_TIME * (uint32_t)1000000);
-    }
-#endif
-
-    // if (ESP.getFreeHeap() < 20000) {
-    //     ESP_LOGE(TAG, "Not enough memory to process mqtt messages");
-    //     ESP.restart();
-    //     return;
-    // }
-
-    // if (millis() > 21600000) {
-    //     ESP_LOGE(TAG, "Restarting device to avoid memory leaks");
-    //     ESP.restart();
-    // }
+    // All work runs in service tasks; the Arduino loop task is not needed.
+    vTaskDelete(NULL);
 }
 
 #endif
