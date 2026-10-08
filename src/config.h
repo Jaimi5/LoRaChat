@@ -29,7 +29,7 @@
 // #define BLUETOOTH_ENABLED
 #define LORA_ENABLED
 #define SIMULATION_ENABLED
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define DISPLAY_ENABLED
 // #define LED_ENABLED
 #define LORA_ENABLED
@@ -79,7 +79,7 @@
 #ifdef NAYAD_V1
 #define I2C_SDA 02
 #define I2C_SCL 04
-#elif defined(NAYAD_V1R2) || defined(T_BEAM_V10) || defined(T_BEAM_LORA_32) || defined(T_BEAM_V12)
+#elif defined(NAYAD_V1R2) || defined(T_BEAM) || defined(T_BEAM_LORA_32)
 #define I2C_SDA SDA
 #define I2C_SCL SCL
 #else
@@ -90,7 +90,7 @@
 
 
 // If the device has a GPS module
-#if defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#if defined(T_BEAM)
 #define GPS_TX 12
 #define GPS_RX 34
 #elif defined(NAYAD_V1)
@@ -117,7 +117,7 @@
 #define DISPLAY_SDA 4
 #define DISPLAY_SCL 15
 #define DISPLAY_RST 16
-#elif defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM)
 #define DISPLAY_SDA I2C_SDA
 #define DISPLAY_SCL I2C_SCL
 #define DISPLAY_RST -1
@@ -198,7 +198,7 @@
 #define LED 2
 #define LED_ON HIGH
 #define LED_OFF LOW
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define LED 4
 #define LED_ON LOW
 #define LED_OFF HIGH
@@ -215,7 +215,7 @@
 
 
 // LoRa Configuration
-#if defined(T_BEAM_LORA_32) || defined(T_BEAM_V10) || defined(T_BEAM_V12) || \
+#if defined(T_BEAM_LORA_32) || defined(T_BEAM) || \
     defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_MODULE_SX1276 0
 #elif defined(NAYAD_V1) || defined(NAYAD_V1R2)
@@ -236,7 +236,7 @@
 #define LORA_SCK 18
 #elif defined(T_BEAM_LORA_32)
 #define LORA_SCK 5
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define LORA_SCK 5
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_SCK 12
@@ -253,7 +253,7 @@
 #define LORA_MISO 19
 #elif defined(T_BEAM_LORA_32)
 #define LORA_MISO 19
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define LORA_MISO 19
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_MISO 13
@@ -270,7 +270,7 @@
 #define LORA_MOSI 23
 #elif defined(T_BEAM_LORA_32)
 #define LORA_MOSI 27
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define LORA_MOSI 27
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_MOSI 11
@@ -285,7 +285,7 @@
 #define LORA_CS 15
 #elif defined(T_BEAM_LORA_32)
 #define LORA_CS 18
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define LORA_CS 18
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_CS 4
@@ -300,7 +300,7 @@
 #define LORA_RST 27
 #elif defined(T_BEAM_LORA_32)
 #define LORA_RST 14
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define LORA_RST 23
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_RST 5
@@ -318,7 +318,7 @@
 #define LORA_IRQ 33
 #elif defined(T_BEAM_LORA_32)
 #define LORA_IRQ 26
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define LORA_IRQ 26
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_IRQ 6
@@ -337,7 +337,7 @@
 #define LORA_IO1 33
 #elif defined(MAKERFABS_SENSELORA_MOISTURE)
 #define LORA_IO1 7
-#elif defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#elif defined(T_BEAM)
 #define LORA_IO1 33
 #else
 #ifndef LORA_MODULE_SX1276
@@ -384,7 +384,7 @@
 #endif
 
 // PMU configuration
-#if defined(T_BEAM_V10) || defined(T_BEAM_V12)
+#if defined(T_BEAM)
 #define HAS_PMU
 #define PMU_IRQ 35
 #endif

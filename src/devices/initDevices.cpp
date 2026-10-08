@@ -1,7 +1,7 @@
 #include "initDevices.h"
 #include <Arduino.h>
 #include "config.h"
-#if defined(T_BEAM_V12) || defined(T_BEAM_V10)
+#if defined(T_BEAM)
 #include <XPowersLib.h>
 #endif
 
@@ -17,7 +17,7 @@ static void setPmuFlag() {
 #endif
 
 void InitDevices::init() {
-#if defined(T_BEAM_V12) || defined(T_BEAM_V10)
+#if defined(T_BEAM)
     initTBeam();
 #endif
 #ifdef MAKERFABS_SENSELORA_MOISTURE
