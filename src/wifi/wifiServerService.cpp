@@ -50,11 +50,13 @@ void WiFiServerService::wifi_task(void*) {
     LoRaMeshService& LoRaMeshService = LoRaMeshService::getInstance();
 
     for (;;) {
-        /* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection
-         * failed for the maximum number of re-tries (WIFI_FAIL_BIT). The bits are set by
-         * event_handler() (see above) */
+        // Wait for a connect or fail event (set by wifi_event_handler). While disconnected,
+        // also wake up when the backoff expires to retry the connection.
+        bool idle = !wiFiServerService.connected && !wiFiServerService.connecting;
+        TickType_t wait =
+            idle ? pdMS_TO_TICKS(wiFiServerService.connectBackoff.waitMs()) : portMAX_DELAY;
         EventBits_t bits = xEventGroupWaitBits(
-            s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdTRUE, pdFALSE, portMAX_DELAY);
+            s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdTRUE, pdFALSE, wait);
 
         ESP_LOGV(TAG, "Stack space unused after entering the task: %d",
                  uxTaskGetStackHighWaterMark(NULL));
@@ -64,16 +66,18 @@ void WiFiServerService::wifi_task(void*) {
         if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
             LoRaMeshService.setGateway();
             wiFiServerService.connected = true;
-            wiFiServerService.connectBackoffMs = 5000;
+            wiFiServerService.connecting = false;
+            wiFiServerService.connectBackoff.onSuccess();
             ESP_LOGI(TAG, "connected to ap SSID:%s", wiFiServerService.ssid.c_str());
         } else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
             wiFiServerService.connected = false;
+            wiFiServerService.connecting = false;
             LoRaMeshService.removeGateway();
-            wiFiServerService.connectBackoffMs = min(
-                wiFiServerService.connectBackoffMs * 2,
-                (unsigned long)WiFiServerService::MAX_CONNECT_BACKOFF_MS);
-            ESP_LOGI(TAG, "Failed to connect to SSID:%s, backoff %lu ms",
-                     wiFiServerService.ssid.c_str(), wiFiServerService.connectBackoffMs);
+            wiFiServerService.connectBackoff.onFailure();
+            ESP_LOGI(TAG, "Failed to connect to SSID:%s, backoff %u ms",
+                     wiFiServerService.ssid.c_str(), wiFiServerService.connectBackoff.waitMs());
+        } else if (idle) {
+            wiFiServerService.connectWiFi();
         }
 
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
@@ -243,12 +247,16 @@ bool WiFiServerService::connectWiFi() {
         return false;
     }
 
-    // Exponential backoff: don't retry too frequently
-    unsigned long now = millis();
-    if ((now - lastConnectAttemptMs) < connectBackoffMs) {
+    if (connecting) {
         return false;
     }
-    lastConnectAttemptMs = now;
+
+    uint32_t now = millis();
+    if (!connectBackoff.shouldAttempt(now)) {
+        return false;
+    }
+    connectBackoff.onAttempt(now);
+    connecting = true;
 
     ESP_LOGI(TAG, "Connecting to %s...", ssid.c_str());
     s_retry_num = 0;
@@ -272,6 +280,7 @@ bool WiFiServerService::connectWiFi() {
             ESP_LOGW(TAG, "esp_wifi_connect() failed: %s, doing full restart", esp_err_to_name(err));
             esp_wifi_stop();
             wifiStarted = false;
+            connecting = false;
             return false;
         }
     }

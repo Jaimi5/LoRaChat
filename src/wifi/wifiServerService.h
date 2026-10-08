@@ -23,6 +23,10 @@
 
 #include "config.h"
 
+#include "connectBackoff.h"
+
+#include <atomic>
+
 #define DEFAULT_WIFI_SSID "DEFAULT_SSID"
 #define DEFAULT_WIFI_PASSWORD "DEFAULT_PASSWORD"
 
@@ -103,9 +107,13 @@ private:
     bool initialized = false;
 
     bool wifiStarted = false;
-    unsigned long lastConnectAttemptMs = 0;
-    unsigned long connectBackoffMs = 5000;
-    static constexpr unsigned long MAX_CONNECT_BACKOFF_MS = 300000;
+
+    // True from the start of a connection attempt until the driver reports success or failure.
+    std::atomic<bool> connecting{false};
+
+    static constexpr uint32_t INITIAL_CONNECT_BACKOFF_MS = 5000;
+    static constexpr uint32_t MAX_CONNECT_BACKOFF_MS = 300000;
+    ConnectBackoff connectBackoff{INITIAL_CONNECT_BACKOFF_MS, MAX_CONNECT_BACKOFF_MS};
 
     bool addWiFiCredentialsFromConfig();
 };
