@@ -132,16 +132,32 @@
 // WiFi Configuration
 #define MAX_CONNECTION_TRY 10
 
-// WiFi credentials
-#define WIFI_SSID "******"
-#define WIFI_PASSWORD "******"
-#define WIFI_OVERRIDE_CREDENTIALS //If defined, every time the device is reset it will set the wifi credentials.
+// Site settings (WiFi credentials, MQTT broker). They are kept out of git: copy
+// config_local.example.h to config_local.h and fill it in. Empty values disable the feature.
+#if __has_include("config_local.h")
+#include "config_local.h"
+#endif
+
+#ifndef WIFI_SSID
+#define WIFI_SSID ""
+#endif
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD ""
+#endif
 
 // MQTT configuration
-#define MQTT_SERVER "192.168.1.26"
+#ifndef MQTT_SERVER
+#define MQTT_SERVER ""
+#endif
+#ifndef MQTT_PORT
 #define MQTT_PORT 1883
-#define MQTT_USERNAME "admin"
-#define MQTT_PASSWORD "public"
+#endif
+#ifndef MQTT_USERNAME
+#define MQTT_USERNAME ""
+#endif
+#ifndef MQTT_PASSWORD
+#define MQTT_PASSWORD ""
+#endif
 #define MQTT_TOPIC_SUB "from-server/"
 #define MQTT_TOPIC_OUT "to-server/"
 #define MQTT_MAX_PACKET_SIZE 512  // 128, 256 or 512

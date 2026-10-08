@@ -50,3 +50,6 @@ docs/formation_convergence_floor.md
 # Local assistant notes
 CLAUDE.md
 CONTINUE.md
+
+# Site settings with credentials. Template: src/config_local.example.h
+src/config_local.h

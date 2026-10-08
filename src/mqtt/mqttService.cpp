@@ -217,6 +217,11 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
 }
 
 void MqttService::mqtt_app_start(const char* client_id) {
+    if (strlen(MQTT_SERVER) == 0) {
+        ESP_LOGW(MQTT_TAG, "No MQTT server configured (config_local.h), MQTT disabled");
+        return;
+    }
+
     String uri = "mqtt://" + String(MQTT_SERVER) + ":" + String(MQTT_PORT);
 
     ESP_LOGI(MQTT_TAG, "MQTT URI: %s", uri.c_str());
@@ -226,8 +231,16 @@ void MqttService::mqtt_app_start(const char* client_id) {
     mqtt_cfg.uri = uri.c_str();
     mqtt_cfg.client_id = client_id;
     mqtt_cfg.buffer_size = 2048;
+    if (strlen(MQTT_USERNAME) > 0) {
+        mqtt_cfg.username = MQTT_USERNAME;
+        mqtt_cfg.password = MQTT_PASSWORD;
+    }
 
     client = esp_mqtt_client_init(&mqtt_cfg);
+    if (client == nullptr) {
+        ESP_LOGE(MQTT_TAG, "MQTT client init failed for %s", uri.c_str());
+        return;
+    }
     /* The last argument may be used to pass data to the event handler, in this example
      * mqtt_event_handler */
     esp_mqtt_client_register_event(client, esp_mqtt_event_id_t::MQTT_EVENT_ANY, mqtt_event_handler,

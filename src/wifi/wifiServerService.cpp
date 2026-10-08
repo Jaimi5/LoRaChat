@@ -1,5 +1,7 @@
 #include "wifiServerService.h"
 
+#include <algorithm>
+
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
 
@@ -19,19 +21,12 @@ void WiFiServerService::initWiFi() {
     wifi_init_sta();
     createWiFiTask();
 
-#if defined(WIFI_OVERRIDE_CREDENTIALS)
-    if (!addWiFiCredentialsFromConfig()) {
-        ESP_LOGW(TAG, "No WiFi credentials found");
-        return;
-    }
-#else
     if (!restartWiFiData()) {
         if (!addWiFiCredentialsFromConfig()) {
             ESP_LOGW(TAG, "No WiFi credentials found");
             return;
         }
     }
-#endif
 
     connectWiFi();
 
@@ -70,14 +65,13 @@ void WiFiServerService::wifi_task(void*) {
             LoRaMeshService.setGateway();
             wiFiServerService.connected = true;
             wiFiServerService.connectBackoffMs = 5000;
-            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid.c_str(),
-                     wiFiServerService.password.c_str());
+            ESP_LOGI(TAG, "connected to ap SSID:%s", wiFiServerService.ssid.c_str());
         } else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
             wiFiServerService.connected = false;
             LoRaMeshService.removeGateway();
             wiFiServerService.connectBackoffMs = min(
                 wiFiServerService.connectBackoffMs * 2,
-                WiFiServerService::MAX_CONNECT_BACKOFF_MS);
+                (unsigned long)WiFiServerService::MAX_CONNECT_BACKOFF_MS);
             ESP_LOGI(TAG, "Failed to connect to SSID:%s, backoff %lu ms",
                      wiFiServerService.ssid.c_str(), wiFiServerService.connectBackoffMs);
         }
@@ -149,13 +143,18 @@ void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* me
 void WiFiServerService::sendMessage(DataMessage* message) {}
 
 String WiFiServerService::addSSID(String ssid) {
-    // Copy the string to the ssid
+    if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH) {
+        return F("SSID must be 1 to 32 bytes");
+    }
     this->ssid = ssid;
 
     return F("SSID added");
 }
 
 String WiFiServerService::addPassword(String password) {
+    if (password.length() > MAX_PASSWORD_LENGTH) {
+        return F("Password must be at most 64 bytes");
+    }
     this->password = password;
 
     return F("Password added");
@@ -257,8 +256,10 @@ bool WiFiServerService::connectWiFi() {
     if (!wifiStarted) {
         // Full initialization: configure and start the WiFi stack
         wifi_config_t wifi_config = {};
-        memcpy(wifi_config.sta.ssid, ssid.c_str(), ssid.length());
-        memcpy(wifi_config.sta.password, password.c_str(), password.length());
+        memcpy(wifi_config.sta.ssid, ssid.c_str(),
+               std::min(size_t(ssid.length()), size_t(MAX_SSID_LENGTH)));
+        memcpy(wifi_config.sta.password, password.c_str(),
+               std::min(size_t(password.length()), size_t(MAX_PASSWORD_LENGTH)));
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
@@ -328,18 +329,6 @@ String WiFiServerService::getSSID() {
     return String((char*)wifi_cfg.sta.ssid);
 }
 
-String WiFiServerService::getPassword() {
-    wifi_config_t wifi_cfg;
-
-    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
-    if (error != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get wifi config");
-        return F("Failed to get password");
-    }
-
-    return String((char*)wifi_cfg.sta.password);
-}
-
 bool WiFiServerService::restartWiFiData() {
     wifi_config_t wifi_cfg;
 
@@ -355,7 +344,6 @@ bool WiFiServerService::restartWiFiData() {
     }
 
     ESP_LOGI(TAG, "WIFI SSID: %s", (char*)wifi_cfg.sta.ssid);
-    ESP_LOGI(TAG, "WIFI Password: %s", (char*)wifi_cfg.sta.password);
 
     this->ssid = String((char*)wifi_cfg.sta.ssid);
     this->password = String((char*)wifi_cfg.sta.password);

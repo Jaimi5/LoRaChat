@@ -53,8 +53,13 @@ public:
     bool isConnected();
 
 
+    static constexpr size_t MAX_SSID_LENGTH = sizeof(wifi_sta_config_t::ssid);
+    static constexpr size_t MAX_PASSWORD_LENGTH = sizeof(wifi_sta_config_t::password);
+
+    /** Sets the SSID used by the next connect. @return a message; rejects empty or > 32 bytes. */
     String addSSID(String ssid);
 
+    /** Sets the password used by the next connect. @return a message; rejects > 64 bytes. */
     String addPassword(String password);
 
     String resetWiFiData();
@@ -63,8 +68,6 @@ public:
     String getIP();
 
     String getSSID();
-
-    String getPassword();
 
 
     WiFiCommandService* wiFiCommandService = nullptr;
