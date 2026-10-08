@@ -11,5 +11,4 @@ public:
 private:
     static void initTBeam();
     static bool beginPower();
-    static void initMakerfabsSenseLoraMoisture();
 };

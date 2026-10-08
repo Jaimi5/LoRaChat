@@ -9,19 +9,11 @@
 
 #ifdef HAS_PMU
 XPowersLibInterface* PMU = NULL;
-bool pmuInterrupt;
-
-static void setPmuFlag() {
-    pmuInterrupt = true;
-}
 #endif
 
 void InitDevices::init() {
 #if defined(T_BEAM)
     initTBeam();
-#endif
-#ifdef MAKERFABS_SENSELORA_MOISTURE
-    initMakerfabsSenseLoraMoisture();
 #endif
 }
 
@@ -32,16 +24,6 @@ bool InitDevices::pmuResponds() {
     return PMU_WIRE_PORT.endTransmission() == 0;
 #else
     return true;
-#endif
-}
-
-void InitDevices::initMakerfabsSenseLoraMoisture() {
-#ifdef MAKERFABS_SENSELORA_MOISTURE
-    pinMode(POWER_LORA, OUTPUT);
-    pinMode(LORA_CS, OUTPUT);
-    pinMode(BATTERY_PIN, INPUT);
-    digitalWrite(POWER_LORA, HIGH);
-    delay(100);
 #endif
 }
 
@@ -90,8 +72,6 @@ bool InitDevices::beginPower() {
     * */
     PMU->setChargingLedMode(XPOWERS_CHG_LED_OFF);
 
-    pinMode(PMU_IRQ, INPUT_PULLUP);
-    attachInterrupt(PMU_IRQ, setPmuFlag, FALLING);
 
     if (PMU->getChipModel() == XPOWERS_AXP192) {
         PMU->setProtectedChannel(XPOWERS_DCDC3);

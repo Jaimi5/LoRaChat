@@ -64,13 +64,7 @@ void initWiFi() {
 LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
 
 void initLoRaMesher() {
-#if defined(NODE_ACTIVE) && (NODE_ACTIVE == 0)
-    ESP_LOGI(TAG, "NODE_ACTIVE=0: LoRa disabled, skipping mesh init");
-    return;
-#else
-    // Init LoRaMesher
     loraMeshService.initLoraMesherService();
-#endif
 }
 
 #pragma endregion
@@ -198,11 +192,7 @@ void setup() {
     // Initialize LoRaMesh
     initLoRaMesher();
     ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
-#if defined(LORA_ENABLED) && !(defined(NODE_ACTIVE) && (NODE_ACTIVE == 0))
     bootGuard.reportCheck(SelfTestCheck::RADIO, loraMeshService.isRunning());
-#else
-    bootGuard.reportCheck(SelfTestCheck::RADIO, true);
-#endif
 
 #ifdef WIFI_ENABLED
     // WiFi may have connected before LoRaMesher was initialized, causing

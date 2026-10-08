@@ -1,6 +1,8 @@
 #include "displayService.h"
 #include "images.h"
 
+#include "esp_ota_ops.h"
+
 void DisplayService::createDisplayTask() {
     xTaskCreatePinnedToCore(displayTask,         /* Task function. */
                             "DisplayTask",       /* name of task. */
@@ -390,7 +392,7 @@ void DisplayService::setupTextMovement(int line, const String& text) {
 }
 
 void DisplayService::setTitle() {
-    String title = "LoRaMesher - " + String(LORAMESHER_VERSION);
+    String title = "LoRaChat " + String(esp_ota_get_app_description()->version);
     String device_id =
         "Device ID: " + String(LoRaMeshService::getInstance().getLocalAddress(), HEX);
 

@@ -9,3 +9,6 @@
 #define MQTT_PORT 1883
 #define MQTT_USERNAME ""
 #define MQTT_PASSWORD ""
+
+// Address of the node that runs as LoRaMesher network manager
+#define LORA_MANAGER_ID 0x0000
