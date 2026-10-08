@@ -341,11 +341,8 @@ LoRaChat stands on the work of many open-source projects. Thank you to their aut
 | [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) | Joan Miquel Solé | MIT | LoRa mesh protocol |
 | [RadioLib](https://github.com/jgromes/RadioLib) | Jan Gromes | MIT | LoRa radio driver |
 | [XPowersLib](https://github.com/lewisxhe/XPowersLib) | Lewis He | MIT | AXP192 / AXP2101 power management |
-| [AXP202X_Library](https://github.com/lewisxhe/AXP202X_Library) | Lewis He | MIT | AXP202 power management |
-| [U8g2](https://github.com/olikraus/u8g2) | Oliver Kraus | BSD-2-Clause | OLED display |
 | [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library), [SSD1306](https://github.com/adafruit/Adafruit_SSD1306), [BusIO](https://github.com/adafruit/Adafruit_BusIO) | Adafruit | BSD / MIT | OLED display |
 | [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | Benoît Blanchon | MIT | JSON messages |
-| [Vector](https://github.com/janelia-arduino/Vector) | Peter Polidoro | BSD-3-Clause | Fixed-size containers |
 | [TinyGPSPlus](https://github.com/mikalhart/TinyGPSPlus) | Mikal Hart | LGPL-2.1+ | GPS parsing |
 | [SparkFun u-blox Arduino Library](https://github.com/sparkfun/SparkFun_Ublox_Arduino_Library) | SparkFun Electronics | MIT | GPS configuration |
 | [EspSoftwareSerial](https://github.com/plerup/espsoftwareserial) | Dirk Kaar, Peter Lerup | LGPL-2.1+ | Software serial for sensors |
