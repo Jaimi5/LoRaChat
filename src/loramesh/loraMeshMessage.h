@@ -4,10 +4,6 @@
 
 #include "message/dataMessage.h"
 
-#ifndef USE_LORAMESHER_V2
-#include "LoraMesher.h"
-#endif
-
 #pragma pack(1)
 
 enum LoRaMeshMessageType : uint8_t {

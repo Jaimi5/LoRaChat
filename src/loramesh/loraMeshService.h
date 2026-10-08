@@ -4,11 +4,7 @@
 
 #include "config.h"
 
-#ifdef USE_LORAMESHER_V2
 #include "loramesher.hpp"
-#else
-#include "LoraMesher.h"
-#endif
 
 #include "loraMeshMessage.h"
 
@@ -38,12 +34,6 @@ public:
 
     String getRoutingTable();
 
-    // Human-readable summary of the radio parameters actually applied to the
-    // LoRa stack at init (SF/BW/power/max packet size), captured in both the v1
-    // and v2 paths. Used by the simulator to periodically log the live config so
-    // a stale/ignored value is visible inside the measurement window.
-    String getRadioInfo();
-
     void send(DataMessage* message);
 
     bool sendClosestGateway(DataMessage* message);
@@ -53,14 +43,6 @@ public:
     void removeGateway();
 
     LoRaMeshCommandService* loraMesherCommandService = nullptr;
-
-    bool hasActiveConnections();
-
-    bool hasActiveSentConnections();
-
-    bool hasActiveReceivedConnections();
-
-    size_t queueWaitingSendPacketsLength();
 
     void standby();
 
@@ -77,37 +59,15 @@ public:
 
     void updateRoutingTable();
 
-    // Largest known hop_count in the routing table (>=1, version-agnostic). Used
-    // by senders to size how long a packet needs to traverse the mesh.
-    uint8_t getMaxHopDepth();
-
-    // Pace a sender to the LoRaMesher TDMA schedule: block until `nSlots` of this
-    // node's data slots have passed. On v2 each step waits getTimeUntilNextDataSlot()
-    // (falling back to fallbackMs before the node has joined / on v1).
-    void waitForDataSlots(uint8_t nSlots, uint32_t fallbackMs);
-
-#ifdef USE_LORAMESHER_V2
     std::vector<loramesher::RouteEntry> getRoutingTableEntries();
 
     size_t GetRxQueueSize() const;
 
     size_t GetTxQueueSize() const;
 
-    uint32_t getTimeUntilNextDataSlot(uint32_t guard_time_ms = 200) const;
-#else
-    void loopReceivedPackets();
-
-    LM_LinkedList<RouteNode>* routingTableList = NULL;
-#endif
-
 private:
-    // Radio config actually applied at init (version-agnostic). Populated by
-    // initLoraMesherService() in both the v1 and v2 branches.
-    String radioInfo_ = "SF=? BW=? pow=? maxPkt=?";
-
     bool running_ = false;
 
-#ifdef USE_LORAMESHER_V2
     std::unique_ptr<loramesher::LoraMesher> mesher_;
 
     // Queue message struct — heap-allocated pointer, freed after processing
@@ -121,15 +81,6 @@ private:
 
     static void loraReceiveLoop(void* pvParameters);
     void createReceiveTask();
-#else
-    LoraMesher& radio = LoraMesher::getInstance();
-
-    TaskHandle_t receiveLoRaMessage_Handle = NULL;
-
-    void createReceiveMessages();
-
-    DataMessage* createDataMessage(AppPacket<LoRaMeshMessage>* message);
-#endif
 
     LoRaMeshService() : MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
         loraMesherCommandService = new LoRaMeshCommandService();

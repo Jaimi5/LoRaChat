@@ -1,18 +1,7 @@
 #include "loraMeshService.h"
-#include "esp_heap_caps.h"
 
 static const char* LMS_TAG = "LoRaMeshService";
 
-// #define LORA_CS 18    // SPI Chip Select (NSS)
-// #define LORA_RST 23   // Radio Reset pin
-// #define LORA_IRQ 26   // DIO0 - Primary interrupt
-// #define LORA_IO1 33   // DIO1 - Secondary interrupt
-
-
-#ifdef USE_LORAMESHER_V2
-// ============================================================
-// LoRaMesher v2 (Builder pattern, callback-based)
-// ============================================================
 
 void LoRaMeshService::initLoraMesherService() {
 #ifdef LORA_ENABLED
@@ -23,14 +12,6 @@ void LoRaMeshService::initLoraMesherService() {
     loramesher::RadioConfig radioConfig(LORA_RADIO_TYPE, LORA_FREQUENCY, LORA_SPREADING_FACTOR,
                                         LORA_BANDWIDTH, LORA_CODING_RATE, LORA_POWER,
                                         LORA_SYNC_WORD, LORA_CRC, LORA_PREAMBLE_LENGTH);
-
-    // #ifdef LORA_MODULE_SX1276
-    //     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1276);
-    // #elif defined(LORA_MODULE_SX1278)
-    //     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1278);
-    // #else
-    //     loramesher::RadioConfig radioConfig(loramesher::RadioType::kSx1276);
-    // #endif
 
     loramesher::LoRaMeshProtocolConfig meshConfig;
 
@@ -58,9 +39,8 @@ void LoRaMeshService::initLoraMesherService() {
                   .withLoRaMeshProtocol(meshConfig)
                   .Build();
 
-    radioInfo_ = "SF=" + String((unsigned)LORA_SPREADING_FACTOR) + " BW=" +
-                 String((float)LORA_BANDWIDTH, 1) + " pow=" + String((int)LORA_POWER) +
-                 " maxPkt=" + String((unsigned)LORA_MAX_PACKET_SIZE);
+    ESP_LOGI(LMS_TAG, "Radio SF=%u BW=%.1f pow=%d maxPkt=%u", (unsigned)LORA_SPREADING_FACTOR,
+             (float)LORA_BANDWIDTH, (int)LORA_POWER, (unsigned)LORA_MAX_PACKET_SIZE);
 
     loraReceiveQueue_ = xQueueCreate(10, sizeof(LoRaQueueMessage*));
 
@@ -94,9 +74,7 @@ void LoRaMeshService::initLoraMesherService() {
         }
     });
 
-    heap_caps_check_integrity_all(true);
     auto result = mesher_->Start();
-    heap_caps_check_integrity_all(true);
     if (result) {
         running_ = true;
         ESP_LOGI(LMS_TAG, "LoraMesher v2 initialized");
@@ -163,7 +141,6 @@ void LoRaMeshService::send(DataMessage* message) {
         return;
 
     size_t totalSize = sizeof(LoRaMeshMessage) + message->messageSize;
-    heap_caps_check_integrity_all(true);
     std::vector<uint8_t> payload(reinterpret_cast<uint8_t*>(loraMeshMessage),
                                  reinterpret_cast<uint8_t*>(loraMeshMessage) + totalSize);
 
@@ -173,7 +150,6 @@ void LoRaMeshService::send(DataMessage* message) {
     }
 
     vPortFree(loraMeshMessage);
-    heap_caps_check_integrity_all(true);
     ESP_LOGV(LMS_TAG, "Heap size send 2: %d", ESP.getFreeHeap());
 }
 
@@ -203,30 +179,6 @@ void LoRaMeshService::removeGateway() {
     if (mesher_) {
         mesher_->SetNodeCapabilities(loramesher::NodeCapabilities::NONE);
     }
-}
-
-bool LoRaMeshService::hasActiveConnections() {
-    if (!mesher_)
-        return false;
-
-    // TODO: Implement this.
-    //  return mesher_->GetPendingTXPackets();
-    return false;
-}
-
-bool LoRaMeshService::hasActiveSentConnections() {
-    // v2 doesn't distinguish sent/received connections
-    return hasActiveConnections();
-}
-
-bool LoRaMeshService::hasActiveReceivedConnections() {
-    // v2 doesn't distinguish sent/received connections
-    return hasActiveConnections();
-}
-
-size_t LoRaMeshService::queueWaitingSendPacketsLength() {
-    // v2 doesn't expose queue sizes directly
-    return 0;
 }
 
 void LoRaMeshService::standby() {
@@ -280,351 +232,10 @@ LoRaMeshMessage* LoRaMeshService::createLoRaMeshMessage(DataMessage* message) {
     return loraMeshMessage;
 }
 
-
 size_t LoRaMeshService::GetRxQueueSize() const {
-    return mesher_->GetRxQueueSize();
+    return mesher_ ? mesher_->GetRxQueueSize() : 0;
 }
 
 size_t LoRaMeshService::GetTxQueueSize() const {
-    return mesher_->GetTxQueueSize();
-}
-
-uint32_t LoRaMeshService::getTimeUntilNextDataSlot(uint32_t guard_time_ms) const {
-    if (!mesher_)
-        return 0;
-    return mesher_->GetTimeUntilNextDataSlot(guard_time_ms);
-}
-
-#else
-// ============================================================
-// LoRaMesher v1 (singleton, task-notification API)
-// ============================================================
-
-#if defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_LORA_32) || defined(T_BEAM_V10) || \
-    defined(T_BEAM_V12)
-SPIClass newSPI(HSPI);
-#endif
-
-void LoRaMeshService::initLoraMesherService() {
-#ifdef LORA_ENABLED
-    LoraMesher::LoraMesherConfig config = LoraMesher::LoraMesherConfig();
-
-    config.loraCs = LORA_CS;
-    config.loraRst = LORA_RST;
-    config.loraIrq = LORA_IRQ;
-    config.loraIo1 = LORA_IO1;
-
-    ESP_LOGV(LMS_TAG, "LoraMesher config: CS: %d, RST: %d, IRQ: %d, IO1: %d", config.loraCs,
-             config.loraRst, config.loraIrq, config.loraIo1);
-
-#ifdef LORA_MODULE_SX1276
-    config.module = LoraMesher::LoraModules::SX1276_MOD;
-#elif defined(LORA_MODULE_SX1262)
-    config.module = LoraMesher::LoraModules::SX1262_MOD;
-#endif
-
-#if defined(NAYAD_V1) || defined(NAYAD_V1R2) || defined(T_BEAM_LORA_32) || defined(T_BEAM_V10) || \
-    defined(T_BEAM_V12)
-    newSPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
-    config.spi = &newSPI;
-#endif
-
-    ESP_LOGV(LMS_TAG, "LoraMesher config: Module: %d", config.module);
-    ESP_LOGV(LMS_TAG, "LoraMesher config: LORA_SCK: %d, LORA_MISO: %d, LORA_MOSI: %d, LORA_CS: %d",
-             LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
-
-    // Apply radio parameters from config.h. Without these the v1 library keeps
-    // its LM_* struct defaults (SF7 / 869.9 MHz / 6 dBm / sync 19) and every
-    // batch/baseline override is silently ignored — mirror the v2 RadioConfig.
-    config.freq = LORA_FREQUENCY;
-    config.bw = LORA_BANDWIDTH;
-    config.sf = LORA_SPREADING_FACTOR;
-    config.cr = LORA_CODING_RATE;
-    config.syncWord = LORA_SYNC_WORD;
-    config.power = LORA_POWER;
-    config.preambleLength = LORA_PREAMBLE_LENGTH;
-    config.max_packet_size = LORA_MAX_PACKET_SIZE;
-
-    // Confirmation log of what actually goes into begin(). MUST be ESP_LOGI: the
-    // ESP_LOGV lines above are compiled out at CORE_DEBUG_LEVEL=3. Logging the
-    // struct fields (not the macros) also flags a future re-break — if the block
-    // above is removed, config.sf falls back to LM_LORASF and this prints SF=7.
-    ESP_LOGI(LMS_TAG,
-             "v1 radio applied: SF=%u freq=%.3f BW=%.1f CR=%u SW=%u pow=%d preLen=%u maxPkt=%u",
-             config.sf, config.freq, config.bw, config.cr, config.syncWord, config.power,
-             config.preambleLength, (unsigned)config.max_packet_size);
-
-    radioInfo_ = "SF=" + String((unsigned)config.sf) + " BW=" + String(config.bw, 1) +
-                 " pow=" + String((int)config.power) + " maxPkt=" + String((unsigned)config.max_packet_size);
-
-    // Initialize LoRaMesher
-    radio.begin(config);
-
-    // Create the receive task and add it to the LoRaMesher
-    createReceiveMessages();
-
-    // Start LoRaMesher
-    radio.start();
-    running_ = true;
-
-    ESP_LOGV(LMS_TAG, "LoraMesher initialized");
-#endif
-}
-
-void LoRaMeshService::loopReceivedPackets() {
-    // Iterate through all the packets inside the Received User Packets FiFo
-    while (radio.getReceivedQueueSize() > 0) {
-        ESP_LOGV(LMS_TAG, "LoRaPacket received");
-        ESP_LOGV(LMS_TAG, "Queue receiveUserData size: %d", radio.getReceivedQueueSize());
-        ESP_LOGV(LMS_TAG, "Heap size receive: %d", ESP.getFreeHeap());
-
-        // Get the first element inside the Received User Packets FiFo
-        AppPacket<LoRaMeshMessage>* packet = radio.getNextAppPacket<LoRaMeshMessage>();
-
-        // Create a DataMessage from the received packet
-        DataMessage* message = createDataMessage(packet);
-
-        // Process the packet
-        MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, message);
-
-        // Delete the message
-        vPortFree(message);
-
-        // Delete the packet when used. It is very important to call this function to release the
-        // memory of the packet.
-        radio.deletePacket(packet);
-        ESP_LOGV(LMS_TAG, "Heap size receive2: %d", ESP.getFreeHeap());
-    }
-}
-
-/**
- * @brief Function that process the received packets
- *
- */
-void processReceivedPackets(void*) {
-    for (;;) {
-        ESP_LOGV(LMS_TAG, "Stack space unused after entering the task: %d",
-                 uxTaskGetStackHighWaterMark(NULL));
-
-        /* Wait for the notification of processReceivedPackets and enter blocking */
-        ulTaskNotifyTake(pdPASS, portMAX_DELAY);
-        LoRaMeshService::getInstance().loopReceivedPackets();
-    }
-}
-
-
-/**
- * @brief Create a Receive Messages Task and add it to the LoRaMesher
- *
- */
-void LoRaMeshService::createReceiveMessages() {
-    int res = xTaskCreate(processReceivedPackets, "Receive App Task", 5000, (void*)1, 2,
-                          &receiveLoRaMessage_Handle);
-    if (res != pdPASS) {
-        ESP_LOGE(LMS_TAG, "Receive App Task creation gave error: %d", res);
-    }
-
-    radio.setReceiveAppDataTaskHandle(receiveLoRaMessage_Handle);
-}
-
-LoRaMeshMessage* LoRaMeshService::createLoRaMeshMessage(DataMessage* message) {
-    LoRaMeshMessage* loraMeshMessage =
-        (LoRaMeshMessage*)pvPortMalloc(sizeof(LoRaMeshMessage) + message->messageSize);
-
-    if (loraMeshMessage) {
-        loraMeshMessage->appPortDst = message->appPortDst;
-        loraMeshMessage->appPortSrc = message->appPortSrc;
-        loraMeshMessage->messageId = message->messageId;
-        memcpy(loraMeshMessage->dataMessage, message->message, message->messageSize);
-    }
-
-    return loraMeshMessage;
-}
-
-DataMessage* LoRaMeshService::createDataMessage(AppPacket<LoRaMeshMessage>* appPacket) {
-    uint32_t dataMessageSize =
-        appPacket->payloadSize + sizeof(DataMessage) - sizeof(LoRaMeshMessage);
-    uint32_t messageSize = dataMessageSize - sizeof(DataMessage);
-
-    DataMessage* dataMessage = (DataMessage*)pvPortMalloc(dataMessageSize);
-
-    if (dataMessage) {
-        LoRaMeshMessage* message = appPacket->payload;
-
-        dataMessage->appPortDst = message->appPortDst;
-        dataMessage->appPortSrc = message->appPortSrc;
-        dataMessage->messageId = message->messageId;
-
-        dataMessage->addrSrc = appPacket->src;
-        dataMessage->addrDst = appPacket->dst;
-
-        dataMessage->messageSize = messageSize;
-
-        memcpy(dataMessage->message, message->dataMessage, messageSize);
-    }
-
-    return dataMessage;
-}
-
-uint16_t LoRaMeshService::getLocalAddress() {
-    return radio.getLocalAddress();
-}
-
-String LoRaMeshService::getRoutingTable() {
-    String routingTable = "--- Routing Table ---\n";
-
-    // Set the routing table list that is being used and cannot be accessed (Remember to release use
-    // after usage)
-    LM_LinkedList<RouteNode>* routingTableList = radio.routingTableListCopy();
-
-    routingTableList->setInUse();
-
-    if (routingTableList->moveToStart()) {
-        do {
-            RouteNode* routeNode = routingTableList->getCurrent();
-            NetworkNode node = routeNode->networkNode;
-            routingTable += String(node.address) + " (" + String(node.metric) +
-                            ") - Via: " + String(routeNode->via) + "\n";
-        } while (routingTableList->next());
-    } else {
-        routingTable += "No routes";
-    }
-
-    // Release routing table list usage.
-    routingTableList->releaseInUse();
-
-    routingTableList->Clear();
-
-    return routingTable;
-}
-
-void LoRaMeshService::send(DataMessage* message) {
-    ESP_LOGV(LMS_TAG, "Heap size send: %d", ESP.getFreeHeap());
-
-    LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
-
-#if SEND_RELIABLE == 0
-    radio.createPacketAndSend(message->addrDst, (uint8_t*)loraMeshMessage,
-                              sizeof(LoRaMeshMessage) + message->messageSize);
-#else
-    radio.sendReliablePacket(message->addrDst, (uint8_t*)loraMeshMessage,
-                             sizeof(LoRaMeshMessage) + message->messageSize);
-#endif
-
-    vPortFree(loraMeshMessage);
-    ESP_LOGV(LMS_TAG, "Heap size send 2: %d", ESP.getFreeHeap());
-}
-
-bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
-    RouteNode* gatewayNode = radio.getClosestGateway();
-
-    if (!gatewayNode) {
-        ESP_LOGE(LMS_TAG, "No gateway found");
-        return false;
-    }
-
-    message->addrDst = gatewayNode->networkNode.address;
-
-    ESP_LOGI(LMS_TAG, "Sending message to gateway %X", message->addrDst);
-
-    send(message);
-
-    return true;
-}
-
-void LoRaMeshService::setGateway() {
-    LoraMesher::getInstance().addGatewayRole();
-}
-
-void LoRaMeshService::removeGateway() {
-    LoraMesher::getInstance().removeGatewayRole();
-}
-
-bool LoRaMeshService::hasActiveConnections() {
-    return radio.hasActiveConnections();
-}
-
-bool LoRaMeshService::hasActiveSentConnections() {
-    return radio.hasActiveSentConnections();
-}
-
-bool LoRaMeshService::hasActiveReceivedConnections() {
-    return radio.hasActiveReceivedConnections();
-}
-
-size_t LoRaMeshService::queueWaitingSendPacketsLength() {
-    return radio.queueWaitingSendPacketsLength();
-}
-
-void LoRaMeshService::standby() {
-    return radio.standby();
-}
-
-bool LoRaMeshService::hasMeshContact() {
-    return radio.routingTableSize() > 0;
-}
-
-uint32_t LoRaMeshService::getSuperframeDurationMs() {
-    return 0;
-}
-
-bool LoRaMeshService::hasGateway() {
-    RouteNode* gatewayNode = radio.getClosestGateway();
-
-    return gatewayNode != nullptr;
-}
-
-void LoRaMeshService::updateRoutingTable() {
-    if (radio.routingTableSize() == 0) {
-        ESP_LOGW(LMS_TAG, "No routes in the routing table");
-    }
-
-    if (routingTableList != NULL) {
-        routingTableList->Clear();
-        delete (routingTableList);
-    }
-
-    routingTableList = radio.routingTableListCopy();
-}
-
-#endif  // USE_LORAMESHER_V2
-
-// ============================================================
-// Version-agnostic send pacing helpers (declared outside the #ifdef so both
-// library backends share one definition; the v2-only API calls are guarded).
-// ============================================================
-
-uint8_t LoRaMeshService::getMaxHopDepth() {
-#ifdef USE_LORAMESHER_V2
-    uint8_t depth = 0;
-    for (const auto& route : getRoutingTableEntries()) {
-        if (route.is_valid && route.hop_count > depth)
-            depth = route.hop_count;
-    }
-    return depth > 0 ? depth : 1;
-#else
-    return 1;
-#endif
-}
-
-void LoRaMeshService::waitForDataSlots(uint8_t nSlots, uint32_t fallbackMs) {
-    if (nSlots == 0)
-        nSlots = 1;
-#ifdef USE_LORAMESHER_V2
-    for (uint8_t i = 0; i < nSlots; i++) {
-        // 0 means "not joined / no slot yet" — fall back so warmup still advances.
-        uint32_t waitMs = getTimeUntilNextDataSlot();
-        if (waitMs == 0)
-            waitMs = fallbackMs;
-        vTaskDelay(waitMs / portTICK_PERIOD_MS);
-    }
-#else
-    // v1 has no slot schedule; approximate with a single fallback wait.
-    vTaskDelay(fallbackMs / portTICK_PERIOD_MS);
-#endif
-}
-
-// Version-agnostic: returns the radio config recorded at init by either branch.
-String LoRaMeshService::getRadioInfo() {
-    return radioInfo_;
+    return mesher_ ? mesher_->GetTxQueueSize() : 0;
 }

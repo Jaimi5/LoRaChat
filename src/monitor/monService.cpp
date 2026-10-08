@@ -2,9 +2,6 @@
 #include <Arduino.h>
 #include <algorithm>
 #include "loramesh/loraMeshService.h"
-#ifndef USE_LORAMESHER_V2
-#include "LoraMesher.h"
-#endif
 #include "esp_heap_caps.h"
 #include "monServiceMessage.h"
 
@@ -83,13 +80,8 @@ monOneMessage* MonService::createMONPayloadMessage(int number_of_neighbors) {
     MONMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
     MONMessage->RTcount = MONCOUNT_MONONEMESSAGE;
     MONMessage->uptime = millis();
-#ifdef USE_LORAMESHER_V2
     MONMessage->TxQ = LoRaMeshService::getInstance().GetTxQueueSize();
     MONMessage->RxQ = LoRaMeshService::getInstance().GetRxQueueSize();
-#else
-    MONMessage->TxQ = LoraMesher::getInstance().getSendQueueSize();
-    MONMessage->RxQ = LoraMesher::getInstance().getReceivedQueueSize();
-#endif
     MONMessage->number_of_neighbors = number_of_neighbors;
     MONMessage->appPortDst = appPort::MQTTApp;
     MONMessage->appPortSrc = appPort::MonApp;
@@ -99,7 +91,6 @@ monOneMessage* MonService::createMONPayloadMessage(int number_of_neighbors) {
     return MONMessage;
 }
 
-#ifdef USE_LORAMESHER_V2
 std::vector<routing_entry> MonService::collectReportedRoutes() {
     std::vector<routing_entry> entries;
     for (const auto& route : LoRaMeshService::getInstance().getRoutingTableEntries()) {
@@ -138,7 +129,6 @@ void MonService::sendRoutes(const std::vector<routing_entry>& entries) {
         vPortFree(message);
     }
 }
-#endif
 
 void MonService::sendingLoopOneMessage(void* parameter) {
     MonService& monService = MonService::getInstance();
@@ -153,7 +143,6 @@ void MonService::sendingLoopOneMessage(void* parameter) {
         } else {
             uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
             ESP_LOGD(MON_TAG, "Stack space unused after entering the task: %d", uxHighWaterMark);
-#ifdef USE_LORAMESHER_V2
             LoRaMeshService::getInstance().updateRoutingTable();
             std::vector<routing_entry> entries = collectReportedRoutes();
             if (entries.empty()) {
@@ -161,50 +150,6 @@ void MonService::sendingLoopOneMessage(void* parameter) {
             } else {
                 monService.sendRoutes(entries);
             }
-#else
-            RoutingTableService::printRoutingTable();
-            LoRaMeshService::getInstance().updateRoutingTable();
-            LM_LinkedList<RouteNode>* routingTableList =
-                LoRaMeshService::getInstance().routingTableList;
-            // count neighbors
-            if (routingTableList->moveToStart()) {
-                routingTableList->setInUse();
-                MonService::getInstance().monMessageId++;
-                uint16_t monMessagecount = 0;
-                do {
-                    RouteNode* rtn = routingTableList->getCurrent();
-                    if (rtn->networkNode.address == rtn->via) {
-                        ++monMessagecount;
-                    };
-                } while (routingTableList->next());
-                if (monMessagecount > 0) {
-                    routingTableList->moveToStart();
-                    monOneMessage* MONMessage =
-                        getInstance().createMONPayloadMessage(monMessagecount);
-                    int i = 0;
-                    do {
-                        RouteNode* rtn = routingTableList->getCurrent();
-                        if (rtn->networkNode.address == rtn->via) {
-                            routing_entry& entry = MONMessage->rt[i++];
-                            entry.neighbor = rtn->networkNode.address;
-                            entry.next_hop = rtn->via;
-                            entry.link_quality = 0;
-                            entry.hop_count = rtn->networkNode.metric;
-                        }
-                    } while (routingTableList->next());
-                    ESP_LOGV(MON_TAG, "sending monOneMessage");
-                    // Send the message
-                    MessageManager::getInstance().sendMessage(messagePort::MqttPort,
-                                                              (DataMessage*)MONMessage);
-                    // Delete the message
-                    vPortFree(MONMessage);
-                } else {
-                    ESP_LOGD(MON_TAG, "sendingLoopOneMessage: no neighbors?");
-                }
-            } else {
-                ESP_LOGD(MON_TAG, "No routes");
-            }
-#endif
             // end send MON
             // Static pacing: fixed MON_SENDING_EVERY delay. Offered load is exactly
             // this interval and reproducible; per-SF capacity matching is done by
