@@ -1,3 +1,5 @@
+#include "config.h"
+#ifdef BLUETOOTH_ENABLED
 #include "bluetoothCommandService.h"
 #include "bluetoothService.h"
 
@@ -10,3 +12,5 @@ BluetoothCommandService::BluetoothCommandService() {
                                       : "Device not connected";
                        }));
 }
+
+#endif  // BLUETOOTH_ENABLED

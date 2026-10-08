@@ -1,3 +1,5 @@
+#include "config.h"
+#ifdef BLUETOOTH_ENABLED
 #include "bluetoothService.h"
 
 static const char* BLE_TAG = "BluetoothService";
@@ -102,3 +104,5 @@ void BluetoothService::disconnect() {
     delete SerialBT;
     vTaskDelete(bluetooth_TaskHandle);
 }
+
+#endif  // BLUETOOTH_ENABLED
