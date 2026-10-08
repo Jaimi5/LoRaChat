@@ -66,6 +66,9 @@ bool InitDevices::pmuResponds() {
 }
 
 void InitDevices::initTBeam() {
+    // After reset the pin's pull-down lights the LED; drive it off.
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LED_OFF);
     beginPower();
 }
 
@@ -99,16 +102,9 @@ bool InitDevices::beginPower() {
         return false;
     }
 
-    // Disable charging LED
-    /*
-      The default setting is CHGLED is automatically controlled by the PMU.
-    - XPOWERS_CHG_LED_OFF,
-    - XPOWERS_CHG_LED_BLINK_1HZ,
-    - XPOWERS_CHG_LED_BLINK_4HZ,
-    - XPOWERS_CHG_LED_ON,
-    - XPOWERS_CHG_LED_CTRL_CHG,
-    * */
-    PMU->setChargingLedMode(XPOWERS_CHG_LED_OFF);
+    // Charge LED driven by the charger: on while charging (powered by USB or the solar panel),
+    // off when full or running on battery, blinking on a charge fault.
+    PMU->setChargingLedMode(XPOWERS_CHG_LED_CTRL_CHG);
 
 
     if (PMU->getChipModel() == XPOWERS_AXP192) {

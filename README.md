@@ -26,7 +26,7 @@ One firmware image runs on both TTGO T-Beam revisions:
 - T-Beam v1.0/v1.1 (AXP192 power management)
 - T-Beam v1.2 (AXP2101 power management)
 
-The power management chip is detected at boot. The firmware powers the LoRa radio, the ESP32 and the rail of the OLED and the 3.3 V header pins, and switches the GPS off (it is not used). Batteries are charged to 4.2 V.
+The power management chip is detected at boot. The firmware powers the LoRa radio, the ESP32 and the rail of the OLED and the 3.3 V header pins, and switches the GPS off (it is not used). Batteries are charged to 4.2 V. The user LED (GPIO4) is kept off; the charge LED is driven by the charger: on while charging, off when full or on battery, blinking on a charge fault (for example no battery inserted).
 
 The OLED shows the node address and version for 60 s after boot (`DISPLAY_AWAKE_MS` in `src/config.h`) and then sleeps. A short press of the power button (PWR) wakes it for another 60 s; holding the button for 4 s switches the board off. The `/displayOn` and `/displayOff` commands wake it and put it to sleep.
 

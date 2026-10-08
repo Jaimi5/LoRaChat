@@ -18,6 +18,11 @@
 #define LORA_IRQ 26
 #define LORA_IO1 33
 
+// User LED, lit when the pin is low
+#define LED_PIN 4
+#define LED_ON LOW
+#define LED_OFF HIGH
+
 // Power management unit (AXP192 or AXP2101, detected at runtime)
 #define HAS_PMU
 #define PMU_IRQ 35
