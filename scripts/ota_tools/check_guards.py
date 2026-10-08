@@ -4,6 +4,7 @@
 - esp_ota_mark_app_valid_cancel_rollback() is only called by the boot guard.
 - verifyRollbackLater() is defined and returns true, so initArduino() leaves PENDING_VERIFY alone.
 - CONFIG_ARDUINO_ISR_IRAM is not enabled and app rollback is enabled in every sdkconfig.
+- A debug variant sdkconfig.<env>-debug differs from sdkconfig.<env> only in debug options.
 
 Exits non-zero and prints every violation.
 """
@@ -11,10 +12,11 @@ Exits non-zero and prints every violation.
 import re
 import sys
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 BOOT_GUARD = Path("src/ota/otaBootGuard.cpp")
 SOURCE_SUFFIXES = {".c", ".cpp", ".h", ".hpp"}
+DEBUG_OPTION_PREFIXES = ("CONFIG_HEAP_", "CONFIG_LOG_DEFAULT_LEVEL", "CONFIG_LOG_MAXIMUM_")
 
 
 def check_mark_valid(root: Path) -> List[str]:
@@ -52,8 +54,37 @@ def check_sdkconfigs(root: Path) -> List[str]:
     return errors
 
 
+def parse_sdkconfig(text: str) -> Dict[str, str]:
+    options = {}
+    for line in text.splitlines():
+        unset = re.match(r"# (CONFIG_\w+) is not set$", line)
+        if unset:
+            options[unset.group(1)] = "n"
+        elif line.startswith("CONFIG_") and "=" in line:
+            name, value = line.split("=", 1)
+            options[name] = value
+    return options
+
+
+def check_debug_variants(root: Path) -> List[str]:
+    errors = []
+    for debug in sorted(root.glob("sdkconfig.*-debug")):
+        release = root / debug.name[: -len("-debug")]
+        if not release.exists():
+            errors.append(f"{debug.name}: no matching {release.name}")
+            continue
+        a = parse_sdkconfig(release.read_text(errors="replace"))
+        b = parse_sdkconfig(debug.read_text(errors="replace"))
+        for name in sorted(set(a) | set(b)):
+            if a.get(name) != b.get(name) and not name.startswith(DEBUG_OPTION_PREFIXES):
+                errors.append(f"{debug.name}: {name} differs from {release.name} "
+                              f"({a.get(name, 'missing')} vs {b.get(name, 'missing')})")
+    return errors
+
+
 def run(root: Path) -> List[str]:
-    return check_mark_valid(root) + check_verify_rollback_later(root) + check_sdkconfigs(root)
+    return (check_mark_valid(root) + check_verify_rollback_later(root) + check_sdkconfigs(root)
+            + check_debug_variants(root))
 
 
 def main(argv: List[str]) -> int:
