@@ -104,3 +104,20 @@ def test_committed_vectors_match_the_test_key():
     assert vectors["public_key"] == public.hex()
     for name, vector in vectors["vectors"].items():
         assert sm.verify(bytes.fromhex(vector["manifest"]), public) == vector["valid"], name
+
+
+def c_array_bytes(header: str, name: str) -> bytes:
+    import re
+    match = re.search(name + r"\[\d+\] = \{(.*?)\};", header, re.S)
+    assert match, name
+    return bytes(int(v, 16) for v in re.findall(r"0x([0-9A-F]{2})", match.group(1)))
+
+
+def test_firmware_test_key_header_matches_the_vectors():
+    header = sm.FIRMWARE_TEST_KEY_HEADER.read_text()
+    vectors = json.loads((sm.VECTORS_DIR / "manifest_vectors.json").read_text())
+    public = sm.public_key_bytes(sm.load_key(sm.TEST_KEY))
+    assert c_array_bytes(header, "OTA_TEST_PUBLIC_KEY") == public
+    manifest = c_array_bytes(header, "OTA_SELF_TEST_MANIFEST")
+    assert manifest.hex() == vectors["vectors"]["valid"]["manifest"]
+    assert sm.verify(manifest, public)

@@ -4,11 +4,13 @@
 #include "esp_flash_partitions.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include "esp_timer.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "soc/rtc_wdt.h"
 
 #include "loramesh/loraMeshService.h"
+#include "otaKeys.h"
 
 static const char* BG_TAG = "OtaBootGuard";
 
@@ -266,9 +268,15 @@ void OtaBootGuard::finishSelfTest(SelfTestVerdict verdict, FailReason reason) {
 
 void OtaBootGuard::checkOtaPath(bool nvsOk) {
     bool nextSlot = esp_ota_get_next_update_partition(nullptr) != nullptr;
+    int64_t start = esp_timer_get_time();
+    bool signatureOk = otaSignaturePathWorks();
+    int64_t verifyUs = esp_timer_get_time() - start;
     if (!nvsOk) ESP_LOGE(BG_TAG, "OTA path: NVS not readable");
     if (!nextSlot) ESP_LOGE(BG_TAG, "OTA path: no next update partition");
-    reportCheck(SelfTestCheck::OTA_PATH, nvsOk && nextSlot);
+    if (!signatureOk) ESP_LOGE(BG_TAG, "OTA path: embedded manifest signature does not verify");
+    ESP_LOGI(BG_TAG, "OTA path: signature check %s in %lld ms", signatureOk ? "ok" : "failed",
+             verifyUs / 1000);
+    reportCheck(SelfTestCheck::OTA_PATH, nvsOk && nextSlot && signatureOk);
 }
 
 void OtaBootGuard::printBootLine(ImageState state) {
