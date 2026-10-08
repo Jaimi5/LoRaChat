@@ -31,7 +31,6 @@ void MqttService::initMqtt(String lclName) {
 
 static esp_mqtt_client_handle_t client;
 bool mqtt_connected = false;
-static int mqtt_error_count = 0;
 
 void MqttService::createMqttTask() {
     int res = xTaskCreate(MqttLoop, "Mqtt Task", 4096, (void*)1, 2, &mqtt_TaskHandle);
@@ -170,7 +169,6 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED: {
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_CONNECTED");
             mqtt_connected = true;
-            mqtt_error_count = 0;
             String topic = String(MQTT_TOPIC_SUB) + MqttService::getInstance().localName;
             esp_mqtt_client_subscribe(client, topic.c_str(), 2);
         } break;
@@ -200,18 +198,11 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
             }
             if (WiFiServerService::getInstance().isConnected() && mqtt_connected) {
                 mqtt_connected = false;
-                mqtt_error_count++;
-                if (mqtt_error_count >= 3) {
-                    ESP_LOGI(MQTT_TAG, "MQTT restart (rebooting) after %d errors", mqtt_error_count);
-                    esp_restart();
-                } else {
-                    ESP_LOGI(MQTT_TAG, "MQTT error #%d — reconnecting (no reboot)", mqtt_error_count);
-                    esp_mqtt_client_reconnect(client);
-                }
+                ESP_LOGI(MQTT_TAG, "MQTT error, reconnecting");
+                esp_mqtt_client_reconnect(client);
             }
             break;
         default:
-            // ESP_LOGI(MQTT_TAG, "Other event id:%d", event->event_id);
             break;
     }
 }

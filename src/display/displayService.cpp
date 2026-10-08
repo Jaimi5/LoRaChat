@@ -16,9 +16,6 @@ void DisplayService::createDisplayTask() {
 void DisplayService::init() {
     ESP_LOGV(DISPLAY_TAG, "Initializing Display Service");
 
-    // Initialize the wire
-    Wire1.begin(DISPLAY_SDA, DISPLAY_SCL);
-
     if (DISPLAY_RST != -1) {
         pinMode(DISPLAY_RST, OUTPUT);
         digitalWrite(DISPLAY_RST, LOW);

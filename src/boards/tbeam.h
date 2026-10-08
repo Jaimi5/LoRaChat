@@ -5,9 +5,7 @@
 #define I2C_SDA SDA
 #define I2C_SCL SCL
 
-// OLED display (SSD1306)
-#define DISPLAY_SDA I2C_SDA
-#define DISPLAY_SCL I2C_SCL
+// OLED display (SSD1306), on the shared I2C bus
 #define DISPLAY_RST -1
 
 // LoRa radio (SX1276)

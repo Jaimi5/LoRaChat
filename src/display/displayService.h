@@ -64,7 +64,7 @@ private:
         commandService = displayCommandService;
     };
 
-    Adafruit_SSD1306 display = Adafruit_SSD1306(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire1, DISPLAY_RST);
+    Adafruit_SSD1306 display = Adafruit_SSD1306(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire, DISPLAY_RST);
 
     TaskHandle_t display_TaskHandle = NULL;
 
