@@ -89,6 +89,8 @@ Commands can be typed on the USB serial port (115200 baud, one command per line)
 
 The same commands also arrive over MQTT and LoRa.
 
+Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network to check for updates, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
+
 ## MQTT messages
 
 Messages travel as JSON on two topics:

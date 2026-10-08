@@ -39,6 +39,9 @@
 // Serial console
 #include "commands/serialConsole.h"
 
+// Maintenance WiFi
+#include "ota/maintWifi.h"
+
 static const char* TAG = "Main";
 
 #pragma region Display
@@ -216,6 +219,8 @@ void setup() {
 #endif
 
     SerialConsole::begin();
+
+    MaintenanceWifi::getInstance().startBootWindow(gateway, bootGuard.isPendingVerify());
 
     bootGuard.reportSetupDone();
 
