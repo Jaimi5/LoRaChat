@@ -326,6 +326,43 @@ directoryName
 ├── experiment2 # The name of the experiment 2
 ```
 
+# Acknowledgements
+
+LoRaChat stands on the work of many open-source projects. Thank you to their authors and maintainers.
+
+### Firmware
+
+| Project | Author | License | Used for |
+|---|---|---|---|
+| [ESP-IDF](https://github.com/espressif/esp-idf) | Espressif | Apache-2.0 | Framework, WiFi, OTA, NVS, HTTP |
+| [Arduino-ESP32](https://github.com/espressif/arduino-esp32) | Espressif | LGPL-2.1+ | Arduino core on top of ESP-IDF |
+| [Mbed TLS](https://github.com/Mbed-TLS/mbedtls) | Trusted Firmware | Apache-2.0 | SHA-256, HMAC, ECDSA (shipped with ESP-IDF) |
+| [esp_delta_ota](https://components.espressif.com/components/espressif/esp_delta_ota) | Espressif | Apache-2.0 | Delta OTA patches |
+| [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) | Joan Miquel Solé | MIT | LoRa mesh protocol |
+| [RadioLib](https://github.com/jgromes/RadioLib) | Jan Gromes | MIT | LoRa radio driver |
+| [XPowersLib](https://github.com/lewisxhe/XPowersLib) | Lewis He | MIT | AXP192 / AXP2101 power management |
+| [AXP202X_Library](https://github.com/lewisxhe/AXP202X_Library) | Lewis He | MIT | AXP202 power management |
+| [U8g2](https://github.com/olikraus/u8g2) | Oliver Kraus | BSD-2-Clause | OLED display |
+| [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library), [SSD1306](https://github.com/adafruit/Adafruit_SSD1306), [BusIO](https://github.com/adafruit/Adafruit_BusIO) | Adafruit | BSD / MIT | OLED display |
+| [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | Benoît Blanchon | MIT | JSON messages |
+| [Vector](https://github.com/janelia-arduino/Vector) | Peter Polidoro | BSD-3-Clause | Fixed-size containers |
+| [TinyGPSPlus](https://github.com/mikalhart/TinyGPSPlus) | Mikal Hart | LGPL-2.1+ | GPS parsing |
+| [SparkFun u-blox Arduino Library](https://github.com/sparkfun/SparkFun_Ublox_Arduino_Library) | SparkFun Electronics | MIT | GPS configuration |
+| [EspSoftwareSerial](https://github.com/plerup/espsoftwareserial) | Dirk Kaar, Peter Lerup | LGPL-2.1+ | Software serial for sensors |
+| [ghostl](https://github.com/dok-net/ghostl) | Dirk Kaar | LGPL-2.1+ | Used by EspSoftwareSerial |
+| [OneWire](https://github.com/PaulStoffregen/OneWire) | Jim Studt, Paul Stoffregen and contributors | MIT-style | Soil sensor bus |
+
+### Tests and tools
+
+| Project | Author | License | Used for |
+|---|---|---|---|
+| [GoogleTest](https://github.com/google/googletest) | Google | BSD-3-Clause | Native unit tests |
+| [pytest](https://github.com/pytest-dev/pytest) | pytest-dev | MIT | Host tool tests |
+| [pySerial](https://github.com/pyserial/pyserial) | Chris Liechti | BSD-3-Clause | Serial access from host scripts |
+| [esptool](https://github.com/espressif/esptool) | Espressif | GPL-2.0+ | Flashing and reading flash (run as a tool, not distributed with the firmware) |
+
+The LGPL components are linked into the firmware. LoRaChat is MIT licensed and its full source is published, so you can rebuild and relink the firmware with modified versions of those libraries.
+
 # Disclaimer
 
 This project is still in development. It is not ready for production. We are still working on it.
