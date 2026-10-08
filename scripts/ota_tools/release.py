@@ -8,6 +8,7 @@ Checks before anything is copied:
 - the version has no .dirty metadata, unless --allow-dirty is given.
 
 Writes info.json with the versions and hashes that the manifest, the server and the bench use.
+With --sign-key it also writes the signed manifest.bin and bundle.bin (sign_manifest.py).
 The image identity is the appended SHA-256, the same value esp_partition_get_sha256() returns
 on the node.
 """
@@ -130,6 +131,7 @@ def check_build(build_dir: Path, project_dir: Path, allow_dirty: bool) -> Dict[s
     return {
         "version": desc["version"],
         "version_u32": version_u32(desc["version"]),
+        "project": desc["project_name"],
         "image_size": len(image),
         "slot_size": slot,
         "slot_use_pct": round(100.0 * len(image) / slot, 2),
@@ -168,12 +170,28 @@ def main(argv=None) -> int:
     parser.add_argument("--tag", help="suffix for test images, e.g. t4")
     parser.add_argument("--allow-dirty", action="store_true",
                         help="accept images built from uncommitted changes")
+    parser.add_argument("--sign-key", type=Path, help="private key that signs the manifest")
+    parser.add_argument("--key-id", type=lambda v: int(v, 0), help="key id of --sign-key")
+    parser.add_argument("--allow-downgrade", action="store_true")
+    parser.add_argument("--skip-mesh-check", action="store_true")
     args = parser.parse_args(argv)
+    if bool(args.sign_key) != (args.key_id is not None):
+        parser.error("--sign-key and --key-id go together")
 
     build_dir = args.build_dir or default_build_dir(args.env)
     try:
         out_dir = collect(args.env, build_dir, args.out, ROOT, args.tag, args.allow_dirty)
-    except (OSError, ReleaseError) as exc:
+        if args.sign_key:
+            import sign_manifest
+
+            flags = ((sign_manifest.FLAG_ALLOW_DOWNGRADE if args.allow_downgrade else 0)
+                     | (sign_manifest.FLAG_SKIP_MESH_CHECK if args.skip_mesh_check else 0))
+            try:
+                sign_manifest.sign_release(out_dir, sign_manifest.load_key(args.sign_key),
+                                           args.key_id, flags)
+            except sign_manifest.ManifestError as exc:
+                raise ReleaseError(str(exc)) from exc
+    except (OSError, ReleaseError, ValueError) as exc:
         print(f"release: {exc}", file=sys.stderr)
         return 1
     info = json.loads((out_dir / "info.json").read_text())

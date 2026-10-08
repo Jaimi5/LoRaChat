@@ -4,6 +4,7 @@
 # Each image is the normal tbeam firmware with one TEST_IMAGE_KIND fault and the next patch
 # version, so it is newer than the running image:
 #   t1 crash, t2 irq-hang, t3 loop-hang, t4 selftest-fail (see src/ota/otaBootGuard.h)
+# Images are signed with the test key (key id 1), which production builds refuse.
 # Output: release/tbeam/<version>-t<kind>/. Usage: scripts/ota_tools/build_test_images.sh [kinds]
 set -euo pipefail
 
@@ -18,5 +19,6 @@ for kind in $kinds; do
     FW_VERSION="$next_version" PLATFORMIO_BUILD_FLAGS="-D TEST_IMAGE_KIND=$kind" \
         scripts/pio.sh run -e tbeam
     FW_VERSION="$next_version" \
-        python3 scripts/ota_tools/release.py --env tbeam --tag "t$kind" --allow-dirty
+        python3 scripts/ota_tools/release.py --env tbeam --tag "t$kind" --allow-dirty \
+        --sign-key test/vectors/test_key.pem --key-id 1
 done
