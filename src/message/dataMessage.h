@@ -35,6 +35,7 @@ enum appPort : uint8_t {
     MonApp = 16,
     DisplayApp = 17,
     OTAApp = 18,
+    NodeApp = 19,
 };
 
 class DataMessageGeneric {

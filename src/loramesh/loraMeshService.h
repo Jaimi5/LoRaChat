@@ -28,7 +28,8 @@ public:
         }
     }
 
-    void initLoraMesherService();
+    /** Starts the mesh; @p networkManager makes this node the LoRaMesher network manager. */
+    void initLoraMesherService(bool networkManager);
 
     uint16_t getLocalAddress();
 

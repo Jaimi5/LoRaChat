@@ -3,7 +3,7 @@
 static const char* LMS_TAG = "LoRaMeshService";
 
 
-void LoRaMeshService::initLoraMesherService() {
+void LoRaMeshService::initLoraMesherService(bool networkManager) {
 #ifdef LORA_ENABLED
     loramesher::PinConfig pinConfig(LORA_CS, LORA_RST, LORA_IRQ, LORA_IO1, LORA_SCK, LORA_MISO,
                                     LORA_MOSI);
@@ -15,16 +15,8 @@ void LoRaMeshService::initLoraMesherService() {
 
     loramesher::LoRaMeshProtocolConfig meshConfig;
 
-    loramesher::AddressType my_address = loramesher::LoraMesher::GenerateAddressFromHardware();
-
-#if defined(LORA_MANAGER_ID)
-    // Optional: Set role based on address
-    if (my_address == LORA_MANAGER_ID) {
-        meshConfig.setNodeRole(loramesher::NodeRole::NETWORK_MANAGER);
-    } else {
-        meshConfig.setNodeRole(loramesher::NodeRole::NODE_ONLY);
-    }
-#endif
+    meshConfig.setNodeRole(networkManager ? loramesher::NodeRole::NETWORK_MANAGER
+                                          : loramesher::NodeRole::NODE_ONLY);
 
     meshConfig.setTargetDutyCycle(LORA_DUTY_CYCLE);
     meshConfig.setMaxPacketSize(LORA_MAX_PACKET_SIZE);

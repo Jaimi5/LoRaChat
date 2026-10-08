@@ -1,0 +1,16 @@
+#include "nodeCommandService.h"
+
+#include "nodeService.h"
+
+namespace {
+constexpr uint8_t COMMAND_ROLE = 1;
+constexpr uint8_t COMMAND_ROLE_SET = 2;
+}  // namespace
+
+NodeCommandService::NodeCommandService() {
+    addCommand(Command("/role", "Show the node role (gateway or sensor)", COMMAND_ROLE, 1,
+                       [](String) { return NodeService::getInstance().describeRole(); }));
+    addCommand(Command("/role.set", "Set the node role: /role.set gateway|sensor (restarts)",
+                       COMMAND_ROLE_SET, 1,
+                       [](String args) { return NodeService::getInstance().setRole(args); }));
+}

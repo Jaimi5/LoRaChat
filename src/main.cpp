@@ -33,6 +33,9 @@
 // Monitor
 #include "monitor/monService.h"
 
+// Node role
+#include "node/nodeService.h"
+
 static const char* TAG = "Main";
 
 #pragma region Display
@@ -63,8 +66,8 @@ void initWiFi() {
 
 LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
 
-void initLoRaMesher() {
-    loraMeshService.initLoraMesherService();
+void initLoRaMesher(bool networkManager) {
+    loraMeshService.initLoraMesherService(networkManager);
 }
 
 #pragma endregion
@@ -84,16 +87,18 @@ void initMQTT() {
 #pragma region Manager
 
 MessageManager& manager = MessageManager::getInstance();
+NodeService& nodeService = NodeService::getInstance();
 
-void initManager() {
+void initManager(bool gateway) {
     manager.init();
 
+    manager.addMessageService(&nodeService);
     manager.addMessageService(&loraMeshService);
 #ifdef WIFI_ENABLED
-    manager.addMessageService(&wiFiService);
+    if (gateway) manager.addMessageService(&wiFiService);
 #endif
 #ifdef MQTT_ENABLED
-    manager.addMessageService(&mqttService);
+    if (gateway) manager.addMessageService(&mqttService);
 #endif
 #ifdef MQTT_MON_ENABLED
     manager.addMessageService(&mon_mqttService);
@@ -167,23 +172,18 @@ void setup() {
     InitDevices::init();
     bootGuard.reportCheck(SelfTestCheck::PMU, InitDevices::pmuResponds());
 
-    ESP_LOGV(TAG, "Heap before initManager: %d", ESP.getFreeHeap());
+    // The role decides which services run: a gateway runs WiFi, MQTT and the mesh manager
+    nodeService.init(loraMeshService.getLocalAddress());
+    bool gateway = nodeService.isGateway();
 
-    // Initialize Manager
-    initManager();
-
-    ESP_LOGV(TAG, "Heap after initManager: %d", ESP.getFreeHeap());
+    initManager(gateway);
 
 #ifdef WIFI_ENABLED
-    // Initialize WiFi
-    initWiFi();
-    ESP_LOGV(TAG, "Heap after initWiFi: %d", ESP.getFreeHeap());
+    if (gateway) initWiFi();
 #endif
 
 #ifdef MQTT_ENABLED
-    // Initialize MQTT
-    initMQTT();
-    ESP_LOGV(TAG, "Heap after initMQTT: %d", ESP.getFreeHeap());
+    if (gateway) initMQTT();
 #endif
 
 #ifdef DISPLAY_ENABLED
@@ -193,14 +193,14 @@ void setup() {
 #endif
 
     // Initialize LoRaMesh
-    initLoRaMesher();
+    initLoRaMesher(gateway);
     ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
     bootGuard.reportCheck(SelfTestCheck::RADIO, loraMeshService.isRunning());
 
 #ifdef WIFI_ENABLED
     // WiFi may have connected before LoRaMesher was initialized, causing
     // setGateway() to silently fail (mesher_ was NULL). Re-check now.
-    if (wiFiService.isConnected()) {
+    if (gateway && wiFiService.isConnected()) {
         ESP_LOGI(TAG, "WiFi already connected at LoRaMesher init — setting gateway");
         loraMeshService.setGateway();
     }
