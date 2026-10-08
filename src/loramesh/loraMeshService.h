@@ -64,6 +64,15 @@ public:
 
     void standby();
 
+    /** @return true once the mesh stack has started. */
+    bool isRunning() const { return running_; }
+
+    /** @return true if this node has heard the mesh, i.e. it knows at least one other node. */
+    bool hasMeshContact();
+
+    /** @return the current TDMA superframe duration in ms, or 0 when unknown or not TDMA. */
+    uint32_t getSuperframeDurationMs();
+
     bool hasGateway();
 
     void updateRoutingTable();
@@ -95,6 +104,8 @@ private:
     // Radio config actually applied at init (version-agnostic). Populated by
     // initLoraMesherService() in both the v1 and v2 branches.
     String radioInfo_ = "SF=? BW=? pow=? maxPkt=?";
+
+    bool running_ = false;
 
 #ifdef USE_LORAMESHER_V2
     std::unique_ptr<loramesher::LoraMesher> mesher_;

@@ -5,6 +5,9 @@ class InitDevices {
 public:
     static void init();
 
+    /** @return true if the PMU answers on I2C, or if the board has no PMU. */
+    static bool pmuResponds();
+
 private:
     static void initTBeam();
     static bool beginPower();

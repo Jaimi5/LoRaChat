@@ -25,6 +25,16 @@ void InitDevices::init() {
 #endif
 }
 
+bool InitDevices::pmuResponds() {
+#ifdef HAS_PMU
+    if (!PMU) return false;
+    PMU_WIRE_PORT.beginTransmission(AXP2101_SLAVE_ADDRESS);
+    return PMU_WIRE_PORT.endTransmission() == 0;
+#else
+    return true;
+#endif
+}
+
 void InitDevices::initMakerfabsSenseLoraMoisture() {
 #ifdef MAKERFABS_SENSELORA_MOISTURE
     pinMode(POWER_LORA, OUTPUT);

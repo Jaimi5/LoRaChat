@@ -29,6 +29,8 @@
 // Devices
 #include "devices/initDevices.h"
 
+// OTA boot guard
+#include "ota/otaBootGuard.h"
 
 static const char* TAG = "Main";
 
@@ -250,17 +252,23 @@ void initWire() {
 
 #ifndef PIO_UNIT_TESTING
 
+// Stops initArduino() from marking a PENDING_VERIFY image valid before the boot guard decides.
+extern "C" bool verifyRollbackLater() {
+    return true;
+}
+
+OtaBootGuard& bootGuard = OtaBootGuard::getInstance();
+
 void setup() {
     // Initialize Serial Monitor
     Serial.begin(115200);
-
-    // Mark app valid so bootloader doesn't roll back
-    esp_ota_mark_app_valid_cancel_rollback();
 
     // Set log level. INFO keeps operational and error logs while dropping the
     // verbose/debug spam whose blocking UART flush (~7 ms/line at 115200) and
     // log-mutex contention starve time-critical tasks during reconnect storms.
     esp_log_level_set("*", ESP_LOG_INFO);
+
+    bootGuard.begin();
 
     ESP_LOGI(TAG, "Build environment name: %s", BUILD_ENV_NAME);
 
@@ -269,6 +277,7 @@ void setup() {
 
     // Initialize Devices
     InitDevices::init();
+    bootGuard.reportCheck(SelfTestCheck::PMU, InitDevices::pmuResponds());
 
     ESP_LOGV(TAG, "Heap before initManager: %d", ESP.getFreeHeap());
 
@@ -304,6 +313,11 @@ void setup() {
     // Initialize LoRaMesh
     initLoRaMesher();
     ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
+#if defined(LORA_ENABLED) && !(defined(NODE_ACTIVE) && (NODE_ACTIVE == 0))
+    bootGuard.reportCheck(SelfTestCheck::RADIO, loraMeshService.isRunning());
+#else
+    bootGuard.reportCheck(SelfTestCheck::RADIO, true);
+#endif
 
 #ifdef WIFI_ENABLED
     // WiFi may have connected before LoRaMesher was initialized, causing
@@ -357,6 +371,8 @@ void setup() {
     initOTA();
     ESP_LOGV(TAG, "Heap after initOTA: %d", ESP.getFreeHeap());
 #endif
+
+    bootGuard.reportSetupDone();
 
     ESP_LOGV(TAG, "Setup finished");
 

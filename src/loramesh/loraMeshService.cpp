@@ -98,6 +98,7 @@ void LoRaMeshService::initLoraMesherService() {
     auto result = mesher_->Start();
     heap_caps_check_integrity_all(true);
     if (result) {
+        running_ = true;
         ESP_LOGI(LMS_TAG, "LoraMesher v2 initialized");
         createReceiveTask();
     } else {
@@ -234,6 +235,18 @@ void LoRaMeshService::standby() {
     }
 }
 
+bool LoRaMeshService::hasMeshContact() {
+    if (!mesher_)
+        return false;
+    return mesher_->GetNetworkStatus().connected_nodes > 0 || !mesher_->GetRoutingTable().empty();
+}
+
+uint32_t LoRaMeshService::getSuperframeDurationMs() {
+    if (!mesher_)
+        return 0;
+    return mesher_->GetSuperframeDuration();
+}
+
 bool LoRaMeshService::hasGateway() {
     if (!mesher_)
         return false;
@@ -352,6 +365,7 @@ void LoRaMeshService::initLoraMesherService() {
 
     // Start LoRaMesher
     radio.start();
+    running_ = true;
 
     ESP_LOGV(LMS_TAG, "LoraMesher initialized");
 #endif
@@ -544,6 +558,14 @@ size_t LoRaMeshService::queueWaitingSendPacketsLength() {
 
 void LoRaMeshService::standby() {
     return radio.standby();
+}
+
+bool LoRaMeshService::hasMeshContact() {
+    return radio.routingTableSize() > 0;
+}
+
+uint32_t LoRaMeshService::getSuperframeDurationMs() {
+    return 0;
 }
 
 bool LoRaMeshService::hasGateway() {
