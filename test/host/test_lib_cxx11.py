@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-LIBS = ["OtaCore", "NetCore"]
+LIBS = ["OtaCore", "NetCore", "CmdCore"]
 
 
 @pytest.mark.skipif(shutil.which("g++") is None, reason="host g++ not available")

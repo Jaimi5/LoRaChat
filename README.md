@@ -71,6 +71,24 @@ Site settings are kept out of git. Copy `src/config_local.example.h` to `src/con
 
 Product settings (features, LoRa radio parameters, monitor period) are in `src/config.h`, board pins in `src/boards/tbeam.h`. ESP-IDF options are in `sdkconfig.<environment>`.
 
+## Node roles and the serial console
+
+Every node runs the same image and has a role, stored in NVS:
+
+- `gateway`: LoRaMesher network manager, with WiFi and MQTT always on. Normally on mains power.
+- `sensor`: mesh node without WiFi or MQTT. Data reaches MQTT through the gateway.
+
+A node without a stored role is the gateway if its mesh address equals `LORA_MANAGER_ID` (`config_local.h`), and a sensor otherwise.
+
+Commands can be typed on the USB serial port (115200 baud, one command per line); the reply follows a `> command` line:
+
+| Command | Effect |
+|---|---|
+| `/role` | Shows the role and whether it is stored or the default |
+| `/role.set gateway`, `/role.set sensor` | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
+
+The same commands also arrive over MQTT and LoRa.
+
 ## MQTT messages
 
 Messages travel as JSON on two topics:

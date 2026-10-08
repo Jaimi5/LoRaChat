@@ -36,6 +36,9 @@
 // Node role
 #include "node/nodeService.h"
 
+// Serial console
+#include "commands/serialConsole.h"
+
 static const char* TAG = "Main";
 
 #pragma region Display
@@ -211,6 +214,8 @@ void setup() {
     init_mqtt_mon();
     ESP_LOGV(TAG, "Heap after init_mqtt_mon: %d", ESP.getFreeHeap());
 #endif
+
+    SerialConsole::begin();
 
     bootGuard.reportSetupDone();
 
