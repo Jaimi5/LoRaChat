@@ -28,8 +28,8 @@
  *
  * The station uses the same credentials as the gateway WiFi: those stored in NVS, otherwise
  * WIFI_SSID / WIFI_PASSWORD; storeCredentials() (/maint.wifi) changes them. A window never
- * makes the node a mesh gateway. Gateways keep their own WiFi: on them /maint.open <s> runs the update check
- * right away over that WiFi, and the access point is refused.
+ * makes the node a mesh gateway. Gateways keep their own WiFi: on them /maint.open <s> runs
+ * the update check right away over that WiFi, and the access point is refused.
  */
 class MaintenanceWifi {
 public:

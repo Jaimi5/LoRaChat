@@ -157,7 +157,8 @@ void CommandRouter::forward(const CommandRequest& request) {
     }
     sendFrame(request.command.dst, requestId, frame);
     if (request.origin == Origin::SERIAL_CONSOLE) {
-        reply(request, String("Sent to ") + String(request.command.dst, HEX) + " [" + requestId + "]");
+        reply(request,
+              String("Sent to ") + String(request.command.dst, HEX) + " [" + requestId + "]");
     }
 }
 
@@ -222,6 +223,8 @@ bool CommandRouter::storeCounter(uint32_t counter) {
     esp_err_t err = nvs_set_u32(handle, NVS_KEY_COUNTER, counter);
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
-    if (err != ESP_OK) ESP_LOGE(CR_TAG, "Cannot store the command counter: %s", esp_err_to_name(err));
+    if (err != ESP_OK) {
+        ESP_LOGE(CR_TAG, "Cannot store the command counter: %s", esp_err_to_name(err));
+    }
     return err == ESP_OK;
 }

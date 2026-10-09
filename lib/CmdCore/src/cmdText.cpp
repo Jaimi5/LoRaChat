@@ -66,7 +66,8 @@ bool parseCommandLine(const std::string& text, CommandLine& out) {
     size_t hash = rest.rfind('#');
     if (hash != std::string::npos && (hash == 0 || rest[hash - 1] == ' ')) {
         std::string word = rest.substr(hash + 1);
-        if (word.find_first_of(SPACES) == std::string::npos && word.find('.') != std::string::npos) {
+        if (word.find_first_of(SPACES) == std::string::npos &&
+            word.find('.') != std::string::npos) {
             if (!parseSignature(word, parsed.counter, parsed.tag)) return false;
             parsed.isSigned = true;
             rest = trim(rest.substr(0, hash));

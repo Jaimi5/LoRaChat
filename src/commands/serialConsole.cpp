@@ -19,7 +19,9 @@ void onSerialReceive() {
             Serial.println("> ?\nMalformed line: @<dst> <command> [#<counter>.<tag>]");
             continue;
         }
-        if (!CommandRouter::getInstance().submit(request)) Serial.println("> ?\nBusy, line dropped");
+        if (!CommandRouter::getInstance().submit(request)) {
+            Serial.println("> ?\nBusy, line dropped");
+        }
     }
 }
 

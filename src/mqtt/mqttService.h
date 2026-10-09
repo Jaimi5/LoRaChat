@@ -64,7 +64,8 @@ public:
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
-    void inline process_message(const char* topic, int topic_len, const char* payload, int data_len);
+    void inline process_message(const char* topic, int topic_len, const char* payload,
+                                int data_len);
 
     void processReceivedMessageFromMQTT(String& topic, String& payload);
 

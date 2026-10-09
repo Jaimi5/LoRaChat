@@ -127,7 +127,8 @@ std::string InitDevices::powerReport() {
     } else if (PMU->getChipModel() == XPOWERS_AXP192) {
         auto* axp = static_cast<XPowersAXP192*>(PMU);
         snprintf(text + length, sizeof(text) - length, " status=%02x mode=%02x chgctl=%02x",
-                 axp->readRegister(XPOWERS_AXP192_STATUS), axp->readRegister(XPOWERS_AXP192_MODE_CHGSTATUS),
+                 axp->readRegister(XPOWERS_AXP192_STATUS),
+                 axp->readRegister(XPOWERS_AXP192_MODE_CHGSTATUS),
                  axp->readRegister(XPOWERS_AXP192_CHARGE1));
     }
     return text;

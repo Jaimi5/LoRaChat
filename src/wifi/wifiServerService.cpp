@@ -117,14 +117,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 }
 
 void WiFiServerService::wifi_init_sta() {
-    // Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
 
     s_wifi_event_group = xEventGroupCreate();
@@ -183,7 +175,9 @@ String WiFiServerService::storeCredentials(const String& ssid, const String& pas
     memcpy(config.sta.ssid, ssid.c_str(), ssid.length());
     memcpy(config.sta.password, password.c_str(), password.length());
     esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
-    if (err != ESP_OK) return String("Could not store the WiFi credentials: ") + esp_err_to_name(err);
+    if (err != ESP_OK) {
+        return String("Could not store the WiFi credentials: ") + esp_err_to_name(err);
+    }
 
     this->ssid = ssid;
     this->password = password;
@@ -310,7 +304,8 @@ bool WiFiServerService::connectWiFi() {
         // WiFi stack already running — just reconnect without stop/start cycle
         esp_err_t err = esp_wifi_connect();
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "esp_wifi_connect() failed: %s, doing full restart", esp_err_to_name(err));
+            ESP_LOGW(TAG, "esp_wifi_connect() failed: %s, doing full restart",
+                     esp_err_to_name(err));
             esp_wifi_stop();
             wifiStarted = false;
             connecting = false;

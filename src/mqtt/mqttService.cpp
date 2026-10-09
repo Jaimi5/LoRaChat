@@ -205,7 +205,8 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_DATA: {
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_DATA");
             MqttService& mqttService = MqttService::getInstance();
-            mqttService.process_message(event->topic, event->topic_len, event->data, event->data_len);
+            mqttService.process_message(event->topic, event->topic_len, event->data,
+                                        event->data_len);
         } break;
         case MQTT_EVENT_ERROR:
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_ERROR");
@@ -267,7 +268,8 @@ void MqttService::mqtt_service_send(const char* topic, const char* data, int len
     ESP_LOGI(MQTT_TAG, "sent publish successful, msg_id %d", msg_id);
 }
 
-void MqttService::process_message(const char* topic, int topic_len, const char* payload, int data_len) {
+void MqttService::process_message(const char* topic, int topic_len, const char* payload,
+                                  int data_len) {
     String topicStr = String(topic, topic_len);
     String payloadStr = String(payload, data_len);
 

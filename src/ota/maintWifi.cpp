@@ -187,7 +187,9 @@ std::string MaintenanceWifi::storeCredentials(const std::string& ssid,
 
 std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
     if (gateway_) {
-        if (kind == Kind::AP) return "Gateways keep their own WiFi; the access point is for sensors";
+        if (kind == Kind::AP) {
+            return "Gateways keep their own WiFi; the access point is for sensors";
+        }
         return checkOverGatewayWifi();
     }
     if (OtaBootGuard::getInstance().isPendingVerify()) {
