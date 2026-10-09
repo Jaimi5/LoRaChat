@@ -105,6 +105,28 @@ def test_rejects_image_over_the_size_gate(tmp_path):
         release.check_build(build, project, False)
 
 
+def test_size_check_returns_the_image_and_slot_sizes(tmp_path):
+    project, build = make_build(tmp_path, image=esp_image(size=SLOT // 2))
+    assert release.check_size(build, project) == (SLOT // 2, SLOT)
+
+
+def test_size_check_rejects_an_image_over_the_gate(tmp_path):
+    project, build = make_build(tmp_path, image=esp_image(size=int(SLOT * 0.9) + 16))
+    with pytest.raises(release.ReleaseError, match="over 90%"):
+        release.check_size(build, project)
+
+
+def test_size_only_gates_any_build_without_collecting_it(tmp_path, monkeypatch, capsys):
+    project, build = make_build(tmp_path, image=esp_image(version="9.9.9+gabc1234.dirty"))
+    monkeypatch.setattr(release, "ROOT", project)
+    assert release.main(["--size-only", "--build-dir", str(build)]) == 0
+    assert f"of the {SLOT} B slot" in capsys.readouterr().out
+    assert not (project / "release").exists()
+
+    (build / "firmware.bin").write_bytes(esp_image(size=int(SLOT * 0.9) + 16))
+    assert release.main(["--size-only", "--build-dir", str(build)]) == 1
+
+
 def test_rejects_missing_file(tmp_path):
     project, build = make_build(tmp_path)
     (build / "bootloader.bin").unlink()
