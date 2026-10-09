@@ -13,6 +13,9 @@ PolicyDecision OtaPolicy::decide(const OtaManifest& manifest, const NodeState& n
     if (node.blacklist.contains(manifest.imageShaPrefix())) {
         return PolicyDecision::SKIP_BLACKLISTED;
     }
+    if (node.hasFailedImage && node.failedImage == manifest.imageShaPrefix()) {
+        return PolicyDecision::SKIP_FAILED_SINCE_POWER_ON;
+    }
     if (manifest.version == node.runningVersion) return PolicyDecision::NO_OP_SAME_VERSION;
     if (manifest.version < node.runningVersion && !manifest.allowDowngrade()) {
         return PolicyDecision::REFUSE_DOWNGRADE;

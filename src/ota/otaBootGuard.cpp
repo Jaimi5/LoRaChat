@@ -101,6 +101,10 @@ OtaRecord OtaBootGuard::record() const {
     return record_;
 }
 
+void OtaBootGuard::recordAttempt(const ShaPrefix& sha) {
+    saveRecord(BootGuardLogic::onAttemptStarted(record(), sha));
+}
+
 bool OtaBootGuard::loadRecord() {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);

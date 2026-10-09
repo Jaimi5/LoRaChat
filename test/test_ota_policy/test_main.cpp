@@ -82,6 +82,20 @@ TEST(OtaPolicy, SkipsABlacklistedImage) {
     EXPECT_EQ(OtaPolicy::decide(manifest(), n), PolicyDecision::SKIP_BLACKLISTED);
 }
 
+TEST(OtaPolicy, SkipsAnImageThatFailedSincePowerOn) {
+    OtaManifest m = manifest();
+    NodeState n = node();
+    n.failedImage = m.imageShaPrefix();
+    n.hasFailedImage = true;
+    EXPECT_EQ(OtaPolicy::decide(m, n), PolicyDecision::SKIP_FAILED_SINCE_POWER_ON);
+
+    n.failedImage = prefix(0x55);
+    EXPECT_EQ(OtaPolicy::decide(m, n), PolicyDecision::INSTALL);
+    n.failedImage = m.imageShaPrefix();
+    n.hasFailedImage = false;
+    EXPECT_EQ(OtaPolicy::decide(m, n), PolicyDecision::INSTALL);
+}
+
 // Case 18
 TEST(OtaPolicy, RefusesOnLowBatteryWithoutExternalPower) {
     NodeState n = node();

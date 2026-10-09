@@ -48,6 +48,12 @@
 // WiFi
 #define MAX_CONNECTION_TRY 10
 
+// OTA server: the maintenance window downloads manifest.bin and firmware.bin from this folder
+// over plain HTTP (the manifest is signed). Empty disables the update check.
+#ifndef OTA_SERVER_URL
+#define OTA_SERVER_URL "http://loramesher.com/fw/" BUILD_ENV_NAME "/"
+#endif
+
 // MQTT
 #define MQTT_TOPIC_SUB "from-server/"
 #define MQTT_TOPIC_OUT "to-server/"

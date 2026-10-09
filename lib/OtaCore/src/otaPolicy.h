@@ -16,6 +16,9 @@ struct NodeState {
     /** Size of the partition the image would be written to. */
     uint32_t slotSize = 0;
     Blacklist blacklist;
+    /** Image whose download or check failed since the last power-on. */
+    ShaPrefix failedImage{};
+    bool hasFailedImage = false;
     uint32_t batteryMv = 0;
     /** True when the node runs on external power (USB or solar charging). */
     bool externalPower = false;
@@ -34,6 +37,7 @@ enum class PolicyDecision : uint8_t {
     REFUSE_DOWNGRADE = 7,
     REFUSE_BATTERY = 8,
     REFUSE_HEAP = 9,
+    SKIP_FAILED_SINCE_POWER_ON = 10,
 };
 
 /** Pure decisions about whether and how an image may be installed. */

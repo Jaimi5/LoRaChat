@@ -12,6 +12,8 @@
 static const char* MW_TAG = "MaintWifi";
 static constexpr EventBits_t GOT_IP_BIT = BIT0;
 static EventGroupHandle_t wifiEvents = nullptr;
+// The work runs in this task: HTTP client, ECDSA verification and flash writes.
+static constexpr uint32_t WINDOW_TASK_STACK = 8192;
 
 static void onWifiEvent(void* arg, esp_event_base_t base, int32_t id, void*) {
     auto* self = static_cast<std::atomic<bool>*>(arg);
@@ -33,7 +35,7 @@ void MaintenanceWifi::startBootWindow(bool gateway, bool pendingVerify) {
     }
     gateway_ = gateway;
     pendingVerify_ = pendingVerify;
-    if (xTaskCreate(windowTask, "MaintWifi", 4096, this, 2, nullptr) != pdPASS) {
+    if (xTaskCreate(windowTask, "MaintWifi", WINDOW_TASK_STACK, this, 2, nullptr) != pdPASS) {
         ESP_LOGE(MW_TAG, "Maintenance window task creation failed");
     }
 }

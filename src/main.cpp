@@ -39,8 +39,9 @@
 // Serial console
 #include "commands/serialConsole.h"
 
-// Maintenance WiFi
+// Maintenance WiFi and OTA
 #include "ota/maintWifi.h"
+#include "ota/otaWifiPull.h"
 
 static const char* TAG = "Main";
 
@@ -220,6 +221,7 @@ void setup() {
 
     SerialConsole::begin();
 
+    MaintenanceWifi::getInstance().onConnected(OtaWifiPull::run);
     MaintenanceWifi::getInstance().startBootWindow(gateway, bootGuard.isPendingVerify());
 
     bootGuard.reportSetupDone();

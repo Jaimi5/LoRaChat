@@ -41,6 +41,9 @@ public:
     /** @return the persisted OTA record. */
     OtaRecord record() const;
 
+    /** Records that the image with @p sha boots next, so the next boot resolves the attempt. */
+    void recordAttempt(const ShaPrefix& sha);
+
 private:
     OtaBootGuard() = default;
 

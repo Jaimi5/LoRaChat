@@ -57,7 +57,7 @@ The native tests compile the mbedTLS of the ESP-IDF package for the host, so bui
 - **Release:** after a build, `python3 scripts/ota_tools/release.py --env tbeam --sign-key <key.pem> --key-id <id>` checks the image and writes `release/tbeam/<version>/` with the images, `info.json`, the signed `manifest.bin` and `bundle.bin`.
 - **Keys:** images are signed with ECDSA P-256. Key id 1 is the test key in `test/vectors/test_key.pem` for bench and test images; production builds (`OTA_PRODUCTION`) refuse it. Production keys are created with `sign_manifest.py keygen` and kept offline; their public keys go into `src/ota/otaKeys.cpp`.
 - **Rollback:** the flash holds two app slots. A newly installed image boots in `PENDING_VERIFY`; the boot guard (`src/ota/otaBootGuard.cpp`) runs a self-test (radio, power chip, heap, signature check, mesh contact) under a watchdog and either keeps the image or makes the bootloader return to the previous one. Images that fail are blacklisted.
-- **Over-the-air download:** the signed manifest, the update policy and the boot guard are implemented; the WiFi download from a server or phone hotspot and the upload through the node's own access point are being built (see `todo.md`).
+- **Over-the-air download (pull):** in a maintenance window the node downloads `manifest.bin` from the OTA server (`OTA_SERVER_URL`), checks its signature and the update policy (board, partition table, size, version, blacklist, battery ≥ 3.6 V unless powered, heap), stops the mesh, streams `firmware.bin` into the other app slot with a running SHA-256 (3 attempts, each from byte 0), checks the written image against the manifest and reboots into it. The boot guard then keeps it or rolls back. After a failed download the node restarts its current image and skips that image until the next power-on. The upload through the node's own access point is still being built (see `todo.md`).
 
 Commands for keys, signing, inspecting a manifest (`sign_manifest.py show`), test images and bench flashing are in [scripts/ota_tools/README.md](scripts/ota_tools/README.md).
 
@@ -68,6 +68,7 @@ Site settings are kept out of git. Copy `src/config_local.example.h` to `src/con
 - `WIFI_SSID`, `WIFI_PASSWORD`: default WiFi network of the gateway. Credentials stored in NVS with the `/addSSID` and `/addPassword` commands take priority.
 - `MQTT_SERVER`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`: MQTT broker. MQTT is disabled when `MQTT_SERVER` is empty.
 - `LORA_MANAGER_ID`: address of the node that acts as LoRaMesher network manager.
+- `OTA_SERVER_URL`: folder with `manifest.bin` and `firmware.bin` for updates. Default `http://loramesher.com/fw/<environment>/`; on the bench the PC running `scripts/ota_tools/fw_server.py`. Empty disables the update check.
 
 Product settings (features, LoRa radio parameters, monitor period) are in `src/config.h`, board pins in `src/boards/tbeam.h`. ESP-IDF options are in `sdkconfig.<environment>`.
 
@@ -89,7 +90,7 @@ Commands can be typed on the USB serial port (115200 baud, one command per line)
 
 The same commands also arrive over MQTT and LoRa.
 
-Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network to check for updates, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
+Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network, check the OTA server for a newer signed image and install it, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
 
 ## MQTT messages
 

@@ -65,6 +65,17 @@ bool InitDevices::pmuResponds() {
 #endif
 }
 
+bool InitDevices::readPower(PowerState& out) {
+#ifdef HAS_PMU
+    if (!PMU) return false;
+    out.externalPower = PMU->isVbusIn();
+    out.batteryMv = PMU->isBatteryConnect() ? PMU->getBattVoltage() : 0;
+    return true;
+#else
+    return false;
+#endif
+}
+
 void InitDevices::initTBeam() {
     // After reset the pin's pull-down lights the LED; drive it off.
     pinMode(LED_PIN, OUTPUT);

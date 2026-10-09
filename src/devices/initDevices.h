@@ -2,7 +2,16 @@
 // file.
 #pragma once
 
+#include <cstdint>
 #include <functional>
+
+/** Battery and supply as read from the PMU. */
+struct PowerState {
+    /** Battery voltage, 0 without a battery. */
+    uint32_t batteryMv = 0;
+    /** USB or the solar charger feeds the board. */
+    bool externalPower = false;
+};
 
 class InitDevices {
 public:
@@ -17,6 +26,9 @@ public:
 
     /** @return true if the PMU answers on I2C, or if the board has no PMU. */
     static bool pmuResponds();
+
+    /** Reads battery and supply from the PMU. @return false if the board has no PMU. */
+    static bool readPower(PowerState& out);
 
 private:
     static void initTBeam();

@@ -12,3 +12,7 @@
 
 // Address of the node that runs as LoRaMesher network manager
 #define LORA_MANAGER_ID 0x0000
+
+// Folder with manifest.bin and firmware.bin. Default: http://loramesher.com/fw/<env>/.
+// For the bench, the PC that runs scripts/ota_tools/fw_server.py, e.g. "http://192.168.1.50:8070/"
+// #define OTA_SERVER_URL ""
