@@ -26,6 +26,10 @@ enum class UpdateStatus : uint8_t {
     DESCRIPTOR_MISMATCH = 9,
     /** Every download attempt was cut. */
     TRANSPORT_FAILED = 10,
+    /** The upload length is not the manifest size plus the image size. */
+    BAD_BUNDLE_LENGTH = 11,
+    /** The manifest is not signed by a trusted key or the update policy refuses it. */
+    MANIFEST_REJECTED = 12,
 };
 
 /** @return a short name of @p status for logs and reports. */

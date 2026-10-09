@@ -57,7 +57,8 @@ The native tests compile the mbedTLS of the ESP-IDF package for the host, so bui
 - **Release:** after a build, `python3 scripts/ota_tools/release.py --env tbeam --sign-key <key.pem> --key-id <id>` checks the image and writes `release/tbeam/<version>/` with the images, `info.json`, the signed `manifest.bin` and `bundle.bin`.
 - **Keys:** images are signed with ECDSA P-256. Key id 1 is the test key in `test/vectors/test_key.pem` for bench and test images; production builds (`OTA_PRODUCTION`) refuse it. Production keys are created with `sign_manifest.py keygen` and kept offline; their public keys go into `src/ota/otaKeys.cpp`.
 - **Rollback:** the flash holds two app slots. A newly installed image boots in `PENDING_VERIFY`; the boot guard (`src/ota/otaBootGuard.cpp`) runs a self-test (radio, power chip, heap, signature check, mesh contact) under a watchdog and either keeps the image or makes the bootloader return to the previous one. Images that fail are blacklisted.
-- **Over-the-air download (pull):** in a maintenance window the node downloads `manifest.bin` from the OTA server (`OTA_SERVER_URL`), checks its signature and the update policy (board, partition table, size, version, blacklist, battery ≥ 3.6 V unless powered, heap), stops the mesh, streams `firmware.bin` into the other app slot with a running SHA-256 (3 attempts, each from byte 0), checks the written image against the manifest and reboots into it. The boot guard then keeps it or rolls back. After a failed download the node restarts its current image and skips that image until the next power-on. The upload through the node's own access point is still being built (see `todo.md`).
+- **Upload through the node's access point (push):** `/maint.open <seconds> ap` opens the WPA2 access point `LM-<address>`; its password derives from the deployment key (`scripts/ota_tools/ap_pass.py show --key-file <key> --node <address>` prints it and the WiFi QR text). Join it and open `http://192.168.4.1/`, choose the release's `bundle.bin` and upload it. The node checks the signed manifest and the length before writing anything, then writes and checks the image like the pull and reboots into it.
+- **Over-the-air download (pull):** in a maintenance window the node downloads `manifest.bin` from the OTA server (`OTA_SERVER_URL`), checks its signature and the update policy (board, partition table, size, version, blacklist, battery ≥ 3.6 V unless powered, heap), stops the mesh, streams `firmware.bin` into the other app slot with a running SHA-256 (3 attempts, each from byte 0), checks the written image against the manifest and reboots into it. The boot guard then keeps it or rolls back. After a failed download the node restarts its current image and skips that image until the next power-on. Command-opened windows: `/maint.open` below.
 
 Commands for keys, signing, inspecting a manifest (`sign_manifest.py show`), test images and bench flashing are in [scripts/ota_tools/README.md](scripts/ota_tools/README.md).
 
@@ -81,14 +82,19 @@ Every node runs the same image and has a role, stored in NVS:
 
 A node without a stored role is the gateway if its mesh address equals `LORA_MANAGER_ID` (`config_local.h`), and a sensor otherwise.
 
-Commands can be typed on the USB serial port (115200 baud, one command per line); the reply follows a `> command` line:
+Commands can be typed on the USB serial port (115200 baud, one command per line); the reply follows a `> command` line (the arguments are not echoed, since they can hold keys):
 
 | Command | Effect |
 |---|---|
 | `/role` | Shows the role and whether it is stored or the default |
 | `/role.set gateway`, `/role.set sensor` | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
+| `/key` | Shows whether a deployment key is stored, and its fingerprint (compare with `ap_pass.py show`) |
+| `/key.set <64 hex digits>` | Stores the deployment key (created with `scripts/ota_tools/ap_pass.py keygen`) |
+| `/maint.open <seconds>` | Sensor nodes: joins the WiFi network and checks the OTA server, up to 7200 s |
+| `/maint.open <seconds> ap` | Sensor nodes: opens the access point `LM-<address>` for an upload from a phone or PC, up to 1800 s. Needs the deployment key |
+| `/maint.close` | Closes the open maintenance window |
 
-The same commands also arrive over MQTT and LoRa.
+For now text commands only arrive over the serial port. Signed commands over LoRa and MQTT are planned (`todo.md` F5).
 
 Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network, check the OTA server for a newer signed image and install it, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
 

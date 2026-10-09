@@ -52,3 +52,31 @@ bool OtaPolicy::parseVersion(const std::string& text, uint32_t& out) {
     out = (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8);
     return true;
 }
+
+const char* policyDecisionName(PolicyDecision decision) {
+    switch (decision) {
+        case PolicyDecision::INSTALL:
+            return "INSTALL";
+        case PolicyDecision::NO_OP_SAME_VERSION:
+            return "NO_OP_SAME_VERSION";
+        case PolicyDecision::SKIP_BLACKLISTED:
+            return "SKIP_BLACKLISTED";
+        case PolicyDecision::REFUSE_TYPE:
+            return "REFUSE_TYPE";
+        case PolicyDecision::REFUSE_BOARD:
+            return "REFUSE_BOARD";
+        case PolicyDecision::REFUSE_PARTITION_TABLE:
+            return "REFUSE_PARTITION_TABLE";
+        case PolicyDecision::REFUSE_SIZE:
+            return "REFUSE_SIZE";
+        case PolicyDecision::REFUSE_DOWNGRADE:
+            return "REFUSE_DOWNGRADE";
+        case PolicyDecision::REFUSE_BATTERY:
+            return "REFUSE_BATTERY";
+        case PolicyDecision::REFUSE_HEAP:
+            return "REFUSE_HEAP";
+        case PolicyDecision::SKIP_FAILED_SINCE_POWER_ON:
+            return "SKIP_FAILED_SINCE_POWER_ON";
+    }
+    return "UNKNOWN";
+}

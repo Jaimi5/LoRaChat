@@ -16,6 +16,8 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 | `check_guards.py` | Static checks that keep app rollback working |
 | `otadata.py` | Reads and rewrites the `otadata` partition to boot a chosen slot (bench) |
 | `fw_server.py` | Bench firmware server for the WiFi pull, with injected faults |
+| `ap_pass.py` | Deployment key, and the name, password and QR text of a node's access point |
+| `ap_upload.py` | Bench: uploads a bundle to a node's access point through a second T-Beam (`extras/bench_ap_bridge`) |
 
 ## Versions
 
@@ -138,7 +140,36 @@ Update over WiFi (pull) on the bench. The node's WiFi network must reach the PC,
 python fw_server.py D:\path\to\release\tbeam\0.1.1+gabc1234
 ```
 
-A sensor node checks the server in its boot window. Expected serial output: `Server offers 0.1.1+gabc1234 ...`, `Installing ...`, `Image OK after 1 attempt(s): ... B in ... ms (flash ... ms)`, `Rebooting into ... on app1`, then the boot guard lines above. The server logs every request. Faults for the bench cases: `--flip-byte N` (one byte changed: `SHA_MISMATCH`, nothing installed), `--cut-at 0.5 [--cut-times K]` (connection closed at 50 %: up to 3 attempts, then `TRANSPORT_FAILED`), `--missing-image` (404). After a failure the node restarts its current image and skips that image until the next power-on.
+A sensor node checks the server in its boot window, or in a window opened with `/maint.open 60`. Expected serial output: `Manifest for tbeam 0.1.1+gabc1234, ...`, `Installing ...`, `Image OK after 1 attempt(s): ... B in ... ms (flash ... ms)`, `Rebooting into ... on app1`, then the boot guard lines above. The server logs every request. Faults for the bench cases: `--flip-byte N` (one byte changed: `SHA_MISMATCH`, nothing installed), `--cut-at 0.5 [--cut-times K]` (connection closed at 50 %: up to 3 attempts, then `TRANSPORT_FAILED`), `--missing-image` (404). After a failure the node restarts its current image and skips that image until the next power-on.
+
+## Deployment key and the node's access point
+
+All nodes of a deployment share one 32-byte key. It derives the password of each node's maintenance access point and will also sign commands and reports (F5, F7). Create it once and keep it offline:
+
+```bash
+python3 scripts/ota_tools/ap_pass.py keygen --out /secure/place/deploy.key
+```
+
+Load it on each node over USB serial with `/key.set <the 64 hex digits in the file>`; `/key` prints its fingerprint, which `ap_pass.py show` prints too. For a node with mesh address `7680`:
+
+```bash
+python3 scripts/ota_tools/ap_pass.py show --key-file /secure/place/deploy.key --node 7680
+```
+
+prints the access point name (`LM-7680`), its WPA2 password (`hex(HMAC-SHA256(K, "LMAP1" || address)[:8])`) and the WiFi QR text for a sticker. `ap_pass.py vectors` regenerates `test/vectors/apPassVectors.h`, which the native tests compare with the firmware.
+
+Upload through the access point: `/maint.open 600 ap` on the node, join `LM-<address>` from the phone (QR) or a PC, open `http://192.168.4.1/` and upload `bundle.bin` of a signed release. From a PC: `curl --data-binary @bundle.bin http://192.168.4.1/update`. The reply is `OK: <version> written ...` (the node reboots into it and the boot guard decides) or `ERROR <status>`, e.g. `ERROR MANIFEST_REJECTED: REFUSE_DOWNGRADE`; a refused manifest leaves the flash untouched and the access point open. Once the mesh is stopped for writing, a failure restarts the node on its current image (the access point closes).
+
+Bench without a phone: a second T-Beam runs `extras/bench_ap_bridge` and acts as the client, so the PC stays on its own network. Build it with `PLATFORMIO_WORKSPACE_DIR=~/.cache/pio-ws/bench_ap_bridge pio run -d extras/bench_ap_bridge` and flash only its app (`write_flash 0xe000 ota_data_initial.bin 0x10000 firmware.bin`; same partition table, the board's NVS stays). Then, with Windows Python:
+
+```bat
+python ap_upload.py COM3 --key-file deploy.key --node 7680 --status
+python ap_upload.py COM3 --key-file deploy.key --node 7680 --bundle bundle.bin [--cut-at 0.5]
+```
+
+If the node needs a mesh frame for its self-test (it has seen the mesh before), flash the bridge board back to LoRaChat right after a successful upload; the self-test waits at least 120 s.
+
+## Fault images
 
 Fault images (`TEST_IMAGE_KIND` 1 crash, 2 irq-hang, 3 loop-hang, 4 self-test fail) are built at the next patch version and signed with the test key:
 

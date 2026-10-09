@@ -95,6 +95,9 @@ enum class ManifestCheck : uint8_t {
     BAD_SIGNATURE = 5,
 };
 
+/** @return a short name of @p check for logs and reports. */
+const char* manifestCheckName(ManifestCheck check);
+
 /**
  * @brief Verifies a signed manifest (body + signature) and decodes it.
  *

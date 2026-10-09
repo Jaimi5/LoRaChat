@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "apPassVectors.h"
+#include "deploymentKey.h"
 #include "manifestVectors.h"
 #include "otaManifest.h"
 #include "otaSha256.h"
@@ -80,6 +82,52 @@ TEST(OtaCrypto, Sha256MatchesTheStandardVectorInAnySplit) {
     sha.update(abc + 1, 0);
     sha.update(abc + 1, 2);
     EXPECT_EQ(sha.finish(), expected);
+}
+
+TEST(OtaCrypto, HmacSha256MatchesRfc4231) {
+    // RFC 4231 test case 2.
+    const std::string key = "Jefe";
+    const std::string data = "what do ya want for nothing?";
+    const Sha256 expected = {0x5b, 0xdc, 0xc1, 0x46, 0xbf, 0x60, 0x75, 0x4e, 0x6a, 0x04, 0x24,
+                             0x26, 0x08, 0x95, 0x75, 0xc7, 0x5a, 0x00, 0x3f, 0x08, 0x9d, 0x27,
+                             0x39, 0x83, 0x9d, 0xec, 0x58, 0xb9, 0x64, 0xec, 0x38, 0x43};
+    EXPECT_EQ(hmacSha256(reinterpret_cast<const uint8_t*>(key.data()), key.size(),
+                         reinterpret_cast<const uint8_t*>(data.data()), data.size()),
+              expected);
+}
+
+// Vectors are computed by scripts/ota_tools/ap_pass.py with Python's hmac module.
+TEST(OtaCrypto, ApCredentialsMatchThePythonTool) {
+    DeploymentKey key;
+    std::copy(AP_VECTOR_KEY, AP_VECTOR_KEY + key.size(), key.begin());
+    for (const ApPassVector& vector : AP_PASS_VECTORS) {
+        EXPECT_EQ(apSsid(vector.node), vector.ssid);
+        EXPECT_EQ(apPassword(key, vector.node), vector.password) << vector.ssid;
+    }
+}
+
+TEST(OtaCrypto, KeyFingerprintMatchesThePythonTool) {
+    DeploymentKey key;
+    std::copy(AP_VECTOR_KEY, AP_VECTOR_KEY + key.size(), key.begin());
+    EXPECT_EQ(keyFingerprint(key), AP_VECTOR_KEY_FINGERPRINT);
+}
+
+TEST(OtaCrypto, ParsesADeploymentKeyInHex) {
+    DeploymentKey key;
+    std::string hex = "000102030405060708090a0b0c0d0e0f101112131415161718191A1B1C1D1E1F";
+    ASSERT_TRUE(parseDeploymentKey(hex, key));
+    EXPECT_TRUE(std::equal(key.begin(), key.end(), AP_VECTOR_KEY));
+    EXPECT_TRUE(parseDeploymentKey("  " + hex + "\r\n", key));
+}
+
+TEST(OtaCrypto, RejectsMalformedDeploymentKeys) {
+    DeploymentKey key{};
+    std::string good(64, 'a');
+    EXPECT_FALSE(parseDeploymentKey(good.substr(1), key));
+    EXPECT_FALSE(parseDeploymentKey(good + "aa", key));
+    EXPECT_FALSE(parseDeploymentKey(std::string(63, 'a') + "g", key));
+    EXPECT_FALSE(parseDeploymentKey("", key));
+    EXPECT_FALSE(parseDeploymentKey(std::string(64, '0'), key));
 }
 
 int main(int argc, char** argv) {

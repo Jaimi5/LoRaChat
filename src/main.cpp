@@ -41,6 +41,7 @@
 
 // Maintenance WiFi and OTA
 #include "ota/maintWifi.h"
+#include "ota/otaService.h"
 #include "ota/otaWifiPull.h"
 
 static const char* TAG = "Main";
@@ -100,6 +101,7 @@ void initManager(bool gateway) {
     manager.init();
 
     manager.addMessageService(&nodeService);
+    manager.addMessageService(&OtaService::getInstance());
     manager.addMessageService(&loraMeshService);
 #ifdef WIFI_ENABLED
     if (gateway) manager.addMessageService(&wiFiService);

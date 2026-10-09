@@ -40,6 +40,9 @@ enum class PolicyDecision : uint8_t {
     SKIP_FAILED_SINCE_POWER_ON = 10,
 };
 
+/** @return a short name of @p decision for logs and reports. */
+const char* policyDecisionName(PolicyDecision decision);
+
 /** Pure decisions about whether and how an image may be installed. */
 class OtaPolicy {
 public:

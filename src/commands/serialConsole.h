@@ -3,8 +3,10 @@
 /**
  * @brief Text commands over the USB serial port.
  *
- * Each line received on Serial runs as a command through the MessageManager and the reply is
- * printed. Reading is interrupt driven (Serial.onReceive), so nothing polls the UART.
+ * Lines received on Serial are queued from the UART event task (Serial.onReceive), so nothing
+ * polls the UART, and run one at a time in a console task with its own stack: commands may
+ * hash, verify signatures or write NVS. The reply is printed after the command name; the
+ * arguments are not echoed, since they can hold keys.
  */
 class SerialConsole {
 public:

@@ -6,21 +6,13 @@
 #include <new>
 #include <vector>
 
-#include "bootloader_common.h"
-#include "esp_attr.h"
-#include "esp_flash_partitions.h"
 #include "esp_http_client.h"
-#include "esp_ota_ops.h"
 #include "esp_timer.h"
 
 #include "config.h"
-#include "devices/initDevices.h"
 #include "espOtaFlash.h"
-#include "loramesh/loraMeshService.h"
-#include "otaBootGuard.h"
-#include "otaKeys.h"
+#include "otaInstall.h"
 #include "otaSha256.h"
-#include "otaSignature.h"
 #include "otaStreamWriter.h"
 #include "otaTransfer.h"
 
@@ -85,23 +77,6 @@ private:
     std::string url_;
 };
 
-/** Image whose download or check failed. Survives esp_restart(), not a power cut. */
-struct FailedImage {
-    uint32_t magic;
-    ShaPrefix sha;
-};
-
-constexpr uint32_t FAILED_IMAGE_MAGIC = 0x4C4D4631;
-RTC_NOINIT_ATTR FailedImage failedImage;
-
-bool loadFailedImage(ShaPrefix& out) {
-    esp_reset_reason_t reason = esp_reset_reason();
-    if (reason == ESP_RST_POWERON || reason == ESP_RST_BROWNOUT) failedImage.magic = 0;
-    if (failedImage.magic != FAILED_IMAGE_MAGIC) return false;
-    out = failedImage.sha;
-    return true;
-}
-
 }  // namespace
 
 void OtaWifiPull::run() {
@@ -110,14 +85,6 @@ void OtaWifiPull::run() {
 
     OtaManifest manifest;
     if (!fetchManifest(base + MANIFEST_FILE, manifest)) return;
-    ESP_LOGI(OP_TAG, "Server offers %s for %s, %u B, key %u", manifest.versionString.c_str(),
-             manifest.boardEnv.c_str(), manifest.imageSize, manifest.keyId);
-
-    PolicyDecision decision = OtaPolicy::decide(manifest, nodeState());
-    if (decision != PolicyDecision::INSTALL) {
-        ESP_LOGI(OP_TAG, "Not installing it (decision %u)", static_cast<unsigned>(decision));
-        return;
-    }
     install(manifest, base + IMAGE_FILE);
 }
 
@@ -142,46 +109,12 @@ bool OtaWifiPull::fetchManifest(const std::string& url, OtaManifest& out) {
         return false;
     }
 
-    ManifestCheck check = verifySignedManifest(body.data(), body.size(), otaTrustedKeys(),
-                                               otaAcceptTestKeys(), verifyP256Sha256, out);
-    if (check != ManifestCheck::OK) {
-        ESP_LOGE(OP_TAG, "Manifest rejected (check %u)", static_cast<unsigned>(check));
-        return false;
-    }
-    return true;
-}
-
-NodeState OtaWifiPull::nodeState() {
-    NodeState state;
-    state.boardEnv = BUILD_ENV_NAME;
-    const char* running = esp_ota_get_app_description()->version;
-    if (!OtaPolicy::parseVersion(running, state.runningVersion)) {
-        ESP_LOGW(OP_TAG, "Running version %s cannot be parsed", running);
-    }
-
-    uint8_t sha[32];
-    if (bootloader_common_get_sha256_of_partition(ESP_PARTITION_TABLE_OFFSET,
-                                                  ESP_PARTITION_TABLE_MAX_LEN, PART_TYPE_DATA,
-                                                  sha) == ESP_OK) {
-        std::copy(sha, sha + state.partitionTablePrefix.size(), state.partitionTablePrefix.begin());
-    }
-    const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
-    state.slotSize = next != nullptr ? next->size : 0;
-    state.blacklist = OtaBootGuard::getInstance().record().blacklist;
-    state.hasFailedImage = loadFailedImage(state.failedImage);
-
-    PowerState power;
-    if (InitDevices::readPower(power)) {
-        state.batteryMv = power.batteryMv;
-        state.externalPower = power.externalPower;
-    }
-    state.freeHeap = esp_get_free_heap_size();
-    return state;
+    std::string reason;
+    return OtaInstall::accept(body.data(), body.size(), out, reason);
 }
 
 void OtaWifiPull::install(const OtaManifest& manifest, const std::string& imageUrl) {
-    ESP_LOGW(OP_TAG, "Installing %s, stopping the mesh", manifest.versionString.c_str());
-    LoRaMeshService::getInstance().standby();
+    OtaInstall::stopMesh(manifest);
 
     EspOtaFlash flash;
     MbedSha256 sha;
@@ -194,19 +127,6 @@ void OtaWifiPull::install(const OtaManifest& manifest, const std::string& imageU
              updateStatusName(result.status), result.attempts, result.bytes, elapsedMs,
              flash.busyMs());
 
-    if (result.status == UpdateStatus::OK) {
-        OtaBootGuard::getInstance().recordAttempt(manifest.imageShaPrefix());
-        if (flash.activate()) {
-            ESP_LOGW(OP_TAG, "Rebooting into %s on %s", manifest.versionString.c_str(),
-                     flash.partition()->label);
-            vTaskDelay(pdMS_TO_TICKS(100));
-            esp_restart();
-        }
-    }
-
-    failedImage.magic = FAILED_IMAGE_MAGIC;
-    failedImage.sha = manifest.imageShaPrefix();
-    ESP_LOGE(OP_TAG, "Update failed, restarting the running image");
-    vTaskDelay(pdMS_TO_TICKS(100));
-    esp_restart();
+    if (result.status == UpdateStatus::OK) OtaInstall::rebootInto(flash, manifest);
+    OtaInstall::restartAfterFailure(manifest);
 }

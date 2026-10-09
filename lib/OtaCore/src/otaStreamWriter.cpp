@@ -31,6 +31,10 @@ const char* updateStatusName(UpdateStatus status) {
             return "DESCRIPTOR_MISMATCH";
         case UpdateStatus::TRANSPORT_FAILED:
             return "TRANSPORT_FAILED";
+        case UpdateStatus::BAD_BUNDLE_LENGTH:
+            return "BAD_BUNDLE_LENGTH";
+        case UpdateStatus::MANIFEST_REJECTED:
+            return "MANIFEST_REJECTED";
     }
     return "UNKNOWN";
 }

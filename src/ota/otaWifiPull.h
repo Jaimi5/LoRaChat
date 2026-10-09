@@ -3,7 +3,6 @@
 #include <string>
 
 #include "otaManifest.h"
-#include "otaPolicy.h"
 
 /**
  * @brief Pulls a signed image from the OTA server and installs it.
@@ -27,6 +26,5 @@ public:
 private:
     static std::string serverUrl();
     static bool fetchManifest(const std::string& url, OtaManifest& out);
-    static NodeState nodeState();
     [[noreturn]] static void install(const OtaManifest& manifest, const std::string& imageUrl);
 };

@@ -141,6 +141,17 @@ TEST(OtaPolicy, DescriptorMustMatchTheManifest) {
     EXPECT_FALSE(OtaPolicy::descriptorMatches(manifest(), "LoRaChat", "0.1.4+gabc1234"));
 }
 
+TEST(OtaPolicy, NamesEveryDecision) {
+    EXPECT_STREQ(policyDecisionName(PolicyDecision::INSTALL), "INSTALL");
+    EXPECT_STREQ(policyDecisionName(PolicyDecision::REFUSE_DOWNGRADE), "REFUSE_DOWNGRADE");
+    EXPECT_STREQ(policyDecisionName(PolicyDecision::SKIP_FAILED_SINCE_POWER_ON),
+                 "SKIP_FAILED_SINCE_POWER_ON");
+    EXPECT_STREQ(policyDecisionName(static_cast<PolicyDecision>(200)), "UNKNOWN");
+    EXPECT_STREQ(manifestCheckName(ManifestCheck::OK), "OK");
+    EXPECT_STREQ(manifestCheckName(ManifestCheck::BAD_SIGNATURE), "BAD_SIGNATURE");
+    EXPECT_STREQ(manifestCheckName(static_cast<ManifestCheck>(200)), "UNKNOWN");
+}
+
 TEST(OtaPolicy, ParsesVersions) {
     uint32_t v = 0;
     EXPECT_TRUE(OtaPolicy::parseVersion("0.1.3", v));

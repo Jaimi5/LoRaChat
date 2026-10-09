@@ -156,3 +156,21 @@ ManifestCheck verifySignedManifest(const uint8_t* data, size_t size,
     out = manifest;
     return ManifestCheck::OK;
 }
+
+const char* manifestCheckName(ManifestCheck check) {
+    switch (check) {
+        case ManifestCheck::OK:
+            return "OK";
+        case ManifestCheck::TOO_SHORT:
+            return "TOO_SHORT";
+        case ManifestCheck::BAD_FORMAT:
+            return "BAD_FORMAT";
+        case ManifestCheck::UNKNOWN_KEY:
+            return "UNKNOWN_KEY";
+        case ManifestCheck::TEST_KEY_REFUSED:
+            return "TEST_KEY_REFUSED";
+        case ManifestCheck::BAD_SIGNATURE:
+            return "BAD_SIGNATURE";
+    }
+    return "UNKNOWN";
+}
