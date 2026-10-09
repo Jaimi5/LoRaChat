@@ -4,9 +4,11 @@
 #include "esp_flash_partitions.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include "esp_private/esp_clk.h"
 #include "esp_timer.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "soc/rtc.h"
 #include "soc/rtc_wdt.h"
 
 #include "loramesh/loraMeshService.h"
@@ -20,6 +22,12 @@ static const char* NVS_KEY_NEIGHBOURS = "nbr";
 static const char* NVS_KEY_BOOTS = "boots";
 
 static constexpr uint32_t BOOTLOADER_REGION_SIZE = 0x7000;
+
+/** rtc_wdt_set_time() argument for @p timeoutMs of real time on this chip's slow clock. */
+static uint32_t rtcWatchdogSetting(uint32_t timeoutMs) {
+    return BootGuardLogic::rtcWatchdogSettingMs(timeoutMs, rtc_clk_slow_freq_get_hz(),
+                                                esp_clk_slowclk_cal_get());
+}
 
 void OtaBootGuard::begin() {
     esp_err_t nvsErr = nvs_flash_init();
@@ -212,14 +220,16 @@ void OtaBootGuard::armRtcWatchdog(uint32_t timeoutMs) {
     rtc_wdt_disable();
     rtc_wdt_set_length_of_reset_signal(RTC_WDT_SYS_RESET_SIG, RTC_WDT_LENGTH_3_2us);
     rtc_wdt_set_stage(RTC_WDT_STAGE0, RTC_WDT_STAGE_ACTION_RESET_SYSTEM);
-    rtc_wdt_set_time(RTC_WDT_STAGE0, timeoutMs);
+    rtc_wdt_set_time(RTC_WDT_STAGE0, rtcWatchdogSetting(timeoutMs));
     rtc_wdt_enable();
     rtc_wdt_protect_on();
+    ESP_LOGI(BG_TAG, "RTC watchdog %u ms, slow clock %u Hz", timeoutMs,
+             static_cast<unsigned>((1000000ull << 19) / esp_clk_slowclk_cal_get()));
 }
 
 void OtaBootGuard::extendRtcWatchdog(uint32_t timeoutMs) {
     rtc_wdt_protect_off();
-    rtc_wdt_set_time(RTC_WDT_STAGE0, timeoutMs);
+    rtc_wdt_set_time(RTC_WDT_STAGE0, rtcWatchdogSetting(timeoutMs));
     rtc_wdt_feed();
     rtc_wdt_protect_on();
 }

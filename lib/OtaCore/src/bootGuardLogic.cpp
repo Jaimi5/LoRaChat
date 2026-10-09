@@ -87,6 +87,15 @@ BootDecision BootGuardLogic::onBoot(ImageState state, const ShaPrefix& runningSh
     return resolved(BootAction::REPORT_ROLLBACK, record);
 }
 
+uint32_t BootGuardLogic::rtcWatchdogSettingMs(uint32_t timeoutMs, uint32_t nominalHz,
+                                             uint32_t calQ19) {
+    if (calQ19 == 0 || nominalHz == 0) return timeoutMs;
+    // actual Hz = 10^6 * 2^19 / calQ19; setting = timeoutMs * actual Hz / nominal Hz.
+    uint64_t setting = (static_cast<uint64_t>(timeoutMs) * (1000000ull << 19)) /
+                       (static_cast<uint64_t>(calQ19) * nominalHz);
+    return setting > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(setting);
+}
+
 OtaRecord BootGuardLogic::onAttemptStarted(const OtaRecord& stored, const ShaPrefix& sha,
                                            bool skipMeshCheck) {
     OtaRecord record = stored;

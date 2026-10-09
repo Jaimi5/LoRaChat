@@ -116,6 +116,16 @@ public:
      * DEADLINE_MS. @p superframeMs = 0 means unknown.
      */
     static SelfTestTiming timingFor(uint32_t superframeMs);
+
+    /**
+     * @brief Value for rtc_wdt_set_time() that gives @p timeoutMs of real time.
+     *
+     * rtc_wdt_set_time() converts with the nominal slow clock frequency @p nominalHz, while the
+     * RC slow clock of each chip runs at its own rate, measured at boot as a period in
+     * microseconds in Q13.19 (@p calQ19). @p calQ19 or @p nominalHz = 0 keeps @p timeoutMs.
+     */
+    static uint32_t rtcWatchdogSettingMs(uint32_t timeoutMs, uint32_t nominalHz,
+                                         uint32_t calQ19);
 };
 
 /**

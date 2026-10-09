@@ -323,6 +323,27 @@ TEST(SelfTest, TimingNeverShrinks) {
     EXPECT_EQ(test.timing().meshWindowMs, 567600u);
 }
 
+TEST(RtcWatchdog, SettingFollowsTheMeasuredSlowClock) {
+    // Q13.19 period in microseconds of a 150 kHz and of a 170 kHz clock.
+    const uint32_t cal150k = static_cast<uint32_t>((1000000ull << 19) / 150000);
+    const uint32_t cal170k = static_cast<uint32_t>((1000000ull << 19) / 170000);
+    EXPECT_NEAR(BootGuardLogic::rtcWatchdogSettingMs(250000, 150000, cal150k), 250000, 2);
+    // A fast clock needs a longer nominal setting for the same real time.
+    EXPECT_NEAR(BootGuardLogic::rtcWatchdogSettingMs(250000, 150000, cal170k), 283333, 2);
+}
+
+TEST(RtcWatchdog, UnknownCalibrationKeepsTheTimeout) {
+    EXPECT_EQ(BootGuardLogic::rtcWatchdogSettingMs(250000, 150000, 0), 250000u);
+    EXPECT_EQ(BootGuardLogic::rtcWatchdogSettingMs(250000, 0, 1000), 250000u);
+}
+
+TEST(RtcWatchdog, LongTimeoutsDoNotOverflow) {
+    const uint32_t cal50k = static_cast<uint32_t>((1000000ull << 19) / 50000);
+    EXPECT_NEAR(BootGuardLogic::rtcWatchdogSettingMs(610000, 150000, cal50k), 203333, 2);
+    const uint32_t cal400k = static_cast<uint32_t>((1000000ull << 19) / 400000);
+    EXPECT_NEAR(BootGuardLogic::rtcWatchdogSettingMs(610000, 150000, cal400k), 1626667, 2);
+}
+
 TEST(BootLine, FormatsAllFields) {
     EXPECT_EQ(formatBootLine("ota_1", ImageState::VALID, "1.3.0", "3fa2c1", "POWERON"),
               "BOOT part=ota_1 state=VALID ver=1.3.0 bl=3fa2c1 rr=POWERON");
