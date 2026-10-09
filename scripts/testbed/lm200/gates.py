@@ -52,7 +52,7 @@ from analysis.parse_logs import is_v2_run, parse_run  # noqa: E402
 
 PASS, GREY, INCOMPLETE, FAIL = "PASS", "GREY", "INCOMPLETE", "FAIL"
 _RANK = {PASS: 0, GREY: 1, INCOMPLETE: 2, FAIL: 3}
-SUMMARY_VERSION = 5  # bump to invalidate cached run summaries
+SUMMARY_VERSION = 6  # bump to invalidate cached run summaries
 
 # ── small helpers ─────────────────────────────────────────────────────────────
 
@@ -185,6 +185,9 @@ def run_config(run_dir: Path) -> dict:
         "sim_group": per_dev("sim_group"),
         "sim_stopstart": per_dev("sim_stopstart"),
         "sim_nm_failover_ms": defaults.get("sim_nm_failover_ms", 0),
+        # LORA_MANAGER_ID: a non-zero id pins the Network Manager (every other node is
+        # NODE_ONLY); 0 leaves all nodes AUTO so a lost manager is replaced by election.
+        "manager_id": str(defaults.get("lora_manager_id", "")).upper().replace("0X", "") or None,
     }
 
 
@@ -980,6 +983,20 @@ def _need(name, s, value, run, why="lm200_metrics key missing"):
     return None
 
 
+def _restart_back_as_nm(run_dir: Path, manager_id: str) -> list[float]:
+    events = parse_run(run_dir, window=(None, None))
+    node = (manager_id or "").upper()[-4:]
+    fail_ts = sorted(e.ts for e in events if e.kind == "nm_failover" and e.node.upper() == node)
+    nm_ts = sorted(e.ts for e in events if e.kind == "state_change" and e.node.upper() == node
+                   and int(e.fields.get("state", -1)) == 4)
+    out = []
+    for t in fail_ts:
+        nxt = next((x for x in nm_ts if x > t), None)
+        if nxt is not None:
+            out.append(round(nxt - t, 1))
+    return out
+
+
 def _g2_cell(s: dict, cfg: dict) -> list[dict]:
     th = dig(cfg, "thresholds.g2", {}) or {}
     remote = {str(x).upper() for x in cfg.get("remote_nodes", [])}
@@ -1014,13 +1031,46 @@ def _g2_cell(s: dict, cfg: dict) -> list[dict]:
         out.append(chk("hung_nodes", INCOMPLETE, run=run, detail="no HEALTH heartbeat lines"))
 
     if cell.startswith("reliable"):
-        ack = _m(s, "reliable.ack_ratio")
-        c = _need("reliable:ack_ratio", s, ack, run)
+        n_ack, n_fail = _m(s, "reliable.n_ack"), _m(s, "reliable.n_fail")
+        n_unres, n_tx = _m(s, "reliable.n_unresolved"), _m(s, "reliable.n_tx")
+        c = _need("reliable:ack_ratio", s, n_ack, run)
         if c:
             out.append(c)
         else:
-            out.append(chk("reliable:ack_ratio", PASS if ack >= th.get("ack_ratio", 0.95) else FAIL,
-                           value=round(ack, 4), threshold=th.get("ack_ratio", 0.95), run=run))
+            # TDMA round trips take several superframes (one hop per superframe each
+            # way), so sends near the end of the window are still in flight when logs
+            # stop. Only resolved outcomes (ACK or final failure) say anything about
+            # reliability; unresolved ones are reported, not counted as losses.
+            # "rejected" = SendReliable refused the send up front (e.g. "Reliable delivery
+            # table is full": at most 8 in flight per node). That is API backpressure,
+            # reported below, not a delivery failure of an accepted message.
+            reasons = _m(s, "reliable.fail_reasons") or {}
+            n_rej = int(reasons.get("rejected", 0)) if isinstance(reasons, dict) else 0
+            n_fail = max((n_fail or 0) - n_rej, 0)
+            resolved = (n_ack or 0) + n_fail
+            ack = (n_ack / resolved) if resolved else None
+            lim = th.get("ack_ratio", 0.95)
+            if ack is None:
+                out.append(chk("reliable:ack_ratio", INCOMPLETE, run=run, detail="no resolved reliable send"))
+            else:
+                out.append(chk("reliable:ack_ratio", PASS if ack >= lim else FAIL, value=round(ack, 4),
+                               threshold=lim, run=run, blocker=ack < lim,
+                               detail=f"ACK {n_ack} / accepted+resolved {resolved} (failed after retries "
+                                      f"{n_fail}; rejected up front {n_rej})"))
+            if n_rej:
+                frac = n_rej / n_tx if n_tx else 0
+                out.append(chk("reliable:rejected_backpressure",
+                               GREY if frac > th.get("rejected_grey_frac", 0.02) else PASS,
+                               value=f"{n_rej}/{n_tx}", run=run,
+                               detail="SendReliable refused the send (delivery table full: >8 in flight "
+                                      "because RTT > 8 send intervals)"))
+            if n_unres:
+                frac = n_unres / n_tx if n_tx else 0
+                out.append(chk("reliable:unresolved_at_window_end",
+                               GREY if frac > th.get("unresolved_grey_frac", 0.10) else PASS,
+                               value=f"{n_unres}/{n_tx}", run=run,
+                               detail="outcome not logged before the run ended (in flight); "
+                                      "extend cooldown beyond the worst-case RTT to resolve"))
         rtt = _m(s, "reliable.rtt_ms_p95")
         if rtt is not None:
             lim_ms = th.get("rtt_p95_max_s", 900) * 1000
@@ -1028,10 +1078,7 @@ def _g2_cell(s: dict, cfg: dict) -> list[dict]:
                            threshold=lim_ms, run=run,
                            detail=f"outliers excluded: {_m(s, 'reliable.rtt_outliers')} "
                                   "(unclamped echo_ts, known open item)"))
-        nfail = _m(s, "reliable.n_fail")
-        if nfail:
-            out.append(chk("reliable:failures", GREY, value=nfail, run=run,
-                           detail=f"reasons: {_m(s, 'reliable.fail_reasons')}"))
+
         nq = _m(s, "diag.reliable_not_queued")
         sends = _m(s, "reliable.n_tx")
         if nq is not None and sends:
@@ -1085,6 +1132,20 @@ def _g2_cell(s: dict, cfg: dict) -> list[dict]:
         fired = sum(d["nm_failover"] for d in (s.get("scan") or {}).values())
         out.append(chk("nm_failover:fired", PASS if fired else FAIL, value=fired, run=run,
                        detail="" if fired else "no NM_FAILOVER line — failover never triggered"))
+        pinned = s["cfg"].get("manager_id") not in (None, "", "0", "0000")
+        if pinned and fired:
+            # Every other node is NODE_ONLY, so no election can happen: check that the
+            # configured manager comes back as NM and the network never had two.
+            back = _restart_back_as_nm(Path(s["path"]), s["cfg"]["manager_id"])
+            lim = th.get("nm_restart_max_s", 120)
+            worst = max(back) if back else None
+            ok = back and len(back) >= fired and worst <= lim
+            out.append(chk("nm_failover:configured_manager_restart", PASS if ok else FAIL,
+                           value=f"{len(back)}/{fired} back as NM, worst {worst} s", threshold=lim, run=run,
+                           blocker=not ok,
+                           detail="pinned LORA_MANAGER_ID: no takeover possible by design; "
+                                  "checks the manager returns as NM after its own restart"))
+            return out
         tk = _m(s, "nm_failover.takeover_s_max")
         nf, nt = _m(s, "nm_failover.n_failovers"), _m(s, "nm_failover.n_taken_over")
         if fired and nf is not None and nt is not None and nt < nf:
@@ -1145,6 +1206,14 @@ def g2(paths: list[Path], cfg: dict, cache_dir: Path) -> dict:
     runs = [r for p in paths for r in run_dirs(p)]
     if not runs:
         return gate_result("g2", [chk("runs", INCOMPLETE, detail=f"no run dirs under {paths}")])
+    # A *_rerun batch re-measures cells whose first design was flawed (e.g. reliable
+    # windows shorter than the ACK round trip): its cells replace same-named ones.
+    rerun_cells = {cell_of(r)[0] for r in runs if cell_of(r) and "_rerun" in r.parent.name}
+    superseded = [r for r in runs if cell_of(r) and "_rerun" not in r.parent.name
+                  and cell_of(r)[0] in rerun_cells]
+    runs = [r for r in runs if r not in superseded]
+    for r in superseded:
+        checks.append(chk("superseded", PASS, run=r.name, detail="replaced by the _rerun batch"))
     for r in runs:
         s = summarize_run(r, cache_dir, with_metrics=True)
         checks += _g2_cell(s, cfg)

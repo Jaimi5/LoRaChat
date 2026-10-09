@@ -1,0 +1,102 @@
+# LoRaMesher 2.0.0 evaluation — Tier 2 re-run of the cells whose first design was flawed,
+# plus a default_data_slots sweep for reliable unicast (gate G2).
+#
+# - reliable_*: the first runs logged up to 2 min after the last send, but a reliable
+#   round trip takes 3-7 min on TDMA (one hop per superframe each way), so many
+#   outcomes were still in flight. Cooldown is now 10 min.
+# - reliable_*_dds2/3: same load with 2 and 3 data slots per node. Slots are contiguous,
+#   so a longer superframe may offset the extra capacity: measures RTT, ACK ratio and
+#   "delivery table full" rejections (<= 8 reliable messages in flight per node).
+# - nm_failover_auto_SF9: LORA_MANAGER_ID 0 leaves every node on role AUTO, so when the
+#   manager restarts another node must take over by election (the first run pinned
+#   0x006C as manager and every other node was NODE_ONLY).
+#
+# Cell ids reliable_SF7_d60000 / reliable_SF9_d95000 match lm200_features.yaml: the
+# G2 gate lets cells from a *_rerun batch supersede same-named earlier runs.
+batch: lm200_features_rerun
+description: 2.0.0 features re-run - reliable with full RTT tail + data-slot sweep, NM election
+base: ../lm200/experiments/lm200_base.yaml
+
+runs: 1
+warmup_min: 15
+duration_min: 20
+cooldown_min: 10
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: reliable_SF7_d60000
+    overrides: &reliable7
+      lora_spreading_factor: 7
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 15
+      packet_delay: 60000
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 1
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0
+    duration_min: 20
+    inactive_devices: &remote [DD58, 14A4, '3428']
+
+  - id: reliable_SF7_dds2
+    overrides:
+      <<: *reliable7
+      lora_default_data_slots: 2
+    duration_min: 20
+    inactive_devices: *remote
+
+  - id: reliable_SF7_dds3
+    overrides:
+      <<: *reliable7
+      lora_default_data_slots: 3
+    duration_min: 20
+    inactive_devices: *remote
+
+  - id: reliable_SF9_d95000
+    overrides: &reliable9
+      <<: *reliable7
+      lora_spreading_factor: 9
+      packet_count: 10
+      packet_delay: 95000
+    duration_min: 23
+    inactive_devices: *remote
+
+  - id: reliable_SF9_dds2
+    overrides:
+      <<: *reliable9
+      lora_default_data_slots: 2
+    duration_min: 23
+    inactive_devices: *remote
+
+  - id: reliable_SF9_dds3
+    overrides:
+      <<: *reliable9
+      lora_default_data_slots: 3
+    duration_min: 23
+    inactive_devices: *remote
+
+  - id: nm_failover_auto_SF9
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_manager_id: 0
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 28
+      packet_delay: 90000
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 1200000
+    duration_min: 45
+    cooldown_min: 2
+    inactive_devices: *remote

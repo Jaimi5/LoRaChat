@@ -56,6 +56,9 @@ stages:
       - [batches/lm200_features_stopstart.yaml, []]
       - [batches/lm200_features_highsf.yaml, []]
       - [batches/lm200_features_longlink.yaml, []]
+      # Re-run: reliable with a 10 min RTT tail + default_data_slots 1/2/3 sweep, and NM
+      # failover with LORA_MANAGER_ID 0 (election). Supersedes same-named reliable cells.
+      - [batches/lm200_features_rerun.yaml, []]
 
 auto_ab: true
 
@@ -104,5 +107,8 @@ thresholds:
     rejoin_superframes: 3
     min_stack_free_bytes: 512
     nm_takeover_max_s: 900
+    nm_restart_max_s: 120                  # pinned manager back as NM after its own restart
+    unresolved_grey_frac: 0.10             # reliable sends still in flight at log end
+    rejected_grey_frac: 0.02               # SendReliable refused (delivery table full)
     longlink_min_remote_joined: 3
     min_heap_bytes: 10000                  # HEALTH minheap below this → GREY

@@ -36,8 +36,10 @@ void LoRaMeshService::initLoraMesherService() {
 
     loramesher::AddressType my_address = loramesher::LoraMesher::GenerateAddressFromHardware();
 
-#if defined(LORA_MANAGER_ID)
-    // Optional: Set role based on address
+#if defined(LORA_MANAGER_ID) && (LORA_MANAGER_ID != 0)
+    // Pin the Network Manager: that node creates the network, every other node only
+    // joins. LORA_MANAGER_ID 0 leaves all nodes on the library default (AUTO), so a
+    // lost manager is replaced by election.
     if (my_address == LORA_MANAGER_ID) {
         meshConfig.setNodeRole(loramesher::NodeRole::NETWORK_MANAGER);
     } else {
