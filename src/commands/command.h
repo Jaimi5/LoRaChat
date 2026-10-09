@@ -11,12 +11,11 @@ class Command {
 public:
     Command() = default;
 
-    Command(String command, String description, uint8_t commandId, Perm perm,
+    Command(String command, String description, Perm perm,
             std::function<String(String)> callback)
         : command(command),
           description(description),
           callback(callback),
-          commandId(commandId),
           perm(perm) {}
 
     String execute(String args) { return callback(args); }
@@ -25,14 +24,11 @@ public:
 
     const String& getDescription() const { return description; }
 
-    uint8_t getCommandID() const { return commandId; }
-
     Perm getPerm() const { return perm; }
 
 private:
     String command;
     String description;
     std::function<String(String)> callback;
-    uint8_t commandId = 0;
     Perm perm = Perm::LOCAL_ONLY;
 };

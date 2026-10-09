@@ -18,33 +18,33 @@ uint16_t commandAddress(const String& args) {
 DisplayCommandService::DisplayCommandService() {
     addCommand(Command(
         "/displayOn", "Set the Display On specifying the destination in hex (like the display)",
-        DisplayCommand::DisplayOn, Perm::OPEN, [this](String args) {
+        Perm::OPEN, [this](String args) {
             return String(DisplayService::getInstance().displayOn(commandAddress(args)));
         }));
     addCommand(Command(
         "/displayOff", "Set the Display Off specifying the destination in hex (like the display)",
-        DisplayCommand::DisplayOff, Perm::OPEN, [this](String args) {
+        Perm::OPEN, [this](String args) {
             return String(DisplayService::getInstance().displayOff(commandAddress(args)));
         }));
     addCommand(Command("/displayBlink",
                        "Set the Display Blink specifying the destination in hex (like the display)",
-                       DisplayCommand::DisplayBlink, Perm::OPEN, [this](String args) {
+                       Perm::OPEN, [this](String args) {
                            return String(
                                DisplayService::getInstance().displayBlink(commandAddress(args)));
                        }));
     addCommand(Command(
         "/displayClear", "Clear the Display specifying the destination in hex (like the display)",
-        DisplayCommand::DisplayClear, Perm::OPEN, [this](String args) {
+        Perm::OPEN, [this](String args) {
             return String(DisplayService::getInstance().clearDisplay(commandAddress(args)));
         }));
     addCommand(Command(
         "/displayLogo", "Display Logo specifying the destination in hex (like the display)",
-        DisplayCommand::DisplayLogo, Perm::OPEN, [this](String args) {
+        Perm::OPEN, [this](String args) {
             return String(DisplayService::getInstance().displayLogo(commandAddress(args)));
         }));
     addCommand(Command("/displayText",
                        "Display Text specifying the destination in hex (like the display)",
-                       DisplayCommand::DisplayText, Perm::OPEN, [this](String args) {
+                       Perm::OPEN, [this](String args) {
                            uint16_t address = commandAddress(args);
                            if (address > 0) {
                                args = args.substring(5);
