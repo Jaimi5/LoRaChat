@@ -37,7 +37,7 @@ public:
     void reportSetupDone();
 
     /** @return true while the running image waits for its self-test verdict. */
-    bool isPendingVerify() const { return selfTest_ != nullptr; }
+    bool isPendingVerify() const { return pendingVerify_; }
 
     /**
      * @return true once this boot has resolved an update attempt: the new image passed its
@@ -48,8 +48,12 @@ public:
     /** @return the persisted OTA record. */
     OtaRecord record() const;
 
-    /** Records that the image with @p sha boots next, so the next boot resolves the attempt. */
-    void recordAttempt(const ShaPrefix& sha);
+    /**
+     * @brief Records that the image with @p sha boots next, so the next boot resolves the
+     *        attempt. @p skipMeshCheck is the manifest flag that lets its self-test pass
+     *        without mesh contact.
+     */
+    void recordAttempt(const ShaPrefix& sha, bool skipMeshCheck);
 
     /** @return the first 3 bytes of the SHA-256 of the bootloader in flash, in hex. */
     static std::string bootloaderHash();
@@ -68,9 +72,10 @@ private:
 
     mutable std::mutex mutex_;
     std::unique_ptr<SelfTest> selfTest_;
+    std::atomic<bool> pendingVerify_{false};
     uint32_t selfTestStartMs_ = 0;
     OtaRecord record_;
-    bool hadNeighbours_ = false;
+    std::atomic<bool> hadNeighbours_{false};
     uint32_t bootCount_ = 0;
     std::atomic<bool> attemptResolved_{false};
 

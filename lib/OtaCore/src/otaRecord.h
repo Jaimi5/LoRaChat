@@ -73,6 +73,8 @@ struct OtaRecord {
     FailReason failReason = FailReason::NONE;
     OtaOutcome lastOutcome = OtaOutcome::NONE;
     Blacklist blacklist;
+    /** The manifest of attemptSha lets its self-test pass without mesh contact. */
+    bool skipMeshCheck = false;
 
     bool operator==(const OtaRecord& other) const;
 };
@@ -85,8 +87,10 @@ struct OtaRecord {
  */
 class OtaRecordCodec {
 public:
-    static constexpr uint8_t VERSION = 1;
+    static constexpr uint8_t VERSION = 2;
     static constexpr size_t V1_SIZE = 4 + 8 + 4 + 2 + Blacklist::CAPACITY * 8;
+    /** Version 2 appends a flags byte (bit 0: skipMeshCheck). */
+    static constexpr size_t SIZE = V1_SIZE + 1;
 
     static std::vector<uint8_t> encode(const OtaRecord& record);
 

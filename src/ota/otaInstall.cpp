@@ -96,7 +96,8 @@ void OtaInstall::stopMesh(const OtaManifest& manifest) {
 }
 
 void OtaInstall::rebootInto(EspOtaFlash& flash, const OtaManifest& manifest) {
-    OtaBootGuard::getInstance().recordAttempt(manifest.imageShaPrefix());
+    OtaBootGuard::getInstance().recordAttempt(manifest.imageShaPrefix(),
+                                              manifest.skipMeshCheck());
     if (!flash.activate()) restartAfterFailure(manifest);
     ESP_LOGW(OI_TAG, "Rebooting into %s on %s", manifest.versionString.c_str(),
              flash.partition()->label);

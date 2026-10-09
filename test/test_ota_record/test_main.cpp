@@ -17,6 +17,7 @@ OtaRecord sampleRecord() {
     record.unexplainedRollbacks = 1;
     record.failReason = FailReason::MESH_SILENT;
     record.lastOutcome = OtaOutcome::ROLLED_BACK;
+    record.skipMeshCheck = true;
     for (uint8_t i = 0; i < 6; i++) record.blacklist.add(sha(0x40 + i * 0x10));
     return record;
 }
@@ -49,7 +50,7 @@ TEST(Blacklist, EvictsOldestWhenFull) {
 }
 
 TEST(OtaRecordCodec, EncodesFixedSize) {
-    EXPECT_EQ(OtaRecordCodec::encode(OtaRecord{}).size(), OtaRecordCodec::V1_SIZE);
+    EXPECT_EQ(OtaRecordCodec::encode(OtaRecord{}).size(), OtaRecordCodec::SIZE);
 }
 
 TEST(OtaRecordCodec, RoundTrips) {
@@ -69,7 +70,7 @@ TEST(OtaRecordCodec, RoundTripsDefault) {
 
 TEST(OtaRecordCodec, RejectsBadMagic) {
     std::vector<uint8_t> blob = OtaRecordCodec::encode(sampleRecord());
-    ASSERT_EQ(blob.size(), OtaRecordCodec::V1_SIZE);
+    ASSERT_EQ(blob.size(), OtaRecordCodec::SIZE);
     blob[0] ^= 0xFF;
     OtaRecord out;
     EXPECT_FALSE(OtaRecordCodec::decode(blob.data(), blob.size(), out));
@@ -77,7 +78,7 @@ TEST(OtaRecordCodec, RejectsBadMagic) {
 
 TEST(OtaRecordCodec, RejectsTruncatedBlob) {
     std::vector<uint8_t> blob = OtaRecordCodec::encode(sampleRecord());
-    ASSERT_EQ(blob.size(), OtaRecordCodec::V1_SIZE);
+    ASSERT_EQ(blob.size(), OtaRecordCodec::SIZE);
     OtaRecord out;
     EXPECT_FALSE(OtaRecordCodec::decode(blob.data(), blob.size() - 1, out));
     EXPECT_FALSE(OtaRecordCodec::decode(blob.data(), 3, out));
@@ -86,7 +87,7 @@ TEST(OtaRecordCodec, RejectsTruncatedBlob) {
 
 TEST(OtaRecordCodec, RejectsCorruptBlacklistCount) {
     std::vector<uint8_t> blob = OtaRecordCodec::encode(sampleRecord());
-    ASSERT_EQ(blob.size(), OtaRecordCodec::V1_SIZE);
+    ASSERT_EQ(blob.size(), OtaRecordCodec::SIZE);
     blob[17] = Blacklist::CAPACITY + 1;
     OtaRecord out;
     EXPECT_FALSE(OtaRecordCodec::decode(blob.data(), blob.size(), out));
@@ -95,12 +96,24 @@ TEST(OtaRecordCodec, RejectsCorruptBlacklistCount) {
 TEST(OtaRecordCodec, DecodesLongerRecordFromNewerImage) {
     OtaRecord in = sampleRecord();
     std::vector<uint8_t> blob = OtaRecordCodec::encode(in);
-    ASSERT_EQ(blob.size(), OtaRecordCodec::V1_SIZE);
+    ASSERT_EQ(blob.size(), OtaRecordCodec::SIZE);
     blob[2] = OtaRecordCodec::VERSION + 1;
     blob.insert(blob.end(), {0xAA, 0xBB, 0xCC});
     blob[3] = static_cast<uint8_t>(blob.size());
     OtaRecord out;
     ASSERT_TRUE(OtaRecordCodec::decode(blob.data(), blob.size(), out));
+    EXPECT_EQ(out, in);
+}
+
+TEST(OtaRecordCodec, DecodesVersion1RecordOfOlderImage) {
+    OtaRecord in = sampleRecord();
+    std::vector<uint8_t> blob = OtaRecordCodec::encode(in);
+    blob.resize(OtaRecordCodec::V1_SIZE);
+    blob[2] = 1;
+    blob[3] = static_cast<uint8_t>(OtaRecordCodec::V1_SIZE);
+    OtaRecord out;
+    ASSERT_TRUE(OtaRecordCodec::decode(blob.data(), blob.size(), out));
+    in.skipMeshCheck = false;
     EXPECT_EQ(out, in);
 }
 

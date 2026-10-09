@@ -27,7 +27,7 @@ public:
     }
 
     void updateTo(const ShaPrefix& image) {
-        nvs = BootGuardLogic::onAttemptStarted(nvs, image);
+        nvs = BootGuardLogic::onAttemptStarted(nvs, image, false);
         boot.installAndSelect(image);
         boot.reboot();
     }
@@ -148,10 +148,26 @@ TEST(BootGuard, NewAttemptClearsPreviousFailReason) {
     node.selfTestFails(FailReason::HEAP);
     node.bootUp();
 
-    node.nvs = BootGuardLogic::onAttemptStarted(node.nvs, IMAGE_C);
+    node.nvs = BootGuardLogic::onAttemptStarted(node.nvs, IMAGE_C, false);
     EXPECT_EQ(node.nvs.failReason, FailReason::NONE);
     EXPECT_TRUE(node.nvs.pending);
     EXPECT_EQ(node.nvs.attemptSha, IMAGE_C);
+}
+
+TEST(BootGuard, AttemptCarriesTheSkipMeshCheckFlag) {
+    OtaRecord record = BootGuardLogic::onAttemptStarted(OtaRecord{}, IMAGE_B, true);
+    EXPECT_TRUE(record.skipMeshCheck);
+    record = BootGuardLogic::onAttemptStarted(record, IMAGE_C, false);
+    EXPECT_FALSE(record.skipMeshCheck);
+}
+
+TEST(BootGuard, MeshFrameRequiredOnlyWithNeighboursAndWithoutSkipFlag) {
+    OtaRecord plain = BootGuardLogic::onAttemptStarted(OtaRecord{}, IMAGE_B, false);
+    OtaRecord skip = BootGuardLogic::onAttemptStarted(OtaRecord{}, IMAGE_B, true);
+    EXPECT_TRUE(BootGuardLogic::meshFrameRequired(true, plain));
+    EXPECT_FALSE(BootGuardLogic::meshFrameRequired(true, skip));
+    EXPECT_FALSE(BootGuardLogic::meshFrameRequired(false, plain));
+    EXPECT_FALSE(BootGuardLogic::meshFrameRequired(false, skip));
 }
 
 TEST(BootGuard, ReportsBootloaderWithoutRollback) {

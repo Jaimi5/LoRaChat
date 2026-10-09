@@ -88,8 +88,16 @@ public:
      * @brief Marks an attempt to boot @p sha as pending, right before rebooting into it.
      *
      * The unexplained rollback count is kept when the same image is tried again.
+     * @param skipMeshCheck the manifest flag that lets the image pass without mesh contact.
      */
-    static OtaRecord onAttemptStarted(const OtaRecord& stored, const ShaPrefix& sha);
+    static OtaRecord onAttemptStarted(const OtaRecord& stored, const ShaPrefix& sha,
+                                      bool skipMeshCheck);
+
+    /**
+     * @brief Whether the self-test of the pending image must see a mesh frame.
+     * @param hadNeighbours the node has had mesh contact before.
+     */
+    static bool meshFrameRequired(bool hadNeighbours, const OtaRecord& record);
 
     /** @return the record after the self-test passed and the image was marked valid. */
     static OtaRecord onSelfTestPassed(const OtaRecord& stored);

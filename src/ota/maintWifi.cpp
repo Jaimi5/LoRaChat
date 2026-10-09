@@ -208,24 +208,33 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
     }
 
     WindowKind windowKind = kind == Kind::AP ? WindowKind::AP : WindowKind::PULL;
-    OpenDecision decision;
-    uint32_t remainingS;
-    size_t counted;
+    auto refusal = [](OpenDecision decision) -> std::string {
+        if (decision == OpenDecision::REFUSED_LIMIT) {
+            return "Refused: " + std::to_string(MaintWindowPlan::MAX_PER_DAY) +
+                   " windows in the last 24 h";
+        }
+        if (decision == OpenDecision::REFUSED_DURATION) return "Refused: duration out of range";
+        return "";
+    };
+    // A trial copy answers refusals before anything changes; the plan itself only changes once
+    // this window owns the WiFi.
+    OpenDecision trial;
     {
         std::lock_guard<std::mutex> lock(planMutex_);
+        MaintWindowPlan copy = plan_;
+        trial = copy.open(windowKind, durationS, nodeNow());
+    }
+    std::string refused = refusal(trial);
+    if (!refused.empty()) return refused;
+    if (trial == OpenDecision::EXTENDED && busy_ && kind_ == kind) {
+        std::lock_guard<std::mutex> lock(planMutex_);
         uint32_t now = nodeNow();
-        decision = plan_.open(windowKind, durationS, now);
-        remainingS = plan_.remaining(now);
-        counted = plan_.countedInLastDay(now);
-        if (decision == OpenDecision::OPENED || decision == OpenDecision::EXTENDED) savePlan();
-    }
-    if (decision == OpenDecision::REFUSED_LIMIT) {
-        return "Refused: " + std::to_string(MaintWindowPlan::MAX_PER_DAY) +
-               " windows in the last 24 h";
-    }
-    if (decision == OpenDecision::REFUSED_DURATION) return "Refused: duration out of range";
-    if (decision == OpenDecision::EXTENDED && busy_ && kind_ == kind) {
-        return "Window extended, " + std::to_string(remainingS) + " s left";
+        MaintWindowPlan extended = plan_;
+        if (extended.open(windowKind, durationS, now) == OpenDecision::EXTENDED) {
+            plan_ = extended;
+            savePlan();
+            return "Window extended, " + std::to_string(plan_.remaining(now)) + " s left";
+        }
     }
 
     // Another window (boot window or the other kind) gives way to this one.
@@ -235,7 +244,31 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
     }
     bool idle = false;
     if (!busy_.compare_exchange_strong(idle, true)) return "The open window did not close";
+
+    MaintWindowPlan before;
+    OpenDecision decision;
+    uint32_t remainingS;
+    size_t counted;
+    {
+        std::lock_guard<std::mutex> lock(planMutex_);
+        uint32_t now = nodeNow();
+        before = plan_;
+        decision = plan_.open(windowKind, durationS, now);
+        remainingS = plan_.remaining(now);
+        counted = plan_.countedInLastDay(now);
+        if (refusal(decision).empty()) savePlan();
+    }
+    refused = refusal(decision);
+    if (!refused.empty()) {
+        busy_ = false;
+        return refused;
+    }
     if (!startTask(kind)) {
+        {
+            std::lock_guard<std::mutex> lock(planMutex_);
+            plan_ = before;
+            savePlan();
+        }
         busy_ = false;
         return "Maintenance window task creation failed";
     }
@@ -294,8 +327,10 @@ void MaintenanceWifi::resumeTask(void* parameter) {
         ESP_LOGI(MW_TAG, "Resuming the %s window, %u s left",
                  self->kind_ == Kind::AP ? "access point" : "pull", self->plan_.remaining(now));
     }
-    xEventGroupClearBits(wifiEvents, GOT_IP_BIT | CLOSE_BIT);
-    self->runWindow();
+    if (self->remainingMs() > 0) {
+        xEventGroupClearBits(wifiEvents, GOT_IP_BIT | CLOSE_BIT);
+        self->runWindow();
+    }
     self->busy_ = false;
     vTaskDelete(nullptr);
 }

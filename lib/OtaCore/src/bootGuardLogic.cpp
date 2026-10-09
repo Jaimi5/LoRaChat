@@ -87,13 +87,19 @@ BootDecision BootGuardLogic::onBoot(ImageState state, const ShaPrefix& runningSh
     return resolved(BootAction::REPORT_ROLLBACK, record);
 }
 
-OtaRecord BootGuardLogic::onAttemptStarted(const OtaRecord& stored, const ShaPrefix& sha) {
+OtaRecord BootGuardLogic::onAttemptStarted(const OtaRecord& stored, const ShaPrefix& sha,
+                                           bool skipMeshCheck) {
     OtaRecord record = stored;
     if (record.attemptSha != sha) record.unexplainedRollbacks = 0;
     record.attemptSha = sha;
     record.pending = true;
     record.failReason = FailReason::NONE;
+    record.skipMeshCheck = skipMeshCheck;
     return record;
+}
+
+bool BootGuardLogic::meshFrameRequired(bool hadNeighbours, const OtaRecord& record) {
+    return hadNeighbours && !record.skipMeshCheck;
 }
 
 OtaRecord BootGuardLogic::onSelfTestPassed(const OtaRecord& stored) {

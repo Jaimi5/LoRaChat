@@ -6,6 +6,10 @@
 static const char* MQTT_TAG = "MQTT";
 
 void MqttService::initMqtt(String lclName) {
+    if (strlen(MQTT_SERVER) == 0) {
+        ESP_LOGW(MQTT_TAG, "No MQTT server configured (config_local.h), MQTT disabled");
+        return;
+    }
     ESP_LOGI(MQTT_TAG, "Initializing mqtt");
 
     initialized = true;
@@ -240,11 +244,6 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
 }
 
 void MqttService::mqtt_app_start(const char* client_id) {
-    if (strlen(MQTT_SERVER) == 0) {
-        ESP_LOGW(MQTT_TAG, "No MQTT server configured (config_local.h), MQTT disabled");
-        return;
-    }
-
     String uri = "mqtt://" + String(MQTT_SERVER) + ":" + String(MQTT_PORT);
 
     ESP_LOGI(MQTT_TAG, "MQTT URI: %s", uri.c_str());

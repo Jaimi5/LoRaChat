@@ -52,9 +52,13 @@ void WiFiServerService::wifi_task(void*) {
     for (;;) {
         // Wait for a connect or fail event (set by wifi_event_handler). While disconnected,
         // also wake up when the backoff expires to retry the connection.
-        bool idle = !wiFiServerService.connected && !wiFiServerService.connecting;
-        TickType_t wait =
-            idle ? pdMS_TO_TICKS(wiFiServerService.connectBackoff.waitMs()) : portMAX_DELAY;
+        bool idle;
+        TickType_t wait;
+        {
+            std::lock_guard<std::recursive_mutex> lock(wiFiServerService.stateMutex_);
+            idle = !wiFiServerService.connected && !wiFiServerService.connecting;
+            wait = idle ? pdMS_TO_TICKS(wiFiServerService.connectBackoff.waitMs()) : portMAX_DELAY;
+        }
         EventBits_t bits = xEventGroupWaitBits(
             s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdTRUE, pdFALSE, wait);
 
@@ -63,21 +67,24 @@ void WiFiServerService::wifi_task(void*) {
 
         /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which
          * event actually happened. */
-        if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
-            LoRaMeshService.setGateway();
-            wiFiServerService.connected = true;
-            wiFiServerService.connecting = false;
-            wiFiServerService.connectBackoff.onSuccess();
-            ESP_LOGI(TAG, "connected to ap SSID:%s", wiFiServerService.ssid.c_str());
-        } else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
-            wiFiServerService.connected = false;
-            wiFiServerService.connecting = false;
-            LoRaMeshService.removeGateway();
-            wiFiServerService.connectBackoff.onFailure();
-            ESP_LOGI(TAG, "Failed to connect to SSID:%s, backoff %u ms",
-                     wiFiServerService.ssid.c_str(), wiFiServerService.connectBackoff.waitMs());
-        } else if (idle) {
-            wiFiServerService.connectWiFi();
+        {
+            std::lock_guard<std::recursive_mutex> lock(wiFiServerService.stateMutex_);
+            if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
+                LoRaMeshService.setGateway();
+                wiFiServerService.connected = true;
+                wiFiServerService.connecting = false;
+                wiFiServerService.connectBackoff.onSuccess();
+                ESP_LOGI(TAG, "connected to ap SSID:%s", wiFiServerService.ssid.c_str());
+            } else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
+                wiFiServerService.connected = false;
+                wiFiServerService.connecting = false;
+                LoRaMeshService.removeGateway();
+                wiFiServerService.connectBackoff.onFailure();
+                ESP_LOGI(TAG, "Failed to connect to SSID:%s, backoff %u ms",
+                         wiFiServerService.ssid.c_str(), wiFiServerService.connectBackoff.waitMs());
+            } else if (idle) {
+                wiFiServerService.connectWiFi();
+            }
         }
 
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
@@ -147,6 +154,7 @@ void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* me
 void WiFiServerService::sendMessage(DataMessage* message) {}
 
 String WiFiServerService::addSSID(String ssid) {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH) {
         return F("SSID must be 1 to 32 bytes");
     }
@@ -156,6 +164,7 @@ String WiFiServerService::addSSID(String ssid) {
 }
 
 String WiFiServerService::addPassword(String password) {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (password.length() > MAX_PASSWORD_LENGTH) {
         return F("Password must be at most 64 bytes");
     }
@@ -165,6 +174,7 @@ String WiFiServerService::addPassword(String password) {
 }
 
 String WiFiServerService::storeCredentials(const String& ssid, const String& password) {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH ||
         password.length() > MAX_PASSWORD_LENGTH) {
         return F("Invalid WiFi credentials");
@@ -186,6 +196,7 @@ String WiFiServerService::storeCredentials(const String& ssid, const String& pas
 }
 
 String WiFiServerService::resetWiFiData() {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     esp_err_t result;
 
     // Stop WiFi before changing configuration to prevent conflicts
@@ -251,6 +262,7 @@ bool WiFiServerService::isConnected() {
 }
 
 bool WiFiServerService::connectWiFi() {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (!initialized)
         return false;
 
@@ -311,6 +323,7 @@ bool WiFiServerService::connectWiFi() {
 }
 
 bool WiFiServerService::disconnectWiFi() {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (!initialized)
         return true;
 

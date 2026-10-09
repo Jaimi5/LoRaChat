@@ -103,8 +103,8 @@ OtaRecord OtaBootGuard::record() const {
     return record_;
 }
 
-void OtaBootGuard::recordAttempt(const ShaPrefix& sha) {
-    saveRecord(BootGuardLogic::onAttemptStarted(record(), sha));
+void OtaBootGuard::recordAttempt(const ShaPrefix& sha, bool skipMeshCheck) {
+    saveRecord(BootGuardLogic::onAttemptStarted(record(), sha, skipMeshCheck));
 }
 
 bool OtaBootGuard::loadRecord() {
@@ -174,15 +174,20 @@ void OtaBootGuard::saveNeighbourFlag() {
 
 void OtaBootGuard::startSelfTest() {
     uint32_t watchdogMs;
+    bool meshRequired;
+    bool skipped;
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        meshRequired = BootGuardLogic::meshFrameRequired(hadNeighbours_, record_);
+        skipped = hadNeighbours_ && !meshRequired;
         selfTestStartMs_ = millis();
-        selfTest_.reset(new SelfTest(selfTestStartMs_, hadNeighbours_));
+        selfTest_.reset(new SelfTest(selfTestStartMs_, meshRequired));
         watchdogMs = selfTest_->timing().watchdogMs;
+        pendingVerify_ = true;
     }
     armRtcWatchdog(watchdogMs);
     ESP_LOGW(BG_TAG, "Image in PENDING_VERIFY, self-test started (mesh frame %s)",
-             hadNeighbours_ ? "required" : "not required");
+             meshRequired ? "required" : skipped ? "skipped by the manifest" : "not required");
 
     xTaskCreate(
         [](void*) {
@@ -268,6 +273,7 @@ void OtaBootGuard::finishSelfTest(SelfTestVerdict verdict, FailReason reason) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             selfTest_.reset();
+            pendingVerify_ = false;
         }
         attemptResolved_ = true;
         ESP_LOGW(BG_TAG, "Self-test passed, image marked valid (%s)", esp_err_to_name(err));

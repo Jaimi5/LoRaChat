@@ -9,6 +9,8 @@
 #include "message/messageService.h"
 
 #include <string.h>
+
+#include <mutex>
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -96,6 +98,8 @@ private:
         commandService = wiFiCommandService;
     };
 
+    /** Guards the credentials and the connection state shared by the WiFi task and commands. */
+    std::recursive_mutex stateMutex_;
     String ssid = DEFAULT_WIFI_SSID;
     String password = DEFAULT_WIFI_PASSWORD;
 

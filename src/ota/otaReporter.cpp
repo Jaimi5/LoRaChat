@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include <mutex>
 #include <vector>
 
 #include "config.h"
@@ -27,6 +28,8 @@ static constexpr uint32_t CONNECT_POLL_MS = 5000;
 static constexpr int CONNECT_POLLS = 360;
 // HTTP client and HMAC.
 static constexpr uint32_t VERDICT_TASK_STACK = 6144;
+// One verdict sender at a time, so a verdict is sent once.
+static std::mutex verdictMutex;
 
 namespace {
 
@@ -91,6 +94,7 @@ bool OtaReporter::send(ReportEvent event, const ReportDetails& details) {
 }
 
 void OtaReporter::sendPendingVerdict() {
+    std::lock_guard<std::mutex> lock(verdictMutex);
     OtaRecord record = OtaBootGuard::getInstance().record();
     if (record.lastOutcome == OtaOutcome::NONE) return;
     std::vector<uint8_t> key = verdictKey(record);

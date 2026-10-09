@@ -7,12 +7,14 @@ namespace {
 constexpr uint8_t MAGIC_0 = 'L';
 constexpr uint8_t MAGIC_1 = 'O';
 constexpr size_t HEADER_SIZE = 4;
+constexpr uint8_t FLAG_SKIP_MESH_CHECK = 1u << 0;
 
 }  // namespace
 
 constexpr size_t Blacklist::CAPACITY;
 constexpr uint8_t OtaRecordCodec::VERSION;
 constexpr size_t OtaRecordCodec::V1_SIZE;
+constexpr size_t OtaRecordCodec::SIZE;
 
 void Blacklist::add(const ShaPrefix& sha) {
     if (contains(sha)) return;
@@ -48,16 +50,16 @@ bool OtaRecord::operator==(const OtaRecord& other) const {
     return attemptSha == other.attemptSha && pending == other.pending &&
            unexplainedRollbacks == other.unexplainedRollbacks &&
            failReason == other.failReason && lastOutcome == other.lastOutcome &&
-           blacklist == other.blacklist;
+           blacklist == other.blacklist && skipMeshCheck == other.skipMeshCheck;
 }
 
 std::vector<uint8_t> OtaRecordCodec::encode(const OtaRecord& record) {
     std::vector<uint8_t> out;
-    out.reserve(V1_SIZE);
+    out.reserve(SIZE);
     out.push_back(MAGIC_0);
     out.push_back(MAGIC_1);
     out.push_back(VERSION);
-    out.push_back(static_cast<uint8_t>(V1_SIZE));
+    out.push_back(static_cast<uint8_t>(SIZE));
     out.insert(out.end(), record.attemptSha.begin(), record.attemptSha.end());
     out.push_back(record.pending ? 1 : 0);
     out.push_back(record.unexplainedRollbacks);
@@ -68,6 +70,7 @@ std::vector<uint8_t> OtaRecordCodec::encode(const OtaRecord& record) {
     for (const ShaPrefix& entry : record.blacklist.entries_) {
         out.insert(out.end(), entry.begin(), entry.end());
     }
+    out.push_back(record.skipMeshCheck ? FLAG_SKIP_MESH_CHECK : 0);
     return out;
 }
 
@@ -95,6 +98,7 @@ bool OtaRecordCodec::decode(const uint8_t* data, size_t size, OtaRecord& out) {
         std::copy(p, p + entry.size(), entry.begin());
         p += entry.size();
     }
+    if (length >= SIZE) record.skipMeshCheck = (*p & FLAG_SKIP_MESH_CHECK) != 0;
 
     out = record;
     return true;
