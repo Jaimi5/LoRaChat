@@ -13,6 +13,7 @@
 #include "devices/initDevices.h"
 #include "loramesh/loraMeshService.h"
 #include "maintWifi.h"
+#include "mqtt/mqttService.h"
 #include "otaBootGuard.h"
 #include "otaKeys.h"
 #include "otaSignature.h"
@@ -90,6 +91,8 @@ Acceptance OtaInstall::accept(const uint8_t* data, size_t size, OtaManifest& out
 void OtaInstall::stopMesh(const OtaManifest& manifest) {
     ESP_LOGW(OI_TAG, "Installing %s, stopping the mesh", manifest.versionString.c_str());
     LoRaMeshService::getInstance().standby();
+    MqttService& mqtt = MqttService::getInstance();
+    if (mqtt.isInitialized()) mqtt.disconnect();
 }
 
 void OtaInstall::rebootInto(EspOtaFlash& flash, const OtaManifest& manifest) {

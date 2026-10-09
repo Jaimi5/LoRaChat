@@ -34,6 +34,12 @@ public:
     /** Sends the verdict (valid or rollback) of the last update attempt if it was not sent yet. */
     static void sendPendingVerdict();
 
+    /**
+     * @brief On a gateway: waits in a task until the boot guard has decided and the WiFi has an
+     *        address, then sends the pending verdict. Sensor nodes send it in their windows.
+     */
+    static void sendVerdictWhenConnected();
+
     /** @return @p sha in hex, as the report's "sha" field. */
     static std::string shaHex(const ShaPrefix& sha);
 

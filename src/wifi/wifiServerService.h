@@ -56,6 +56,9 @@ public:
 
     bool isConnected();
 
+    /** @return true once the station has an IP address (it can reach the network). */
+    bool hasIp();
+
 
     static constexpr size_t MAX_SSID_LENGTH = sizeof(wifi_sta_config_t::ssid);
     static constexpr size_t MAX_PASSWORD_LENGTH = sizeof(wifi_sta_config_t::password);

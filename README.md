@@ -102,7 +102,7 @@ Every command has a permission: **Open** commands run from any channel, **Signed
 | `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
 | `/key` | Open | Whether a deployment key is stored, and its fingerprint (compare with `ap_pass.py show`) |
 | `/key.set <64 hex digits>` | local | Stores the deployment key (created with `scripts/ota_tools/ap_pass.py keygen`) |
-| `/maint.open <seconds>` | Signed | Sensor nodes: joins the WiFi network and checks the OTA server, up to 7200 s |
+| `/maint.open <seconds>` | Signed | Sensor nodes: joins the WiFi network and checks the OTA server, up to 7200 s. On a gateway: checks the OTA server right away over its WiFi (MQTT stops while it installs) |
 | `/maint.open <seconds> ap` | Signed | Sensor nodes: opens the access point `LM-<address>` for an upload from a phone or PC, up to 1800 s. Needs the deployment key |
 | `/maint.close` | Signed | Closes the open maintenance window |
 | `/maint.wifi …` | Signed | Stores the node's WiFi credentials (gateway WiFi and maintenance windows). Over LoRa or MQTT they travel encrypted (`lmcmd.py wifi`); on serial also `/maint.wifi <ssid> [<password>]` |

@@ -42,6 +42,7 @@
 
 // Maintenance WiFi and OTA
 #include "ota/maintWifi.h"
+#include "ota/otaReporter.h"
 #include "ota/otaService.h"
 #include "ota/otaWifiPull.h"
 
@@ -231,6 +232,8 @@ void setup() {
     MaintenanceWifi::getInstance().startBootWindow(gateway, bootGuard.isPendingVerify());
 
     bootGuard.reportSetupDone();
+
+    if (gateway) OtaReporter::sendVerdictWhenConnected();
 
     startHeapReport();
 

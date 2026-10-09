@@ -16,12 +16,17 @@
 #include "nvs.h"
 #include "otaBootGuard.h"
 #include "otaService.h"
+#include "wifi/wifiServerService.h"
 
 static const char* OR_TAG = "OtaReport";
 static const char* NVS_NAMESPACE = "lmota";
 static const char* NVS_KEY_REPORTED = "rptd";
 static const char* TAG_HEADER = "X-LM-Tag";
 static constexpr int HTTP_TIMEOUT_MS = 5000;
+static constexpr uint32_t CONNECT_POLL_MS = 5000;
+static constexpr int CONNECT_POLLS = 360;
+// HTTP client and HMAC.
+static constexpr uint32_t VERDICT_TASK_STACK = 6144;
 
 namespace {
 
@@ -118,6 +123,22 @@ std::string OtaReporter::shaHex(const ShaPrefix& sha) {
     char text[2 * sizeof(ShaPrefix) + 1];
     for (size_t i = 0; i < sha.size(); i++) snprintf(text + 2 * i, 3, "%02x", sha[i]);
     return text;
+}
+
+void OtaReporter::sendVerdictWhenConnected() {
+    auto task = [](void*) {
+        // The verdict of a new image is known once the boot guard has decided.
+        WiFiServerService& wifi = WiFiServerService::getInstance();
+        OtaBootGuard& guard = OtaBootGuard::getInstance();
+        for (int i = 0; i < CONNECT_POLLS && (guard.isPendingVerify() || !wifi.hasIp()); i++) {
+            vTaskDelay(pdMS_TO_TICKS(CONNECT_POLL_MS));
+        }
+        if (!guard.isPendingVerify() && wifi.hasIp()) sendPendingVerdict();
+        vTaskDelete(nullptr);
+    };
+    if (xTaskCreate(task, "OtaVerdict", VERDICT_TASK_STACK, nullptr, 1, nullptr) != pdPASS) {
+        ESP_LOGE(OR_TAG, "Verdict report task creation failed");
+    }
 }
 
 int OtaReporter::post(const std::string& body) {

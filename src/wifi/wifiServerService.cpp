@@ -177,9 +177,12 @@ String WiFiServerService::storeCredentials(const String& ssid, const String& pas
 
     this->ssid = ssid;
     this->password = password;
-    // The WiFi task reconnects with the new credentials.
-    if (wifiStarted) esp_wifi_disconnect();
-    return "WiFi credentials stored for " + ssid;
+    // A running station keeps retrying its old network; the WiFi task starts it again with the
+    // new credentials.
+    disconnectWiFi();
+    connecting = false;
+    connectBackoff.onSuccess();
+    return "WiFi credentials stored for " + ssid + ", reconnecting";
 }
 
 String WiFiServerService::resetWiFiData() {
@@ -320,6 +323,14 @@ bool WiFiServerService::disconnectWiFi() {
     connected = false;
 
     return true;
+}
+
+bool WiFiServerService::hasIp() {
+    if (!initialized) return false;
+    esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ipInfo;
+    return netif != nullptr && esp_netif_get_ip_info(netif, &ipInfo) == ESP_OK &&
+           ipInfo.ip.addr != 0;
 }
 
 String WiFiServerService::getIP() {

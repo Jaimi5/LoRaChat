@@ -28,7 +28,8 @@
  *
  * The station uses the same credentials as the gateway WiFi: those stored in NVS, otherwise
  * WIFI_SSID / WIFI_PASSWORD. It never makes the node a mesh gateway and never writes the
- * credentials. Gateways keep their own WiFi and do not open windows.
+ * credentials. Gateways keep their own WiFi: on them /maint.open <s> runs the update check
+ * right away over that WiFi, and the access point is refused.
  */
 class MaintenanceWifi {
 public:
@@ -78,6 +79,8 @@ private:
     MaintenanceWifi() = default;
 
     std::string open(Kind kind, uint32_t durationS);
+    /** Runs the update check now over the WiFi a gateway keeps connected. */
+    std::string checkOverGatewayWifi();
     bool startTask(Kind kind);
     static void windowTask(void* parameter);
     static void resumeTask(void* parameter);

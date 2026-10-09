@@ -17,6 +17,7 @@
 #include "otaBootGuard.h"
 #include "otaService.h"
 #include "otaUploadServer.h"
+#include "wifi/wifiServerService.h"
 
 static const char* MW_TAG = "MaintWifi";
 static constexpr EventBits_t GOT_IP_BIT = BIT0;
@@ -185,7 +186,10 @@ std::string MaintenanceWifi::storeCredentials(const std::string& ssid,
 }
 
 std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
-    if (gateway_) return "Gateways keep their own WiFi; no maintenance window";
+    if (gateway_) {
+        if (kind == Kind::AP) return "Gateways keep their own WiFi; the access point is for sensors";
+        return checkOverGatewayWifi();
+    }
     if (OtaBootGuard::getInstance().isPendingVerify()) {
         return "The image is still being verified; try again when it is valid";
     }
@@ -243,6 +247,23 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
                " s, upload at http://192.168.4.1/" + counts;
     }
     return "Pull window open for " + std::to_string(remainingS) + " s" + counts;
+}
+
+std::string MaintenanceWifi::checkOverGatewayWifi() {
+    if (!WiFiServerService::getInstance().isConnected()) return "Gateway WiFi not connected";
+    bool idle = false;
+    if (!busy_.compare_exchange_strong(idle, true)) return "An update check is already running";
+    auto task = [](void* parameter) {
+        auto* self = static_cast<MaintenanceWifi*>(parameter);
+        if (self->work_) self->work_();
+        self->busy_ = false;
+        vTaskDelete(nullptr);
+    };
+    if (xTaskCreate(task, "GatewayOta", WINDOW_TASK_STACK, this, 2, nullptr) != pdPASS) {
+        busy_ = false;
+        return "Update check task creation failed";
+    }
+    return "Checking the OTA server over the gateway WiFi";
 }
 
 bool MaintenanceWifi::startTask(Kind kind) {

@@ -33,7 +33,10 @@ public:
     /** Verifies a signed manifest and runs the update policy. */
     static Acceptance accept(const uint8_t* data, size_t size, OtaManifest& out);
 
-    /** Stops the mesh before the first flash write. It cannot be restarted afterwards. */
+    /**
+     * @brief Stops the mesh (and MQTT on a gateway) before the first flash write. The mesh
+     *        cannot be restarted afterwards.
+     */
     static void stopMesh(const OtaManifest& manifest);
 
     /**
