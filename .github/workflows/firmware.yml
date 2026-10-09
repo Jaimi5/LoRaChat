@@ -48,9 +48,10 @@ jobs:
             .pio/build_cache
           key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini', 'sdkconfig.*') }}
           restore-keys: pio-${{ matrix.env }}-
-      # The espressif32 6.5.0 build scripts import pkg_resources from setuptools, which the
-      # Python 3.12 runner does not ship; the local PlatformIO environment has 80.9.
-      - run: pip install platformio "setuptools<81"
+      # Same PlatformIO Core as the bench builds (6.2.0 also installs Unity into libdeps). The
+      # espressif32 6.5.0 build scripts import pkg_resources from setuptools, which the
+      # Python 3.12 runner does not ship.
+      - run: pip install "platformio==6.1.19" "setuptools<81"
       - name: Site settings with every feature on, as in a release image
         run: |
           cat > src/config_local.h <<'CONFIG'
@@ -85,7 +86,7 @@ jobs:
             ~/.platformio/platforms
           key: pio-native-${{ hashFiles('platformio.ini') }}
           restore-keys: pio-native-
-      - run: pip install platformio
+      - run: pip install "platformio==6.1.19" "setuptools<81"
       - name: ESP-IDF package, whose mbedTLS the native tests build for the host
         run: pio pkg install -e tbeam
       - run: pio test -e native
