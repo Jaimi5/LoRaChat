@@ -1,0 +1,59 @@
+name: Firmware
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO packages and compiled objects
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/build_cache
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'sdkconfig.tbeam', 'sdkconfig.tbeam-debug', 'CMakeLists.txt') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install tools
+        run: pip install platformio==6.1.19 -r scripts/ota_tools/requirements.txt
+
+      - name: Rollback guards
+        run: python3 scripts/ota_tools/check_guards.py
+
+      # The first ESP-IDF build of an env can stop once on a missing sdkconfig.h; the second run
+      # completes it.
+      - name: Build tbeam
+        run: pio run -e tbeam || pio run -e tbeam
+
+      - name: Image checks and 90 % size gate (tbeam)
+        run: python3 scripts/ota_tools/release.py --env tbeam --out "$RUNNER_TEMP/release"
+
+      - name: Build tbeam-debug
+        run: pio run -e tbeam-debug || pio run -e tbeam-debug
+
+      - name: Image checks and 90 % size gate (tbeam-debug)
+        run: python3 scripts/ota_tools/release.py --env tbeam-debug --out "$RUNNER_TEMP/release"
+
+      - name: License gate
+        run: python3 scripts/ota_tools/license_gate.py .pio/libdeps/tbeam
+
+      - name: Native tests
+        run: pio test -e native
+
+      - name: Host tool tests
+        run: python3 -m pytest scripts/ota_tools/tests test/host
+
+      - name: Upload the unsigned images
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.sha }}
+          path: ${{ runner.temp }}/release

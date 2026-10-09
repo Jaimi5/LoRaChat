@@ -17,6 +17,7 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 | `otadata.py` | Reads and rewrites the `otadata` partition to boot a chosen slot (bench) |
 | `fw_server.py` | Bench firmware server for the WiFi pull, with injected faults |
 | `ap_pass.py` | Deployment key, and the name, password and QR text of a node's access point |
+| `license_gate.py` | Fails on GPL/LGPL/AGPL or unknown licenses in the resolved libraries (CI) |
 | `lmcmd.py` | Signs commands for nodes, and encrypts WiFi credentials for `/maint.wifi` |
 | `ap_upload.py` | Bench: uploads a bundle to a node's access point through a second T-Beam (`extras/bench_ap_bridge`) |
 
@@ -201,6 +202,10 @@ scripts/ota_tools/build_test_images.sh        # all kinds, or e.g. "build_test_i
 ```
 
 They land in `release/tbeam/<version>-t<kind>/`. The script reuses the `tbeam` build directory, so the next normal build recompiles, mostly from the build cache.
+
+## License gate
+
+`python3 scripts/ota_tools/license_gate.py <libdeps folder>` lists the license of every resolved library (from `library.json`, `library.properties` or the license file) and fails on GPL, LGPL, AGPL or an unknown license. New dependencies must be permissive; a library accepted anyway is passed with `--allow <folder>`. CI runs it on `.pio/libdeps/tbeam`.
 
 ## Guards
 
