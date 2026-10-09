@@ -1,0 +1,92 @@
+name: Firmware
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host:
+    name: Host tools and guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/ota_tools/requirements.txt
+      - run: pip install -r scripts/ota_tools/requirements.txt
+      - name: Rollback guards
+        run: python scripts/ota_tools/check_guards.py
+      - name: Host tests
+        run: python -m pytest -q scripts/ota_tools/tests test/host
+      - name: Generated vector headers are up to date
+        run: |
+          python scripts/ota_tools/ap_pass.py vectors
+          python scripts/ota_tools/lmcmd.py vectors
+          git diff --exit-code test/vectors
+
+  firmware:
+    name: Build ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [tbeam, tbeam-debug]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # libdeps is not cached: LoRaMesher follows the release/2.0.0 branch until it is pinned,
+      # and only a fresh install picks up the branch head.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            .pio/build_cache
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini', 'sdkconfig.*') }}
+          restore-keys: pio-${{ matrix.env }}-
+      # Same PlatformIO Core as the bench builds (6.2.0 also installs Unity into libdeps). The
+      # espressif32 6.5.0 build scripts import pkg_resources from setuptools, which the
+      # Python 3.12 runner does not ship.
+      - run: pip install "platformio==6.1.19" "setuptools<81"
+      - name: Site settings with every feature on, as in a release image
+        run: |
+          cat > src/config_local.h <<'CONFIG'
+          #pragma once
+          #define WIFI_SSID "ci"
+          #define WIFI_PASSWORD "ci-password"
+          #define MQTT_SERVER "mqtt.invalid"
+          #define MQTT_PORT 1883
+          #define MQTT_USERNAME ""
+          #define MQTT_PASSWORD ""
+          #define LORA_MANAGER_ID 0x0000
+          CONFIG
+      - run: pio run -e ${{ matrix.env }}
+      - name: Image under 90 % of the app slot
+        run: python scripts/ota_tools/release.py --size-only --build-dir .pio/build/${{ matrix.env }}
+      - name: Licenses and acknowledgements
+        if: matrix.env == 'tbeam'
+        run: python scripts/ota_tools/third_party.py check --env tbeam
+
+  native:
+    name: Native tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-native-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-native-
+      - run: pip install "platformio==6.1.19" "setuptools<81"
+      - name: ESP-IDF package, whose mbedTLS the native tests build for the host
+        run: pio pkg install -e tbeam
+      - run: pio test -e native

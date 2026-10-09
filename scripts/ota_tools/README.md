@@ -21,6 +21,7 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 
 | `lmcmd.py` | Signs commands for nodes, and encrypts WiFi credentials for `/maint.wifi` |
 | `ap_upload.py` | Bench: uploads a bundle to a node's access point through a second T-Beam (`extras/bench_ap_bridge`) |
+| `third_party.py` | License gate and README acknowledgements check of the resolved libraries |
 
 ## Versions
 
@@ -225,3 +226,22 @@ It writes bootloader, partition table, an erased NVS (`--keep-nvs` keeps it), er
 - `sdkconfig.tbeam-debug` differs from `sdkconfig.tbeam` in anything but heap and log debug options.
 
 The earlier delta OTA over MQTT (patch generation, chunking, campaign and monitor tools) is kept in `extras/legacy_delta_ota/` for the planned delta OTA over LoRa.
+
+## Node reports
+
+A node reports the result of each maintenance window with `POST /report` on the host of its OTA server (loramesher.com in the field). The body is compact JSON (`lib/OtaCore/src/otaReport`, built by `src/ota/otaReporter`) signed with the report key `Kr = HMAC-SHA256(K, "LMR1")` and sent as `X-LM-Tag: hex(HMAC-SHA256(Kr, body))` (`lib/OtaCrypto/src/deploymentKey`). The server holds only `Kr`, so it cannot sign commands. The server side, its field list and the device manager live in the LoRaMesherWeb repository.
+
+```bash
+python3 scripts/ota_tools/ap_pass.py report-key --key-file deploy.key   # Kr for the server's OTA_REPORT_KEY
+```
+
+`test/vectors/reportVectors.h` holds cases of LoRaMesherWeb `ota/vectors/report_vectors.json`; the native tests build those bodies byte for byte and check their tags, and `test/host/test_report_vectors.py` checks the copy against the server's file when LoRaMesherWeb is next to this repository.
+
+## Third-party check
+
+```bash
+python3 scripts/ota_tools/third_party.py check --env tbeam   # after a build of the env
+python3 scripts/ota_tools/release.py --size-only --env tbeam # size gate only
+```
+
+`third_party.py` reads every library PlatformIO resolved for the env. It fails if a license is unknown or copyleft and not in its allowlist (TinyGPSPlus, EspSoftwareSerial, ghostl), or if a library is missing from the README acknowledgements or listed there with another license family. The license comes from `library.json` or `library.properties`, else from the license file. CI runs both checks on every push.

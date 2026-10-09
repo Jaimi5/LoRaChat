@@ -22,7 +22,7 @@ import shutil
 import struct
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[2]
 SIZE_GATE = 0.90
@@ -37,15 +37,20 @@ class ReleaseError(Exception):
     pass
 
 
-def default_build_dir(env: str, project_dir: Path = ROOT) -> Path:
-    """Build directory of @p env, following the workspace rule of scripts/pio.sh."""
-    if os.environ.get("PLATFORMIO_BUILD_DIR"):
-        return Path(os.environ["PLATFORMIO_BUILD_DIR"]) / env
+def workspace_dir(project_dir: Path = ROOT) -> Path:
+    """PlatformIO workspace of @p project_dir, following the rule of scripts/pio.sh."""
     workspace = os.environ.get("PLATFORMIO_WORKSPACE_DIR")
     if not workspace and str(project_dir).startswith("/mnt/"):
         cache = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
         workspace = str(Path(cache) / "pio-ws" / project_dir.name)
-    return Path(workspace or project_dir / ".pio") / "build" / env
+    return Path(workspace) if workspace else project_dir / ".pio"
+
+
+def default_build_dir(env: str, project_dir: Path = ROOT) -> Path:
+    """Build directory of @p env."""
+    if os.environ.get("PLATFORMIO_BUILD_DIR"):
+        return Path(os.environ["PLATFORMIO_BUILD_DIR"]) / env
+    return workspace_dir(project_dir) / "build" / env
 
 
 def appended_sha256(image: bytes) -> bytes:
@@ -107,6 +112,15 @@ def expected_version(project_dir: Path) -> str:
     return os.environ.get("FW_VERSION") or (project_dir / "version.txt").read_text().strip()
 
 
+def check_size(build_dir: Path, project_dir: Path) -> Tuple[int, int]:
+    """Checks firmware.bin against the size gate. @return the image and app slot sizes."""
+    size = (build_dir / "firmware.bin").stat().st_size
+    slot = app_slot_size(project_dir / "partitions.csv")
+    if size > slot * SIZE_GATE:
+        raise ReleaseError(f"image is {size} B, over {SIZE_GATE:.0%} of the {slot} B slot")
+    return size, slot
+
+
 def check_build(build_dir: Path, project_dir: Path, allow_dirty: bool) -> Dict[str, object]:
     """Checks the images in @p build_dir. @return the content of info.json."""
     for name in IMAGE_FILES:
@@ -123,9 +137,7 @@ def check_build(build_dir: Path, project_dir: Path, allow_dirty: bool) -> Dict[s
     if desc["version"].endswith(".dirty") and not allow_dirty:
         raise ReleaseError(f"image {desc['version']} was built from uncommitted changes")
 
-    slot = app_slot_size(project_dir / "partitions.csv")
-    if len(image) > slot * SIZE_GATE:
-        raise ReleaseError(f"image is {len(image)} B, over {SIZE_GATE:.0%} of the {slot} B slot")
+    _, slot = check_size(build_dir, project_dir)
 
     bootloader = (build_dir / "bootloader.bin").read_bytes()
     return {
@@ -174,11 +186,22 @@ def main(argv=None) -> int:
     parser.add_argument("--key-id", type=lambda v: int(v, 0), help="key id of --sign-key")
     parser.add_argument("--allow-downgrade", action="store_true")
     parser.add_argument("--skip-mesh-check", action="store_true")
+    parser.add_argument("--size-only", action="store_true",
+                        help="only check firmware.bin against the size gate, for CI")
     args = parser.parse_args(argv)
     if bool(args.sign_key) != (args.key_id is not None):
         parser.error("--sign-key and --key-id go together")
 
     build_dir = args.build_dir or default_build_dir(args.env)
+    if args.size_only:
+        try:
+            size, slot = check_size(build_dir, ROOT)
+        except (OSError, ReleaseError, ValueError) as exc:
+            print(f"release: {exc}", file=sys.stderr)
+            return 1
+        print(f"{build_dir / 'firmware.bin'}: {size} B, {100.0 * size / slot:.1f} % "
+              f"of the {slot} B slot")
+        return 0
     try:
         out_dir = collect(args.env, build_dir, args.out, ROOT, args.tag, args.allow_dirty)
         if args.sign_key:

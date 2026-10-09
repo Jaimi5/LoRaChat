@@ -7,6 +7,8 @@ Commands:
   show --key-file deploy.key --node 1A2B
                                        prints the key fingerprint (as /key shows it on a node),
                                        the AP name, its password and the WiFi QR text
+  report-key --key-file deploy.key     prints the report key Kr = HMAC-SHA256(K, "LMR1") in hex,
+                                       the OTA_REPORT_KEY of the report server
   vectors                              regenerates test/vectors/apPassVectors.h
 
 A node with mesh address 0x1A2B opens the AP "LM-1A2B". Its password is
@@ -27,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 VECTORS_DIR = ROOT / "test" / "vectors"
 KEY_SIZE = 32
 AP_LABEL = b"LMAP1"
+REPORT_LABEL = b"LMR1"
 AP_PASSWORD_BYTES = 8
 # Test vectors only: a fixed, public key.
 VECTOR_KEY = bytes(range(KEY_SIZE))
@@ -40,6 +43,10 @@ class KeyFileError(Exception):
 def ap_password(key: bytes, node: int) -> str:
     digest = hmac.new(key, AP_LABEL + struct.pack("<H", node), hashlib.sha256).digest()
     return digest[:AP_PASSWORD_BYTES].hex()
+
+
+def report_key(key: bytes) -> bytes:
+    return hmac.new(key, REPORT_LABEL, hashlib.sha256).digest()
 
 
 def key_fingerprint(key: bytes) -> str:
@@ -121,6 +128,8 @@ def main(argv: Optional[list] = None) -> int:
     show = sub.add_parser("show")
     show.add_argument("--key-file", type=Path, required=True)
     show.add_argument("--node", required=True, help="mesh address in hex, e.g. 1A2B")
+    rep = sub.add_parser("report-key")
+    rep.add_argument("--key-file", type=Path, required=True)
     vec = sub.add_parser("vectors")
     vec.add_argument("--out", type=Path, default=VECTORS_DIR / "apPassVectors.h")
     args = parser.parse_args(argv)
@@ -130,6 +139,8 @@ def main(argv: Optional[list] = None) -> int:
             keygen(args.out)
             print(f"Deployment key written to {args.out}. Keep it offline; load it on each "
                   f"node with /key.set (the hex in the file).")
+        elif args.command == "report-key":
+            print(report_key(load_key(args.key_file)).hex())
         elif args.command == "show":
             key = load_key(args.key_file)
             node = parse_node(args.node)

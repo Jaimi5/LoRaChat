@@ -79,3 +79,12 @@ def test_show_prints_ssid_password_and_qr(tmp_path, capsys):
 def test_committed_vectors_match():
     header = (ap.VECTORS_DIR / "apPassVectors.h").read_text()
     assert ap.vectors_header() == header
+
+
+def test_report_key_is_the_lmr1_hmac(tmp_path, capsys):
+    expected = hmac.new(KEY, b"LMR1", hashlib.sha256).hexdigest()
+    assert ap.report_key(KEY).hex() == expected
+    path = tmp_path / "deploy.key"
+    path.write_text(KEY.hex())
+    assert ap.main(["report-key", "--key-file", str(path)]) == 0
+    assert capsys.readouterr().out.strip() == expected
