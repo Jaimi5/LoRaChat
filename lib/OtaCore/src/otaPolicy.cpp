@@ -20,11 +20,7 @@ PolicyDecision OtaPolicy::decide(const OtaManifest& manifest, const NodeState& n
     if (manifest.version < node.runningVersion && !manifest.allowDowngrade()) {
         return PolicyDecision::REFUSE_DOWNGRADE;
     }
-    if (!node.externalPower && node.batteryMv < MIN_BATTERY_MV) {
-        return PolicyDecision::REFUSE_BATTERY;
-    }
-    if (node.freeHeap < MIN_FREE_HEAP) return PolicyDecision::REFUSE_HEAP;
-    return PolicyDecision::INSTALL;
+    return checkResources(node.batteryMv, node.externalPower, node.freeHeap);
 }
 
 bool OtaPolicy::descriptorMatches(const OtaManifest& manifest, const std::string& project,
@@ -79,4 +75,11 @@ const char* policyDecisionName(PolicyDecision decision) {
             return "SKIP_FAILED_SINCE_POWER_ON";
     }
     return "UNKNOWN";
+}
+
+PolicyDecision OtaPolicy::checkResources(uint32_t batteryMv, bool externalPower,
+                                         uint32_t freeHeap) {
+    if (!externalPower && batteryMv < MIN_BATTERY_MV) return PolicyDecision::REFUSE_BATTERY;
+    if (freeHeap < MIN_FREE_HEAP) return PolicyDecision::REFUSE_HEAP;
+    return PolicyDecision::INSTALL;
 }

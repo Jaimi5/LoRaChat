@@ -59,6 +59,13 @@ public:
     static PolicyDecision decide(const OtaManifest& manifest, const NodeState& node);
 
     /**
+     * @brief Checks battery and heap, as for an install, before a maintenance window opens.
+     * @return INSTALL if they are enough, else REFUSE_BATTERY or REFUSE_HEAP.
+     */
+    static PolicyDecision checkResources(uint32_t batteryMv, bool externalPower,
+                                         uint32_t freeHeap);
+
+    /**
      * @brief Checks the descriptor of the written image against the manifest.
      * @param project esp_app_desc_t.project_name of the written image.
      * @param version esp_app_desc_t.version of the written image.

@@ -2,33 +2,37 @@
 
 #include "Arduino.h"
 
+#include <functional>
+
+#include "cmdPerm.h"
+
+/** A text command: its name, help text, permission and handler. */
 class Command {
-private:
-    String command;
-    String description;
-    bool isPublic;
-    std::function<String(String)> callback;
-    uint8_t commandId;
-
 public:
-    Command(){};
+    Command() = default;
 
-    // Command with accepting lambda as argument
-    Command(String command, String description, uint8_t commandId, bool isPublic,
+    Command(String command, String description, uint8_t commandId, Perm perm,
             std::function<String(String)> callback)
         : command(command),
           description(description),
-          isPublic(isPublic),
           callback(callback),
-          commandId(commandId) {}
+          commandId(commandId),
+          perm(perm) {}
 
-    String execute(String args) { return callback(args); };
+    String execute(String args) { return callback(args); }
 
-    String getCommand() { return command; }
+    const String& getCommand() const { return command; }
 
-    String getDescription() { return description; }
+    const String& getDescription() const { return description; }
 
-    uint8_t getCommandID() { return commandId; }
+    uint8_t getCommandID() const { return commandId; }
 
-    bool getPublic() { return isPublic; }
+    Perm getPerm() const { return perm; }
+
+private:
+    String command;
+    String description;
+    std::function<String(String)> callback;
+    uint8_t commandId = 0;
+    Perm perm = Perm::LOCAL_ONLY;
 };

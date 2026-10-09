@@ -95,6 +95,15 @@ void LoRaMeshService::loraReceiveLoop(void*) {
     }
 }
 
+size_t LoRaMeshService::maxAppPayload() const {
+    // LoRaMesher DATA overhead: 6-byte base header and 4-byte data header.
+    constexpr size_t LORAMESHER_DATA_OVERHEAD = 10;
+    size_t packet = std::min<size_t>(
+        LORA_MAX_PACKET_SIZE,
+        loramesher::RadioConfig::GetMaxPacketSizeForSf(LORA_SPREADING_FACTOR, LORA_BANDWIDTH));
+    return packet - LORAMESHER_DATA_OVERHEAD - sizeof(LoRaMeshMessage);
+}
+
 uint16_t LoRaMeshService::getLocalAddress() {
     return mesher_ ? mesher_->GetNodeAddress()
                    : loramesher::LoraMesher::GenerateAddressFromHardware();

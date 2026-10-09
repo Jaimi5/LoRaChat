@@ -4,6 +4,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "nvs.h"
+#include "ota/maintWifi.h"
 #include "ota/otaBootGuard.h"
 
 static const char* NODE_TAG = "NodeService";
@@ -44,6 +45,7 @@ String NodeService::setRole(const String& text) {
     esp_timer_create_args_t args = {};
     args.callback = [](void*) { esp_restart(); };
     args.name = "roleRestart";
+    MaintenanceWifi::getInstance().saveClock();
     esp_timer_handle_t timer = nullptr;
     if (esp_timer_create(&args, &timer) == ESP_OK) esp_timer_start_once(timer, RESTART_DELAY_US);
     ESP_LOGI(NODE_TAG, "Role set to %s, restarting", nodeRoleName(role));

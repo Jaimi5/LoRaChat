@@ -12,6 +12,7 @@
 #include "config.h"
 #include "espOtaFlash.h"
 #include "otaInstall.h"
+#include "otaService.h"
 #include "otaSha256.h"
 #include "otaStreamWriter.h"
 #include "otaTransfer.h"
@@ -89,7 +90,7 @@ void OtaWifiPull::run() {
 }
 
 std::string OtaWifiPull::serverUrl() {
-    std::string url = OTA_SERVER_URL;
+    std::string url = OtaService::getInstance().serverUrl();
     if (!url.empty() && url.back() != '/') url += '/';
     return url;
 }

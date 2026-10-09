@@ -33,6 +33,12 @@ public:
 
     uint16_t getLocalAddress();
 
+    /**
+     * @return the largest payload one service message can carry in a single LoRa packet with
+     *         the configured spreading factor and bandwidth (LoRaMesher caps the packet size).
+     */
+    size_t maxAppPayload() const;
+
     String getRoutingTable();
 
     void send(DataMessage* message);

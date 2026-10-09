@@ -17,6 +17,7 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 | `otadata.py` | Reads and rewrites the `otadata` partition to boot a chosen slot (bench) |
 | `fw_server.py` | Bench firmware server for the WiFi pull, with injected faults |
 | `ap_pass.py` | Deployment key, and the name, password and QR text of a node's access point |
+| `lmcmd.py` | Signs commands for nodes, and encrypts WiFi credentials for `/maint.wifi` |
 | `ap_upload.py` | Bench: uploads a bundle to a node's access point through a second T-Beam (`extras/bench_ap_bridge`) |
 
 ## Versions
@@ -168,6 +169,28 @@ python ap_upload.py COM3 --key-file deploy.key --node 7680 --bundle bundle.bin [
 ```
 
 If the node needs a mesh frame for its self-test (it has seen the mesh before), flash the bridge board back to LoRaChat right after a successful upload; the self-test waits at least 120 s.
+
+## Signed commands
+
+Commands with the Signed permission (`/maint.open`, `/reboot`, `/maint.wifi`, ...) only run over LoRa or MQTT with a signature made with the deployment key:
+
+```bash
+python3 scripts/ota_tools/lmcmd.py sign --key-file deploy.key --node 7680 "/maint.open 600 ap"
+# @7680 /maint.open 600 ap #6526b3c0.1f2e...   <- type this on a gateway's (or any node's) serial console
+python3 scripts/ota_tools/lmcmd.py sign --key-file deploy.key --node 7680 --mqtt 12 "/reboot"
+# 7680 12 /reboot #6526b3c1.9a0b...            <- publish this on cmd/<gateway>
+```
+
+The tag is `HMAC-SHA256(K, "LMC1" || node u16 LE || counter u32 LE || line)[:8]`, so a signed line only runs on the node it was made for. The counter is `max(last + 1, unix time)`; `lmcmd.py` remembers the last one per key in `~/.config/loramesher/command_counters.json`, so several computers can sign with the same key.
+
+WiFi credentials for a node (gateway WiFi and maintenance windows), encrypted for that node and that counter so the password never travels in clear over LoRa or MQTT:
+
+```bash
+python3 scripts/ota_tools/lmcmd.py wifi --key-file deploy.key --node 7680 --ssid MyHotspot
+# asks for the password, prints "@7680 /maint.wifi <encrypted> #<counter>.<tag>"
+```
+
+The keystream is `HMAC-SHA256(Kw, node || counter || block)` with `Kw = HMAC-SHA256(K, "LMW1")`, and the tag covers the encrypted line. At SF9 one LoRa frame fits SSID and password up to about 37 bytes together. `lmcmd.py vectors` regenerates `test/vectors/cmdVectors.h`.
 
 ## Fault images
 

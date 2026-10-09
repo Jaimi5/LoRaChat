@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 
@@ -38,11 +39,20 @@ public:
     /** @return true while the running image waits for its self-test verdict. */
     bool isPendingVerify() const { return selfTest_ != nullptr; }
 
+    /**
+     * @return true once this boot has resolved an update attempt: the new image passed its
+     *         self-test, or the previous one booted again after a rollback.
+     */
+    bool attemptResolved() const { return attemptResolved_; }
+
     /** @return the persisted OTA record. */
     OtaRecord record() const;
 
     /** Records that the image with @p sha boots next, so the next boot resolves the attempt. */
     void recordAttempt(const ShaPrefix& sha);
+
+    /** @return the first 3 bytes of the SHA-256 of the bootloader in flash, in hex. */
+    static std::string bootloaderHash();
 
 private:
     OtaBootGuard() = default;
@@ -55,6 +65,7 @@ private:
     uint32_t selfTestStartMs_ = 0;
     OtaRecord record_;
     bool hadNeighbours_ = false;
+    std::atomic<bool> attemptResolved_{false};
 
     bool loadRecord();
     void saveRecord(const OtaRecord& record);

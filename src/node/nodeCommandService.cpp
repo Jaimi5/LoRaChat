@@ -8,9 +8,9 @@ constexpr uint8_t COMMAND_ROLE_SET = 2;
 }  // namespace
 
 NodeCommandService::NodeCommandService() {
-    addCommand(Command("/role", "Show the node role (gateway or sensor)", COMMAND_ROLE, 1,
+    addCommand(Command("/role", "Show the node role (gateway or sensor)", COMMAND_ROLE, Perm::OPEN,
                        [](String) { return NodeService::getInstance().describeRole(); }));
     addCommand(Command("/role.set", "Set the node role: /role.set gateway|sensor (restarts)",
-                       COMMAND_ROLE_SET, 1,
+                       COMMAND_ROLE_SET, Perm::SIGNED,
                        [](String args) { return NodeService::getInstance().setRole(args); }));
 }

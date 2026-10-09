@@ -9,6 +9,6 @@ LoRaMeshCommandService::LoRaMeshCommandService() {
     // }));
 
     addCommand(Command(
-        "/getRT", "Get the routing table of the device", LoRaMeshMessageType::getRoutingTable, 1,
+        "/getRT", "Get the routing table of the device", LoRaMeshMessageType::getRoutingTable, Perm::OPEN,
         [this](String args) { return LoRaMeshService::getInstance().getRoutingTable(); }));
 }

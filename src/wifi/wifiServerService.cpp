@@ -164,6 +164,24 @@ String WiFiServerService::addPassword(String password) {
     return F("Password added");
 }
 
+String WiFiServerService::storeCredentials(const String& ssid, const String& password) {
+    if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH ||
+        password.length() > MAX_PASSWORD_LENGTH) {
+        return F("Invalid WiFi credentials");
+    }
+    wifi_config_t config = {};
+    memcpy(config.sta.ssid, ssid.c_str(), ssid.length());
+    memcpy(config.sta.password, password.c_str(), password.length());
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
+    if (err != ESP_OK) return String("Could not store the WiFi credentials: ") + esp_err_to_name(err);
+
+    this->ssid = ssid;
+    this->password = password;
+    // The WiFi task reconnects with the new credentials.
+    if (wifiStarted) esp_wifi_disconnect();
+    return "WiFi credentials stored for " + ssid;
+}
+
 String WiFiServerService::resetWiFiData() {
     esp_err_t result;
 

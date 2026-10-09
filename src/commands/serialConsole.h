@@ -3,10 +3,11 @@
 /**
  * @brief Text commands over the USB serial port.
  *
- * Lines received on Serial are queued from the UART event task (Serial.onReceive), so nothing
- * polls the UART, and run one at a time in a console task with its own stack: commands may
- * hash, verify signatures or write NVS. The reply is printed after the command name; the
- * arguments are not echoed, since they can hold keys.
+ * Lines are read from the UART event task (Serial.onReceive), so nothing polls the UART, and
+ * handed to the CommandRouter, which runs them in its own task. "@<dst> <line>" sends the line
+ * to node dst over LoRa; a signed line ends with " #<counter>.<tag>" (scripts/ota_tools/lmcmd.py).
+ * Replies follow a "> <command name>" line; the arguments are not echoed, since they can hold
+ * keys. Replies of remote nodes arrive as "< <node> [<request>] <reply>".
  */
 class SerialConsole {
 public:

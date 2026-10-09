@@ -37,13 +37,16 @@ public:
 
     void sendMessage(messagePort port, DataMessage* message);
 
-    String getAvailableCommands();
+    /**
+     * @brief Runs one command line (name and arguments, without target or signature).
+     * @param origin channel the line arrived on; decides which commands may run.
+     * @param signedValid the line carried a valid signature.
+     * @return the reply. Remote channels get short errors: "ERR unknown", "ERR perm".
+     */
+    String executeCommand(const String& line, Origin origin, bool signedValid);
 
-    String executeCommand(uint8_t serviceId, uint8_t commandId, String args);
-
-    String executeCommand(uint8_t serviceId, String command);
-
-    String executeCommand(String command);
+    /** @return the commands that may run from @p origin, one per line. */
+    String help(Origin origin) const;
 
     String getJSON(DataMessage* message);
 

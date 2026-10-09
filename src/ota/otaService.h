@@ -34,6 +34,33 @@ public:
     /** @return the reply to the command. */
     String closeWindow();
 
+    /** @return version, slot, image state, bootloader hash, board env and node address. */
+    String version() const;
+
+    /** @return the last update attempt and its outcome. */
+    String otaStatus() const;
+
+    /** Restarts the node after a short delay. @return the reply to the command. */
+    String reboot();
+
+    /**
+     * @brief Shows or sets the OTA server: no argument shows it, "default" goes back to
+     *        OTA_SERVER_URL, an http:// URL is stored in NVS. @return the reply.
+     */
+    String setServer(const String& args);
+
+    /** @return the OTA server folder: the one stored with /ota.server, else OTA_SERVER_URL. */
+    std::string serverUrl() const;
+
+    /**
+     * @brief Stores the WiFi credentials of the node (gateway WiFi and maintenance windows).
+     *
+     * A signed command carries them encrypted for this node and its counter
+     * (scripts/ota_tools/lmcmd.py wifi); on the serial console they may be typed as
+     * "<ssid> [<password>]". @return the reply.
+     */
+    String setWifi(const String& args);
+
 private:
     OtaService() : MessageService(OTAApp, "Ota") { commandService = &commands_; }
 

@@ -141,6 +141,14 @@ TEST(OtaPolicy, DescriptorMustMatchTheManifest) {
     EXPECT_FALSE(OtaPolicy::descriptorMatches(manifest(), "LoRaChat", "0.1.4+gabc1234"));
 }
 
+TEST(OtaPolicy, ResourcesForAMaintenanceWindow) {
+    EXPECT_EQ(OtaPolicy::checkResources(3900, false, 150 * 1024), PolicyDecision::INSTALL);
+    EXPECT_EQ(OtaPolicy::checkResources(3599, false, 150 * 1024), PolicyDecision::REFUSE_BATTERY);
+    EXPECT_EQ(OtaPolicy::checkResources(0, true, 150 * 1024), PolicyDecision::INSTALL);
+    EXPECT_EQ(OtaPolicy::checkResources(3900, false, 60 * 1024 - 1), PolicyDecision::REFUSE_HEAP);
+    EXPECT_EQ(OtaPolicy::checkResources(3500, false, 1024), PolicyDecision::REFUSE_BATTERY);
+}
+
 TEST(OtaPolicy, NamesEveryDecision) {
     EXPECT_STREQ(policyDecisionName(PolicyDecision::INSTALL), "INSTALL");
     EXPECT_STREQ(policyDecisionName(PolicyDecision::REFUSE_DOWNGRADE), "REFUSE_DOWNGRADE");

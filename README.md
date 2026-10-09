@@ -82,19 +82,38 @@ Every node runs the same image and has a role, stored in NVS:
 
 A node without a stored role is the gateway if its mesh address equals `LORA_MANAGER_ID` (`config_local.h`), and a sensor otherwise.
 
-Commands can be typed on the USB serial port (115200 baud, one command per line); the reply follows a `> command` line (the arguments are not echoed, since they can hold keys):
+### Commands
 
-| Command | Effect |
-|---|---|
-| `/role` | Shows the role and whether it is stored or the default |
-| `/role.set gateway`, `/role.set sensor` | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
-| `/key` | Shows whether a deployment key is stored, and its fingerprint (compare with `ap_pass.py show`) |
-| `/key.set <64 hex digits>` | Stores the deployment key (created with `scripts/ota_tools/ap_pass.py keygen`) |
-| `/maint.open <seconds>` | Sensor nodes: joins the WiFi network and checks the OTA server, up to 7200 s |
-| `/maint.open <seconds> ap` | Sensor nodes: opens the access point `LM-<address>` for an upload from a phone or PC, up to 1800 s. Needs the deployment key |
-| `/maint.close` | Closes the open maintenance window |
+Text commands arrive from three channels and run one at a time:
 
-For now text commands only arrive over the serial port. Signed commands over LoRa and MQTT are planned (`todo.md` F5).
+- **USB serial** (115200 baud, one command per line): trusted, runs every command. The reply follows a `> <command>` line; the arguments are not echoed, since they can hold keys.
+- **LoRa**: a line typed as `@<node> <command>` on a node's serial console is sent to that node; its reply arrives as `< <node> [<request>] <reply>`.
+- **MQTT** (gateway): publish `<node> <request id> <command>` on `cmd/<gateway>`; the reply is published on `cmd-resp/<node>` as `<request id> <reply>`. A command for another node is sent on over LoRa.
+
+Every command has a permission: **Open** commands run from any channel, **Signed** commands need a signature when they come over LoRa or MQTT, and **local** commands only run on the serial console. A signature is ` #<counter>.<tag>` at the end of the line, made with the deployment key by `scripts/ota_tools/lmcmd.py sign` (see [scripts/ota_tools/README.md](scripts/ota_tools/README.md)). A node runs each counter once: an older counter gets `ERR replay`, the same counter again gets the stored reply. Remote errors are short: `ERR unknown`, `ERR perm`, `ERR auth`, `ERR replay`.
+
+| Command | Permission | Effect |
+|---|---|---|
+| `/help` | Open | Lists the commands the channel may run |
+| `/version` | Open | Version, slot, image state, bootloader hash, board and address |
+| `/ota.status` | Open | Last update attempt and its outcome |
+| `/role` | Open | The role and whether it is stored or the default |
+| `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
+| `/key` | Open | Whether a deployment key is stored, and its fingerprint (compare with `ap_pass.py show`) |
+| `/key.set <64 hex digits>` | local | Stores the deployment key (created with `scripts/ota_tools/ap_pass.py keygen`) |
+| `/maint.open <seconds>` | Signed | Sensor nodes: joins the WiFi network and checks the OTA server, up to 7200 s |
+| `/maint.open <seconds> ap` | Signed | Sensor nodes: opens the access point `LM-<address>` for an upload from a phone or PC, up to 1800 s. Needs the deployment key |
+| `/maint.close` | Signed | Closes the open maintenance window |
+| `/maint.wifi …` | Signed | Stores the node's WiFi credentials (gateway WiFi and maintenance windows). Over LoRa or MQTT they travel encrypted (`lmcmd.py wifi`); on serial also `/maint.wifi <ssid> [<password>]` |
+| `/ota.server [<url>\|default]` | local | Shows or sets the OTA server (bench) |
+| `/reboot` | Signed | Restarts the node |
+| `/getRT` | Open | Routing table |
+| `/getIP` | Open | Gateway IP address |
+| `/addSSID`, `/addPassword` | local | Gateway WiFi credentials (prefer `/maint.wifi`) |
+| `/connectWiFi`, `/resetWiFiData` | Signed | Gateway WiFi |
+| `/displayOn`, `/displayOff`, `/displayBlink`, `/displayClear`, `/displayLogo`, `/displayText` | Open | Display |
+
+One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there); longer replies end in `~`.
 
 Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network, check the OTA server for a newer signed image and install it, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
 

@@ -1,36 +1,27 @@
 #pragma once
 
 #include "Arduino.h"
+
+#include <vector>
+
 #include "command.h"
 
+/** The text commands of one service. Command names are unique and compared ignoring case. */
 class CommandService {
 public:
-    CommandService();
+    virtual ~CommandService() = default;
 
-    ~CommandService();
+    /** Adds @p command unless its name is already taken. @return false if it was refused. */
+    bool addCommand(Command command);
 
-    String executeCommand(String args);
+    /** @return the command named @p name, or nullptr. */
+    Command* find(const String& name);
 
-    String executeCommand(uint8_t id, String args = "");
+    /** @return one help line per command that may run when it arrives on @p origin. */
+    String help(Origin origin) const;
 
-    void addCommand(Command command);
-
-    String helpCommand();
-
-    String publicCommands();
-
-    String publicCommandsHTML();
-
-    String exit();
-
-    bool hasCommand(String command);
-
-    Command* currentCommand = nullptr;
-    Command* previousCommand = nullptr;
-
-    uint16_t getCommandAddress(String command);
+    const std::vector<Command>& commands() const { return commands_; }
 
 private:
-    uint8_t commandsCount = 0;
-    Command* commands = nullptr;
+    std::vector<Command> commands_;
 };

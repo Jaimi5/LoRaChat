@@ -5,6 +5,16 @@ static const char* MANAGER_TAG = "MANAGER";
 void MessageManager::init() {}
 
 void MessageManager::addMessageService(MessageService* service) {
+    for (const Command& command : service->commandService->commands()) {
+        for (auto other : services) {
+            if (other->commandService->find(command.getCommand()) != nullptr) {
+                ESP_LOGE(MANAGER_TAG, "Command %s exists in services %s and %s",
+                         command.getCommand().c_str(), other->serviceName.c_str(),
+                         service->serviceName.c_str());
+            }
+        }
+    }
+
     // Add ordered by serviceId
     bool added = false;
     for (int i = 0; i < services.size(); i++) {
@@ -19,55 +29,31 @@ void MessageManager::addMessageService(MessageService* service) {
     }
 }
 
-String MessageManager::getAvailableCommands() {
-    String commands = "";
+String MessageManager::executeCommand(const String& line, Origin origin, bool signedValid) {
+    String text = line;
+    text.trim();
+    int space = text.indexOf(' ');
+    String name = space < 0 ? text : text.substring(0, space);
+    String args = space < 0 ? "" : text.substring(space + 1);
+    args.trim();
+    bool local = origin == Origin::SERIAL_CONSOLE;
 
+    if (name.equalsIgnoreCase("/help")) return help(origin);
     for (auto service : services) {
-        commands += service->toString() + "\n";
-        commands += service->commandService->publicCommands();
+        Command* command = service->commandService->find(name);
+        if (command == nullptr) continue;
+        if (!commandPermitted(command->getPerm(), origin, signedValid)) {
+            return local ? "Not allowed" : "ERR perm";
+        }
+        return command->execute(args);
     }
-
-    return commands;
+    return local ? "Unknown command; /help lists them" : "ERR unknown";
 }
 
-String MessageManager::executeCommand(uint8_t serviceId, uint8_t commandId, String args) {
-    for (auto service : services) {
-        if (service->serviceId == serviceId) {
-            return service->commandService->executeCommand(commandId, args);
-        }
-    }
-
-    return "Service not found";
-}
-
-String MessageManager::executeCommand(uint8_t serviceId, String command) {
-    String result = "";
-
-    for (auto service : services) {
-        if (service->serviceId == serviceId) {
-            result += service->commandService->executeCommand(command);
-        }
-    }
-
-    return result;
-}
-
-String MessageManager::executeCommand(String command) {
-    String result = "";
-    bool found = false;
-
-    for (auto service : services) {
-        if (service->commandService->hasCommand(command)) {
-            found = true;
-            result += service->commandService->executeCommand(command);
-        }
-    }
-
-    if (!found) {
-        result = "Command not found";
-    }
-
-    return result;
+String MessageManager::help(Origin origin) const {
+    String text = "/help - List the commands\n";
+    for (auto service : services) text += service->commandService->help(origin);
+    return text;
 }
 
 String MessageManager::getJSON(DataMessage* message) {

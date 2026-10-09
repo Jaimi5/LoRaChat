@@ -36,7 +36,8 @@
 // Node role
 #include "node/nodeService.h"
 
-// Serial console
+// Commands
+#include "commands/commandRouter.h"
 #include "commands/serialConsole.h"
 
 // Maintenance WiFi and OTA
@@ -102,6 +103,7 @@ void initManager(bool gateway) {
 
     manager.addMessageService(&nodeService);
     manager.addMessageService(&OtaService::getInstance());
+    manager.addMessageService(&CommandRouter::getInstance());
     manager.addMessageService(&loraMeshService);
 #ifdef WIFI_ENABLED
     if (gateway) manager.addMessageService(&wiFiService);
@@ -221,8 +223,10 @@ void setup() {
     ESP_LOGV(TAG, "Heap after init_mqtt_mon: %d", ESP.getFreeHeap());
 #endif
 
+    CommandRouter::getInstance().begin();
     SerialConsole::begin();
 
+    MaintenanceWifi::getInstance().begin();
     MaintenanceWifi::getInstance().onConnected(OtaWifiPull::run);
     MaintenanceWifi::getInstance().startBootWindow(gateway, bootGuard.isPendingVerify());
 

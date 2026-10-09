@@ -1,5 +1,8 @@
 #include "mqttService.h"
 
+#include "cmdText.h"
+#include "commands/commandRouter.h"
+
 static const char* MQTT_TAG = "MQTT";
 
 void MqttService::initMqtt(String lclName) {
@@ -128,8 +131,36 @@ bool MqttService::writeToMqtt(String message) {
     return false;
 }
 
+String MqttService::commandTopic() {
+    char topic[16];
+    snprintf(topic, sizeof(topic), "cmd/%04X", LoRaMeshService::getInstance().getLocalAddress());
+    return topic;
+}
+
+void MqttService::publishCommandReply(uint16_t node, uint8_t requestId, const String& text) {
+    char topic[20];
+    snprintf(topic, sizeof(topic), "cmd-resp/%04X", node);
+    String body = String(requestId) + " " + text;
+    mqtt_service_send(topic, body.c_str(), 0);
+}
+
 void MqttService::processReceivedMessageFromMQTT(String& topic, String& payload) {
     ESP_LOGI(MQTT_TAG, "Message arrived on topic: %s", topic.c_str());
+    if (topic == commandTopic()) {
+        MqttCommand command;
+        if (!parseMqttCommand(payload.c_str(), command)) {
+            ESP_LOGW(MQTT_TAG, "Malformed command: <dst> <request id> <line> [#<counter>.<tag>]");
+            return;
+        }
+        CommandRequest request;
+        request.origin = Origin::MQTT;
+        request.requestId = command.requestId;
+        request.command = command.command;
+        request.command.remote = true;
+        request.command.dst = command.dst;
+        CommandRouter::getInstance().submit(request);
+        return;
+    }
     DataMessage* message = MessageManager::getInstance().getDataMessage(payload);
 
     if (message == NULL) {
@@ -171,6 +202,7 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
             mqtt_connected = true;
             String topic = String(MQTT_TOPIC_SUB) + MqttService::getInstance().localName;
             esp_mqtt_client_subscribe(client, topic.c_str(), 2);
+            esp_mqtt_client_subscribe(client, MqttService::commandTopic().c_str(), 1);
         } break;
         case MQTT_EVENT_DISCONNECTED:
             mqtt_connected = false;

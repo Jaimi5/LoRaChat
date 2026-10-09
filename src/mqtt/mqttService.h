@@ -73,6 +73,12 @@ public:
 
     void processReceivedMessageFromMQTT(String& topic, String& payload);
 
+    /** @return the topic this gateway takes text commands on: cmd/<address in hex>. */
+    static String commandTopic();
+
+    /** Publishes "<request id> <text>" on cmd-resp/<node in hex>. */
+    void publishCommandReply(uint16_t node, uint8_t requestId, const String& text);
+
     void mqtt_service_subscribe(const char* topic);
 
     String localName = "";

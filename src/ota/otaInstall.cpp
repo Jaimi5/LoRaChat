@@ -12,6 +12,7 @@
 #include "config.h"
 #include "devices/initDevices.h"
 #include "loramesh/loraMeshService.h"
+#include "maintWifi.h"
 #include "otaBootGuard.h"
 #include "otaKeys.h"
 #include "otaSignature.h"
@@ -99,6 +100,7 @@ void OtaInstall::rebootInto(EspOtaFlash& flash, const OtaManifest& manifest) {
     if (!flash.activate()) restartAfterFailure(manifest);
     ESP_LOGW(OI_TAG, "Rebooting into %s on %s", manifest.versionString.c_str(),
              flash.partition()->label);
+    MaintenanceWifi::getInstance().saveClock();
     vTaskDelay(pdMS_TO_TICKS(LOG_FLUSH_MS));
     esp_restart();
 }
@@ -107,6 +109,7 @@ void OtaInstall::restartAfterFailure(const OtaManifest& manifest) {
     failedImage.magic = FAILED_IMAGE_MAGIC;
     failedImage.sha = manifest.imageShaPrefix();
     ESP_LOGE(OI_TAG, "Update failed, restarting the running image");
+    MaintenanceWifi::getInstance().saveClock();
     vTaskDelay(pdMS_TO_TICKS(LOG_FLUSH_MS));
     esp_restart();
 }

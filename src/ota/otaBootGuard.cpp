@@ -258,6 +258,7 @@ void OtaBootGuard::finishSelfTest(SelfTestVerdict verdict, FailReason reason) {
             std::lock_guard<std::mutex> lock(mutex_);
             selfTest_.reset();
         }
+        attemptResolved_ = true;
         ESP_LOGW(BG_TAG, "Self-test passed, image marked valid (%s)", esp_err_to_name(err));
         printBootLine(ImageState::VALID);
         return;
@@ -287,12 +288,7 @@ void OtaBootGuard::printBootLine(ImageState state) {
     const esp_partition_t* running = esp_ota_get_running_partition();
     const esp_app_desc_t* app = esp_ota_get_app_description();
 
-    char bootloaderHash[7] = "??????";
-    uint8_t sha[32];
-    if (bootloader_common_get_sha256_of_partition(ESP_BOOTLOADER_OFFSET, BOOTLOADER_REGION_SIZE,
-                                                  PART_TYPE_APP, sha) == ESP_OK) {
-        snprintf(bootloaderHash, sizeof(bootloaderHash), "%02x%02x%02x", sha[0], sha[1], sha[2]);
-    }
+    std::string bootloader = bootloaderHash();
 
     static const char* RESET_REASONS[] = {"UNKNOWN", "POWERON", "EXT",      "SW",
                                           "PANIC",   "INT_WDT", "TASK_WDT", "WDT",
@@ -302,7 +298,7 @@ void OtaBootGuard::printBootLine(ImageState state) {
         rr < sizeof(RESET_REASONS) / sizeof(RESET_REASONS[0]) ? RESET_REASONS[rr] : "UNKNOWN";
 
     std::string line = formatBootLine(running ? running->label : "?", state, app->version,
-                                      bootloaderHash, reset);
+                                      bootloader.c_str(), reset);
     Serial.println(line.c_str());
 
     const esp_partition_t* invalid = esp_ota_get_last_invalid_partition();
@@ -311,6 +307,10 @@ void OtaBootGuard::printBootLine(ImageState state) {
 
 void OtaBootGuard::reportDecision(BootAction action) {
     OtaRecord current = record();
+    if (action == BootAction::REPORT_VALID || action == BootAction::REPORT_ROLLBACK ||
+        action == BootAction::REPORT_BL_NO_ROLLBACK) {
+        attemptResolved_ = true;
+    }
     switch (action) {
         case BootAction::REPORT_VALID:
             ESP_LOGW(BG_TAG, "Update attempt resolved: VALID");
@@ -326,6 +326,16 @@ void OtaBootGuard::reportDecision(BootAction action) {
         default:
             break;
     }
+}
+
+std::string OtaBootGuard::bootloaderHash() {
+    char hash[7] = "??????";
+    uint8_t sha[32];
+    if (bootloader_common_get_sha256_of_partition(ESP_BOOTLOADER_OFFSET, BOOTLOADER_REGION_SIZE,
+                                                  PART_TYPE_APP, sha) == ESP_OK) {
+        snprintf(hash, sizeof(hash), "%02x%02x%02x", sha[0], sha[1], sha[2]);
+    }
+    return hash;
 }
 
 ShaPrefix OtaBootGuard::runningShaPrefix() {

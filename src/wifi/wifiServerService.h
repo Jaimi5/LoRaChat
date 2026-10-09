@@ -66,6 +66,12 @@ public:
     /** Sets the password used by the next connect. @return a message; rejects > 64 bytes. */
     String addPassword(String password);
 
+    /**
+     * @brief Saves the station credentials in the WiFi driver's NVS config and reconnects
+     *        with them. @return the reply to the command.
+     */
+    String storeCredentials(const String& ssid, const String& password);
+
     String resetWiFiData();
 
 
