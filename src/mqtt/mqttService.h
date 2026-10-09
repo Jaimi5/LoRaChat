@@ -59,7 +59,6 @@ public:
     bool isDeviceConnected();
 
     bool writeToMqtt(DataMessage* message);
-    bool writeToMqtt(String message);
 
     MqttCommandService* mqttCommandService = nullptr;
 
@@ -96,7 +95,6 @@ private:
     QueueHandle_t receiveQueue;
     MQTTQueueMessageV2* mqttMessageReceiveV2;
 
-    bool sendMqttMessage(MQTTQueueMessageV2* message);
 
 
     void processMQTTMessage();

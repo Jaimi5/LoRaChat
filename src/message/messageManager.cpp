@@ -57,7 +57,7 @@ String MessageManager::help(Origin origin) const {
 }
 
 String MessageManager::getJSON(DataMessage* message) {
-    printDataMessageHeader("JSON", message);
+    logHeader("JSON", message);
 
     for (auto service : services) {
         if (service->serviceId == message->appPortSrc) {
@@ -71,7 +71,7 @@ String MessageManager::getJSON(DataMessage* message) {
 }
 
 DataMessage* MessageManager::getDataMessage(String json) {
-    DynamicJsonDocument doc(2048);  // 2048 needed for OTA_CHUNK with base64 payload (~800 B)
+    DynamicJsonDocument doc(2048);
 
     DeserializationError error = deserializeJson(doc, json);
 
@@ -95,25 +95,15 @@ DataMessage* MessageManager::getDataMessage(String json) {
     return nullptr;
 }
 
-String MessageManager::printDataMessageHeader(String title, DataMessage* message) {
-    DynamicJsonDocument doc(1024);
-
-    doc["title"] = title;
-
-    JsonObject data = doc.createNestedObject("data");
-
-    message->serialize(data);
-
-    String json;
-    serializeJson(doc, json);
-
-    ESP_LOGI(MANAGER_TAG, "%s", json.c_str());
-
-    return json;
+void MessageManager::logHeader(const char* title, const DataMessage* message) {
+    ESP_LOGI(MANAGER_TAG, "%s src=%04X dst=%04X app %u->%u id=%u size=%u", title,
+             message->addrSrc, message->addrDst, static_cast<unsigned>(message->appPortSrc),
+             static_cast<unsigned>(message->appPortDst), static_cast<unsigned>(message->messageId),
+             static_cast<unsigned>(message->messageSize));
 }
 
 void MessageManager::processReceivedMessage(messagePort port, DataMessage* message) {
-    printDataMessageHeader("Received", message);
+    logHeader("Received", message);
 
     // TODO: Add a list to track the messages already received to avoid loops and duplicates
 
@@ -125,14 +115,6 @@ void MessageManager::processReceivedMessage(messagePort port, DataMessage* messa
         }
         return;
     }
-
-    // Version-neutral RX marker: this message reached its final destination.
-    // Matched against the originator's APP_TX (src+seq) to compute end-to-end
-    // PDR/latency independent of the LoRaMesher version. INFO level so it
-    // survives the testbed log filter. `app` lets analysis select a flow
-    // (e.g. SimApp=12 for the PDR-comparison load generator).
-    ESP_LOGI(MANAGER_TAG, "APP_RX src=0x%04X seq=%u app=%u", message->addrSrc,
-             (unsigned)message->messageId, (unsigned)message->appPortSrc);
 
     for (auto service : services) {
         if (service->serviceId == message->appPortDst) {

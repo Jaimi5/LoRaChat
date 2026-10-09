@@ -48,7 +48,8 @@ public:
 
     DataMessage* getDataMessage(String json);
 
-    String printDataMessageHeader(String title, DataMessage* message);
+    /** Logs the header fields of @p message. */
+    void logHeader(const char* title, const DataMessage* message);
 
 private:
     MessageManager(){};

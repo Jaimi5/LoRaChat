@@ -69,13 +69,6 @@ void MqttService::processMQTTMessage() {
     }
 }
 
-bool MqttService::sendMqttMessage(MQTTQueueMessageV2* message) {
-    ESP_LOGV(MQTT_TAG, "Sending message to MQTT, topic %s", message->topic.c_str());
-    mqtt_service_send(message->topic.c_str(), message->body.c_str(), 0);
-
-    return true;
-}
-
 bool MqttService::connect() {
     if (!isInitialized()) {
         ESP_LOGW(MQTT_TAG, "Mqtt not initialized");
@@ -118,21 +111,9 @@ bool MqttService::writeToMqtt(DataMessage* message) {
     }
 
     String json = MessageManager::getInstance().getJSON(message);
-
-    MQTTQueueMessageV2* mqttMessageSend = new MQTTQueueMessageV2();
-
-    mqttMessageSend->body = json;
-    mqttMessageSend->topic = String(MQTT_TOPIC_OUT) + String(message->addrSrc);
-
-    sendMqttMessage(mqttMessageSend);
-
-    delete mqttMessageSend;
-
+    String topic = String(MQTT_TOPIC_OUT) + String(message->addrSrc);
+    mqtt_service_send(topic.c_str(), json.c_str(), 0);
     return true;
-}
-
-bool MqttService::writeToMqtt(String message) {
-    return false;
 }
 
 String MqttService::commandTopic() {
