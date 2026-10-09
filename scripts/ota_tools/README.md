@@ -141,7 +141,7 @@ Update over WiFi (pull) on the bench. The node's WiFi network must reach the PC,
 python fw_server.py D:\path\to\release\tbeam\0.1.1+gabc1234
 ```
 
-A sensor node checks the server in its boot window, or in a window opened with `/maint.open 60`. Expected serial output: `Manifest for tbeam 0.1.1+gabc1234, ...`, `Installing ...`, `Image OK after 1 attempt(s): ... B in ... ms (flash ... ms)`, `Rebooting into ... on app1`, then the boot guard lines above. The server logs every request. Faults for the bench cases: `--flip-byte N` (one byte changed: `SHA_MISMATCH`, nothing installed), `--cut-at 0.5 [--cut-times K]` (connection closed at 50 %: up to 3 attempts, then `TRANSPORT_FAILED`), `--missing-image` (404). After a failure the node restarts its current image and skips that image until the next power-on.
+A sensor node checks the server in its boot window, or in a window opened with `/maint.open 60`. Expected serial output: `Manifest for tbeam 0.1.1+gabc1234, ...`, `Installing ...`, `Image OK after 1 attempt(s): ... B in ... ms (flash ... ms)`, `Rebooting into ... on app1`, then the boot guard lines above. The server logs every request. With `--report-key-file deploy.key` the server also takes the nodes' signed `POST /report` and prints each report (`report 7680 written {...}`), as the web server does. Faults for the bench cases: `--flip-byte N` (one byte changed: `SHA_MISMATCH`, nothing installed), `--cut-at 0.5 [--cut-times K]` (connection closed at 50 %: up to 3 attempts, then `TRANSPORT_FAILED`), `--missing-image` (404). After a failure the node restarts its current image and skips that image until the next power-on.
 
 ## Deployment key and the node's access point
 

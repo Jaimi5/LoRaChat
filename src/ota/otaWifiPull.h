@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "otaInstall.h"
 #include "otaManifest.h"
 
 /**
@@ -25,6 +26,7 @@ public:
 
 private:
     static std::string serverUrl();
-    static bool fetchManifest(const std::string& url, OtaManifest& out);
+    /** Downloads and checks the manifest. @return false if it could not be downloaded. */
+    static bool fetchManifest(const std::string& url, OtaManifest& out, Acceptance& acceptance);
     [[noreturn]] static void install(const OtaManifest& manifest, const std::string& imageUrl);
 };

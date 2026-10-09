@@ -69,25 +69,22 @@ NodeState OtaInstall::nodeState() {
     return state;
 }
 
-bool OtaInstall::accept(const uint8_t* data, size_t size, OtaManifest& out,
-                        std::string& reason) {
-    ManifestCheck check = verifySignedManifest(data, size, otaTrustedKeys(), otaAcceptTestKeys(),
-                                               verifyP256Sha256, out);
-    if (check != ManifestCheck::OK) {
-        reason = manifestCheckName(check);
-        ESP_LOGE(OI_TAG, "Manifest rejected: %s", reason.c_str());
-        return false;
+Acceptance OtaInstall::accept(const uint8_t* data, size_t size, OtaManifest& out) {
+    Acceptance result;
+    result.check = verifySignedManifest(data, size, otaTrustedKeys(), otaAcceptTestKeys(),
+                                        verifyP256Sha256, out);
+    if (result.check != ManifestCheck::OK) {
+        result.reason = manifestCheckName(result.check);
+        ESP_LOGE(OI_TAG, "Manifest rejected: %s", result.reason.c_str());
+        return result;
     }
     ESP_LOGI(OI_TAG, "Manifest for %s %s, %u B, key %u", out.boardEnv.c_str(),
              out.versionString.c_str(), out.imageSize, out.keyId);
 
-    PolicyDecision decision = OtaPolicy::decide(out, nodeState());
-    reason = policyDecisionName(decision);
-    if (decision != PolicyDecision::INSTALL) {
-        ESP_LOGI(OI_TAG, "Not installing it: %s", reason.c_str());
-        return false;
-    }
-    return true;
+    result.decision = OtaPolicy::decide(out, nodeState());
+    result.reason = policyDecisionName(result.decision);
+    if (!result.install()) ESP_LOGI(OI_TAG, "Not installing it: %s", result.reason.c_str());
+    return result;
 }
 
 void OtaInstall::stopMesh(const OtaManifest& manifest) {

@@ -13,9 +13,15 @@ Faults for the bench cases apply to firmware.bin only:
     --cut-times K          only cut the first K downloads (default: all)
     --missing-image        firmware.bin answers 404
 
+With --report-key-file deploy.key it also takes the nodes' POST /report (as the web server
+does): the X-LM-Tag signature is checked with HMAC(K, "LMR1") and each report is printed.
+
 Standard library only, so it runs with any Python 3 on Windows.
 """
 import argparse
+import hashlib
+import hmac
+import json
 import sys
 import time
 from dataclasses import dataclass
@@ -25,6 +31,8 @@ from typing import Optional, Tuple
 
 DEFAULT_PORT = 8070
 IMAGE_FILE = "firmware.bin"
+MAX_REPORT_BYTES = 1024
+REPORT_LABEL = b"LMR1"
 
 
 @dataclass
@@ -47,11 +55,37 @@ def body_for(name: str, data: bytes, faults: Faults, request: int) -> Tuple[byte
     return bytes(body), len(data)
 
 
-def make_server(directory, port: int, faults: Faults, bind: str = "0.0.0.0"):
+def make_server(directory, port: int, faults: Faults, bind: str = "0.0.0.0",
+                report_key: Optional[bytes] = None):
     directory = Path(directory)
     state = {"image_requests": 0}
+    kr = hmac.new(report_key, REPORT_LABEL, hashlib.sha256).digest() if report_key else None
 
     class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            if self.path != "/report" or kr is None:
+                self.send_error(404)
+                return
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > MAX_REPORT_BYTES:
+                self.send_error(413)
+                return
+            body = self.rfile.read(length)
+            expected = hmac.new(kr, body, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected, self.headers.get("X-LM-Tag", "")):
+                self.log_message("report with a bad signature from %s", self.client_address[0])
+                self.send_error(401)
+                return
+            try:
+                fields = json.loads(body)
+            except ValueError:
+                self.send_error(400)
+                return
+            self.log_message("report %s %s %s", fields.get("node"), fields.get("event"),
+                             body.decode(errors="replace"))
+            self.send_response(204)
+            self.end_headers()
+
         def do_GET(self):  # noqa: N802
             self.respond(send_body=True)
 
@@ -95,6 +129,8 @@ def main(argv=None) -> int:
     parser.add_argument("--cut-at", type=float)
     parser.add_argument("--cut-times", type=int)
     parser.add_argument("--missing-image", action="store_true")
+    parser.add_argument("--report-key-file", type=Path,
+                        help="deployment key; checks and prints the nodes' POST /report")
     args = parser.parse_args(argv)
 
     directory = Path(args.directory)
@@ -103,7 +139,12 @@ def main(argv=None) -> int:
             print(f"Error: {directory / name} not found", file=sys.stderr)
             return 1
     faults = Faults(args.flip_byte, args.cut_at, args.cut_times, args.missing_image)
-    server = make_server(directory, args.port, faults)
+    report_key = None
+    if args.report_key_file:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import ap_pass
+        report_key = ap_pass.load_key(args.report_key_file)
+    server = make_server(directory, args.port, faults, report_key=report_key)
     print(f"Serving {directory} on port {args.port} ({faults})")
     try:
         server.serve_forever()

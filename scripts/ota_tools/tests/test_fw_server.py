@@ -1,4 +1,7 @@
+import hashlib
+import hmac
 import http.client
+import json
 import os
 import sys
 import threading
@@ -21,8 +24,11 @@ def release(tmp_path):
     return tmp_path
 
 
-def serve(directory, faults):
-    server = fs.make_server(directory, 0, faults, bind="127.0.0.1")
+KEY = bytes(range(32))
+
+
+def serve(directory, faults, report_key=None):
+    server = fs.make_server(directory, 0, faults, bind="127.0.0.1", report_key=report_key)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}/"
 
@@ -93,5 +99,37 @@ def test_missing_image_fault_is_404(release):
             get(base + "firmware.bin")
         assert error.value.code == 404
         assert get(base + "manifest.bin")[0] == 200
+    finally:
+        server.shutdown()
+
+
+def post_report(base, body, tag):
+    request = urllib.request.Request(base + "report", data=body.encode(), method="POST",
+                                     headers={"X-LM-Tag": tag, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+
+
+def test_report_with_a_valid_tag_is_accepted_and_logged(release, capsys):
+    server, base = serve(release, fs.Faults(), report_key=KEY)
+    try:
+        body = json.dumps({"v": 1, "node": "7680", "event": "noop", "decision": 1})
+        kr = hmac.new(KEY, b"LMR1", hashlib.sha256).digest()
+        tag = hmac.new(kr, body.encode(), hashlib.sha256).hexdigest()
+        assert post_report(base, body, tag) == 204
+        assert post_report(base, body, "00" * 32) == 401
+    finally:
+        server.shutdown()
+    err = capsys.readouterr().err
+    assert "report 7680 noop" in err and "decision" in err
+
+
+def test_report_without_a_key_is_refused(release):
+    server, base = serve(release, fs.Faults())
+    try:
+        assert post_report(base, "{}", "00" * 32) == 404
     finally:
         server.shutdown()

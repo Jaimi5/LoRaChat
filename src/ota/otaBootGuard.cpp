@@ -17,6 +17,7 @@ static const char* BG_TAG = "OtaBootGuard";
 static const char* NVS_NAMESPACE = "lmota";
 static const char* NVS_KEY_RECORD = "rec";
 static const char* NVS_KEY_NEIGHBOURS = "nbr";
+static const char* NVS_KEY_BOOTS = "boots";
 
 static constexpr uint32_t BOOTLOADER_REGION_SIZE = 0x7000;
 
@@ -24,6 +25,7 @@ void OtaBootGuard::begin() {
     esp_err_t nvsErr = nvs_flash_init();
     bool nvsOk = nvsErr == ESP_OK && loadRecord();
     hadNeighbours_ = nvsOk && loadNeighbourFlag();
+    if (nvsOk) countBoot();
 
     ImageState state = ImageState::UNDEFINED;
     esp_ota_img_states_t idfState;
@@ -149,6 +151,15 @@ bool OtaBootGuard::loadNeighbourFlag() {
     nvs_get_u8(handle, NVS_KEY_NEIGHBOURS, &value);
     nvs_close(handle);
     return value != 0;
+}
+
+void OtaBootGuard::countBoot() {
+    nvs_handle_t handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
+    nvs_get_u32(handle, NVS_KEY_BOOTS, &bootCount_);
+    bootCount_++;
+    if (nvs_set_u32(handle, NVS_KEY_BOOTS, bootCount_) == ESP_OK) nvs_commit(handle);
+    nvs_close(handle);
 }
 
 void OtaBootGuard::saveNeighbourFlag() {
@@ -290,12 +301,7 @@ void OtaBootGuard::printBootLine(ImageState state) {
 
     std::string bootloader = bootloaderHash();
 
-    static const char* RESET_REASONS[] = {"UNKNOWN", "POWERON", "EXT",      "SW",
-                                          "PANIC",   "INT_WDT", "TASK_WDT", "WDT",
-                                          "DEEPSLEEP", "BROWNOUT", "SDIO"};
-    size_t rr = static_cast<size_t>(esp_reset_reason());
-    const char* reset =
-        rr < sizeof(RESET_REASONS) / sizeof(RESET_REASONS[0]) ? RESET_REASONS[rr] : "UNKNOWN";
+    const char* reset = resetReasonName();
 
     std::string line = formatBootLine(running ? running->label : "?", state, app->version,
                                       bootloader.c_str(), reset);
@@ -326,6 +332,14 @@ void OtaBootGuard::reportDecision(BootAction action) {
         default:
             break;
     }
+}
+
+const char* OtaBootGuard::resetReasonName() {
+    static const char* RESET_REASONS[] = {"UNKNOWN", "POWERON", "EXT",      "SW",
+                                          "PANIC",   "INT_WDT", "TASK_WDT", "WDT",
+                                          "DEEPSLEEP", "BROWNOUT", "SDIO"};
+    size_t rr = static_cast<size_t>(esp_reset_reason());
+    return rr < sizeof(RESET_REASONS) / sizeof(RESET_REASONS[0]) ? RESET_REASONS[rr] : "UNKNOWN";
 }
 
 std::string OtaBootGuard::bootloaderHash() {

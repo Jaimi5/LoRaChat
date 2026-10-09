@@ -8,6 +8,19 @@
 #include "otaManifest.h"
 #include "otaPolicy.h"
 
+/** Outcome of OtaInstall::accept(). */
+struct Acceptance {
+    ManifestCheck check = ManifestCheck::BAD_FORMAT;
+    /** Valid when check is OK. */
+    PolicyDecision decision = PolicyDecision::REFUSE_TYPE;
+    /** Name of the check or decision, for logs and replies. */
+    std::string reason;
+
+    bool install() const {
+        return check == ManifestCheck::OK && decision == PolicyDecision::INSTALL;
+    }
+};
+
 /**
  * @brief Steps shared by every way an update arrives: the WiFi pull and the upload through the
  *        node's access point.
@@ -17,12 +30,8 @@ public:
     /** @return what the update policy needs to know about this node. */
     static NodeState nodeState();
 
-    /**
-     * @brief Verifies a signed manifest and runs the update policy.
-     * @param reason set to the check or policy result, for logs and replies.
-     * @return true if the image may be installed.
-     */
-    static bool accept(const uint8_t* data, size_t size, OtaManifest& out, std::string& reason);
+    /** Verifies a signed manifest and runs the update policy. */
+    static Acceptance accept(const uint8_t* data, size_t size, OtaManifest& out);
 
     /** Stops the mesh before the first flash write. It cannot be restarted afterwards. */
     static void stopMesh(const OtaManifest& manifest);

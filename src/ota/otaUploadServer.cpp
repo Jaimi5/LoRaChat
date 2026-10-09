@@ -109,7 +109,9 @@ esp_err_t OtaUploadServer::handleUpdate(httpd_req_t* req) {
     OtaBundleReader reader(
         writer,
         [&reason](const uint8_t* data, size_t size, OtaManifest& out) {
-            return OtaInstall::accept(data, size, out, reason);
+            Acceptance acceptance = OtaInstall::accept(data, size, out);
+            reason = acceptance.reason;
+            return acceptance.install();
         },
         [&meshStopped](const OtaManifest& manifest) {
             meshStopped = true;

@@ -54,6 +54,12 @@ public:
     /** @return the first 3 bytes of the SHA-256 of the bootloader in flash, in hex. */
     static std::string bootloaderHash();
 
+    /** @return the number of boots, counted in NVS. */
+    uint32_t bootCount() const { return bootCount_; }
+
+    /** @return the name of the last reset reason, as on the BOOT line. */
+    static const char* resetReasonName();
+
 private:
     OtaBootGuard() = default;
 
@@ -65,11 +71,13 @@ private:
     uint32_t selfTestStartMs_ = 0;
     OtaRecord record_;
     bool hadNeighbours_ = false;
+    uint32_t bootCount_ = 0;
     std::atomic<bool> attemptResolved_{false};
 
     bool loadRecord();
     void saveRecord(const OtaRecord& record);
     bool loadNeighbourFlag();
+    void countBoot();
     void saveNeighbourFlag();
 
     void startSelfTest();

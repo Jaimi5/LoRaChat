@@ -12,6 +12,7 @@
 #include "config.h"
 #include "espOtaFlash.h"
 #include "otaInstall.h"
+#include "otaReporter.h"
 #include "otaService.h"
 #include "otaSha256.h"
 #include "otaStreamWriter.h"
@@ -83,9 +84,22 @@ private:
 void OtaWifiPull::run() {
     std::string base = serverUrl();
     if (base.empty()) return;
+    OtaReporter::sendPendingVerdict();
 
     OtaManifest manifest;
-    if (!fetchManifest(base + MANIFEST_FILE, manifest)) return;
+    Acceptance acceptance;
+    if (!fetchManifest(base + MANIFEST_FILE, manifest, acceptance)) return;
+    if (!acceptance.install()) {
+        ReportDetails details;
+        if (acceptance.check == ManifestCheck::OK) {
+            details.decision = static_cast<int>(acceptance.decision);
+            OtaReporter::send(ReportEvent::NOOP, details);
+        } else {
+            details.status = static_cast<int>(UpdateStatus::MANIFEST_REJECTED);
+            OtaReporter::send(ReportEvent::FAILED, details);
+        }
+        return;
+    }
     install(manifest, base + IMAGE_FILE);
 }
 
@@ -95,7 +109,8 @@ std::string OtaWifiPull::serverUrl() {
     return url;
 }
 
-bool OtaWifiPull::fetchManifest(const std::string& url, OtaManifest& out) {
+bool OtaWifiPull::fetchManifest(const std::string& url, OtaManifest& out,
+                                Acceptance& acceptance) {
     std::vector<uint8_t> body;
     bool tooLong = false;
     HttpSource source(url);
@@ -110,8 +125,8 @@ bool OtaWifiPull::fetchManifest(const std::string& url, OtaManifest& out) {
         return false;
     }
 
-    std::string reason;
-    return OtaInstall::accept(body.data(), body.size(), out, reason);
+    acceptance = OtaInstall::accept(body.data(), body.size(), out);
+    return true;
 }
 
 void OtaWifiPull::install(const OtaManifest& manifest, const std::string& imageUrl) {
@@ -128,6 +143,16 @@ void OtaWifiPull::install(const OtaManifest& manifest, const std::string& imageU
              updateStatusName(result.status), result.attempts, result.bytes, elapsedMs,
              flash.busyMs());
 
-    if (result.status == UpdateStatus::OK) OtaInstall::rebootInto(flash, manifest);
+    ReportDetails details;
+    details.status = static_cast<int>(result.status);
+    details.sha = OtaReporter::shaHex(manifest.imageShaPrefix());
+    details.download = true;
+    details.downloadMs = elapsedMs;
+    details.bytes = result.bytes;
+    if (result.status == UpdateStatus::OK) {
+        OtaReporter::send(ReportEvent::WRITTEN, details);
+        OtaInstall::rebootInto(flash, manifest);
+    }
+    OtaReporter::send(ReportEvent::FAILED, details);
     OtaInstall::restartAfterFailure(manifest);
 }
