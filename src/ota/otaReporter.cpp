@@ -72,13 +72,13 @@ bool OtaReporter::send(ReportEvent event, const ReportDetails& details) {
     if (details.download) {
         report.addNumber("dl_ms", details.downloadMs).addNumber("bytes", details.bytes);
     }
+    report.addNumber("heap_free", esp_get_free_heap_size())
+        .addNumber("heap_min", esp_get_minimum_free_heap_size());
     PowerState power;
     if (InitDevices::readPower(power)) {
         report.addNumber("batt_mv", power.batteryMv).addFlag("vbus", power.externalPower);
     }
-    report.addNumber("heap_free", esp_get_free_heap_size())
-        .addNumber("heap_min", esp_get_minimum_free_heap_size())
-        .addNumber("uptime_s", esp_timer_get_time() / 1000000);
+    report.addNumber("uptime_s", esp_timer_get_time() / 1000000);
 
     std::string body = report.body();
     if (body.empty()) {
