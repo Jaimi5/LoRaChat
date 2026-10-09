@@ -113,7 +113,13 @@ collect_round() {
   for d in "$src"/*/; do
     d="${d%/}"; base="$(basename "$d")"
     new="${base%-r[0-9][0-9]}-r$(printf '%02d' "$round")"
-    mv "$d" "$dst/$new" && moved=$((moved+1))
+    # On /mnt/d a Windows file lock can make mv fail ("Permission denied");
+    # fall back to copy-then-delete so a run is never left behind or lost.
+    if mv "$d" "$dst/$new" 2>/dev/null || { cp -a "$d" "$dst/$new" && rm -rf "$d"; }; then
+      moved=$((moved+1))
+    else
+      log "WARNING: could not collect $d into $dst/$new — left in place"
+    fi
   done
   shopt -u nullglob
   rmdir "$src" 2>/dev/null || true
@@ -130,7 +136,13 @@ run_unit() {
     log "skip (done): $name [$tag] round $round"; return 0
   fi
   # Clear any stale intermediate dir from a previous interrupted attempt.
-  [[ -d "runs/${name}" ]] && { mv "runs/${name}" "runs/${name}.stale-$(ts)" 2>/dev/null || rm -rf "runs/${name}"; }
+  # Never delete it: if mv is blocked (Windows file lock on /mnt/d), copy it aside.
+  if [[ -d "runs/${name}" ]]; then
+    local stale="runs/${name}.stale-$(ts)"
+    mv "runs/${name}" "$stale" 2>/dev/null \
+      || { cp -a "runs/${name}" "$stale" && rm -rf "runs/${name}"; } \
+      || { log "FATAL: cannot move stale runs/${name} aside; refusing to delete it"; exit 1; }
+  fi
 
   local extra="$EXTRA_RUN_ARGS --skip-upgrade"   # upgrade done once, up front
   banner "round $round/$ROUNDS — $name [$tag] (env $env)"
