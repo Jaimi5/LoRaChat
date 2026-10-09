@@ -10,7 +10,7 @@
  * @brief OTA settings and maintenance windows on request.
  *
  * Keeps the deployment key in NVS (namespace "lmsec"). The key derives the password of the
- * node's maintenance access point and, later, signs commands and reports.
+ * node's maintenance access point and the keys that sign commands and reports.
  */
 class OtaService : public MessageService {
 public:

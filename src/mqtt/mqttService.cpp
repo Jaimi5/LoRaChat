@@ -276,11 +276,6 @@ void MqttService::mqtt_service_init(const char* client_id) {
     mqtt_app_start(client_id);
 }
 
-void MqttService::mqtt_service_subscribe(const char* topic) {
-    esp_mqtt_client_subscribe(client, topic, 2);
-    ESP_LOGI(MQTT_TAG, "Subscribed to topic %s", topic);
-}
-
 void MqttService::mqtt_service_send(const char* topic, const char* data, int len) {
     int msg_id;
     msg_id = esp_mqtt_client_publish(client, topic, data, len, 1, 0);

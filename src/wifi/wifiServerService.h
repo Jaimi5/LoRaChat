@@ -82,8 +82,6 @@ public:
 
     String getIP();
 
-    String getSSID();
-
 
     WiFiCommandService* wiFiCommandService = nullptr;
 

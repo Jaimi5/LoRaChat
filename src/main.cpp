@@ -6,7 +6,6 @@
 // Log
 #include "esp32-hal-log.h"
 #include "esp_log.h"
-#include "esp_ota_ops.h"
 #include "esp_timer.h"
 
 // Manager
@@ -165,9 +164,7 @@ void setup() {
     // Initialize Serial Monitor
     Serial.begin(115200);
 
-    // Set log level. INFO keeps operational and error logs while dropping the
-    // verbose/debug spam whose blocking UART flush (~7 ms/line at 115200) and
-    // log-mutex contention starve time-critical tasks during reconnect storms.
+    // INFO level: each log line blocks on the UART (about 7 ms at 115200 baud).
     esp_log_level_set("*", ESP_LOG_INFO);
 
     bootGuard.begin();
@@ -210,8 +207,7 @@ void setup() {
     bootGuard.reportCheck(SelfTestCheck::RADIO, loraMeshService.isRunning());
 
 #ifdef WIFI_ENABLED
-    // WiFi may have connected before LoRaMesher was initialized, causing
-    // setGateway() to silently fail (mesher_ was NULL). Re-check now.
+    // A WiFi connection made before LoRaMesher started is announced to the mesh here.
     if (gateway && wiFiService.isConnected()) {
         ESP_LOGI(TAG, "WiFi already connected at LoRaMesher init — setting gateway");
         loraMeshService.setGateway();

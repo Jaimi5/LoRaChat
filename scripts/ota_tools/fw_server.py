@@ -29,10 +29,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional, Tuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import ap_pass  # noqa: E402
+
 DEFAULT_PORT = 8070
 IMAGE_FILE = "firmware.bin"
 MAX_REPORT_BYTES = 1024
-REPORT_LABEL = b"LMR1"
 
 
 @dataclass
@@ -56,10 +59,10 @@ def body_for(name: str, data: bytes, faults: Faults, request: int) -> Tuple[byte
 
 
 def make_server(directory, port: int, faults: Faults, bind: str = "0.0.0.0",
-                report_key: Optional[bytes] = None):
+                deployment_key: Optional[bytes] = None):
     directory = Path(directory)
     state = {"image_requests": 0}
-    kr = hmac.new(report_key, REPORT_LABEL, hashlib.sha256).digest() if report_key else None
+    kr = ap_pass.report_key(deployment_key) if deployment_key else None
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):  # noqa: N802
@@ -139,12 +142,8 @@ def main(argv=None) -> int:
             print(f"Error: {directory / name} not found", file=sys.stderr)
             return 1
     faults = Faults(args.flip_byte, args.cut_at, args.cut_times, args.missing_image)
-    report_key = None
-    if args.report_key_file:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import ap_pass
-        report_key = ap_pass.load_key(args.report_key_file)
-    server = make_server(directory, args.port, faults, report_key=report_key)
+    deployment_key = ap_pass.load_key(args.report_key_file) if args.report_key_file else None
+    server = make_server(directory, args.port, faults, deployment_key=deployment_key)
     print(f"Serving {directory} on port {args.port} ({faults})")
     try:
         server.serve_forever()

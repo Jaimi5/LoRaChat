@@ -1,5 +1,5 @@
 // Site settings for this deployment. Copy to config_local.h (gitignored) and fill in.
-// WiFi credentials are only a default: credentials stored in NVS (/addSSID, /addPassword) win.
+// WiFi credentials are only a default: credentials stored in NVS (/maint.wifi) win.
 #pragma once
 
 #define WIFI_SSID ""

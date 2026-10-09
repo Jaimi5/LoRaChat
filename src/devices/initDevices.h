@@ -1,5 +1,4 @@
-// This file initializes the device that is enabled by the config.h file or using the platformio.ini
-// file.
+// Board power (AXP192 or AXP2101, detected at runtime), the power key and the charge LED.
 #pragma once
 
 #include <cstdint>

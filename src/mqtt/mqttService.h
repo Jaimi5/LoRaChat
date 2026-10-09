@@ -37,10 +37,6 @@
 
 class MqttService : public MessageService {
 public:
-    /**
-     * @brief Construct a new BluetoothService object
-     *
-     */
     static MqttService& getInstance() {
         static MqttService instance;
         return instance;
@@ -78,8 +74,6 @@ public:
 
     /** Publishes "<request id> <text>" on cmd-resp/<node in hex>. */
     void publishCommandReply(uint16_t node, uint8_t requestId, const String& text);
-
-    void mqtt_service_subscribe(const char* topic);
 
     String localName = "";
 

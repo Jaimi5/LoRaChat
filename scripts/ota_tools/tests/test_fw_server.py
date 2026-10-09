@@ -27,8 +27,8 @@ def release(tmp_path):
 KEY = bytes(range(32))
 
 
-def serve(directory, faults, report_key=None):
-    server = fs.make_server(directory, 0, faults, bind="127.0.0.1", report_key=report_key)
+def serve(directory, faults, deployment_key=None):
+    server = fs.make_server(directory, 0, faults, bind="127.0.0.1", deployment_key=deployment_key)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}/"
 
@@ -114,7 +114,7 @@ def post_report(base, body, tag):
 
 
 def test_report_with_a_valid_tag_is_accepted_and_logged(release, capsys):
-    server, base = serve(release, fs.Faults(), report_key=KEY)
+    server, base = serve(release, fs.Faults(), deployment_key=KEY)
     try:
         body = json.dumps({"v": 1, "node": "7680", "event": "noop", "decision": 1})
         kr = hmac.new(KEY, b"LMR1", hashlib.sha256).digest()

@@ -25,10 +25,6 @@ public:
         return instance;
     }
 
-    xQueueHandle xProcessQueue;
-
-    xQueueHandle xSendQueue;
-
     void init();
 
     void addMessageService(MessageService* service);
@@ -59,15 +55,7 @@ private:
 
     std::vector<MessageService*> services;
 
-    TaskHandle_t sendMessageManager_TaskHandle = NULL;
-
-    TaskHandle_t receiveMessageManager_TaskHandle = NULL;
-
-    // TODO: Fix that to a specific sender
     static void sendMessageLoRaMesher(DataMessage* message);
 
-    static void sendMessageBluetooth(DataMessage* message) {};
-
-    static void sendMessageWiFi(DataMessage* message);
     static void sendMessageMqtt(DataMessage* message);
 };

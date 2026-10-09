@@ -368,18 +368,6 @@ String WiFiServerService::getIP() {
     return F("No IP");
 }
 
-String WiFiServerService::getSSID() {
-    wifi_config_t wifi_cfg;
-
-    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
-    if (error != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get wifi config");
-        return F("Failed to get SSID");
-    }
-
-    return String((char*)wifi_cfg.sta.ssid);
-}
-
 bool WiFiServerService::restartWiFiData() {
     wifi_config_t wifi_cfg;
 
