@@ -51,8 +51,6 @@ python3 -m pytest scripts/ota_tools/tests test/host
 
 The native tests compile the mbedTLS of the ESP-IDF package for the host, so build `tbeam` once before the first `scripts/pio.sh test -e native`. The host tools need Python 3 with `pip install -r scripts/ota_tools/requirements.txt`.
 
-CI (`.github/workflows/firmware.yml`) runs on every push: the rollback guards, both builds with the image checks and the 90 % size gate of `release.py`, the license gate, the native tests and the host tool tests, and keeps the unsigned images as a build artifact.
-
 ## Versions, releases and updates
 
 - **Version:** `version.txt` (`MAJOR.MINOR.PATCH`). Every build writes it into the image with the git commit, e.g. `0.1.0+gabc1234`, and the node prints it at boot: `BOOT part=app0 state=VALID ver=0.1.0+gabc1234 ...`.

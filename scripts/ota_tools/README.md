@@ -18,7 +18,7 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 | `fw_server.py` | Bench firmware server for the WiFi pull, with injected faults |
 | `ap_pass.py` | Deployment key, and the name, password and QR text of a node's access point |
 | `flash_floor.py` | Flashes the floor image on a node over USB and provisions it (key, WiFi, role, inventory) |
-| `license_gate.py` | Fails on GPL/LGPL/AGPL or unknown licenses in the resolved libraries (CI) |
+
 | `lmcmd.py` | Signs commands for nodes, and encrypts WiFi credentials for `/maint.wifi` |
 | `ap_upload.py` | Bench: uploads a bundle to a node's access point through a second T-Beam (`extras/bench_ap_bridge`) |
 
@@ -214,10 +214,6 @@ python flash_floor.py D:\path\to\release\tbeam\0.2.0+gabc1234 --port COM6 --key-
 ```
 
 It writes bootloader, partition table, an erased NVS (`--keep-nvs` keeps it), erased `otadata` and the image in `app0`, resets the node once, waits for its `BOOT` line, then sends `/key.set` (and checks the fingerprint), `/maint.wifi` (asks for the password) and `/role.set`. Each node adds a row to the inventory: MAC, node address, version, bootloader hash, key fingerprint, AP name and the WiFi QR text for its sticker. The QR text contains the AP password, so keep the inventory like the key.
-
-## License gate
-
-`python3 scripts/ota_tools/license_gate.py <libdeps folder>` lists the license of every resolved library (from `library.json`, `library.properties` or the license file) and fails on GPL, LGPL, AGPL or an unknown license. New dependencies must be permissive; a library accepted anyway is passed with `--allow <folder>`. CI runs it on `.pio/libdeps/tbeam`.
 
 ## Guards
 
