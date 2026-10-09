@@ -26,7 +26,7 @@ One firmware image runs on both TTGO T-Beam revisions:
 - T-Beam v1.0/v1.1 (AXP192 power management)
 - T-Beam v1.2 (AXP2101 power management)
 
-The power management chip is detected at boot. The firmware powers the LoRa radio, the ESP32 and the rail of the OLED and the 3.3 V header pins, and switches the GPS off (it is not used). Batteries are charged to 4.2 V. The user LED (GPIO4) is kept off; the charge LED is driven by the charger: on while charging, off when full or on battery, blinking on a charge fault (for example no battery inserted).
+The power management chip is detected at boot. The firmware powers the LoRa radio, the ESP32 and the rail of the OLED and the 3.3 V header pins, and switches the GPS off (it is not used). Batteries are charged to 4.2 V. The user LED (GPIO4) is kept off. With a battery fitted, the charge LED is driven by the charger: on while charging, off when full or on battery, blinking on a charge fault; without a battery it stays off (the T-Beam v1.2 reports battery insertion and removal, and the LED follows). The charger is restarted at every boot, which clears a latched charge fault as unplugging USB does. `/power` prints supply, battery and charger state (an AXP192 without a battery reports a phantom cell at about 3.3 V that does not charge).
 
 The OLED shows the node address and version for 60 s after boot (`DISPLAY_AWAKE_MS` in `src/config.h`) and then sleeps. A short press of the power button (PWR) wakes it for another 60 s; holding the button for 4 s switches the board off. The `/displayOn` and `/displayOff` commands wake it and put it to sleep.
 
@@ -98,6 +98,7 @@ Every command has a permission: **Open** commands run from any channel, **Signed
 | `/version` | Open | Version, slot, image state, bootloader hash, board and address |
 | `/ota.status` | Open | Last update attempt and its outcome |
 | `/role` | Open | The role and whether it is stored or the default |
+| `/power` | Open | Supply, battery and charger state (with the AXP2101 registers) |
 | `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
 | `/key` | Open | Whether a deployment key is stored, and its fingerprint (compare with `ap_pass.py show`) |
 | `/key.set <64 hex digits>` | local | Stores the deployment key (created with `scripts/ota_tools/ap_pass.py keygen`) |

@@ -12,30 +12,56 @@
 #ifdef HAS_PMU
 XPowersLibInterface* PMU = NULL;
 
-static TaskHandle_t powerKeyTaskHandle = nullptr;
+static TaskHandle_t pmuIrqTaskHandle = nullptr;
 static std::function<void()> powerKeyHandler;
+
+// The charge LED follows the charger (on while charging, off when full, blinking on a charge
+// fault) when a battery is fitted. Without one it stays off: there is nothing to charge.
+static void applyChargeLed() {
+    PMU->setChargingLedMode(PMU->isBatteryConnect() ? XPOWERS_CHG_LED_CTRL_CHG
+                                                    : XPOWERS_CHG_LED_OFF);
+}
+
+// A charge fault (e.g. the safety timer) stays latched until VBUS is removed; switching the
+// charger off and on clears it as well.
+static void restartCharger() {
+    constexpr uint32_t CHARGER_OFF_MS = 10;
+    if (PMU->getChipModel() == XPOWERS_AXP2101) {
+        auto* axp = static_cast<XPowersAXP2101*>(PMU);
+        axp->disableCellbatteryCharge();
+        delay(CHARGER_OFF_MS);
+        axp->enableCellbatteryCharge();
+    } else if (PMU->getChipModel() == XPOWERS_AXP192) {
+        auto* axp = static_cast<XPowersAXP192*>(PMU);
+        axp->disableCharge();
+        delay(CHARGER_OFF_MS);
+        axp->enableCharge();
+    }
+}
 
 static void onPmuIrq() {
     BaseType_t woken = pdFALSE;
-    vTaskNotifyGiveFromISR(powerKeyTaskHandle, &woken);
+    vTaskNotifyGiveFromISR(pmuIrqTaskHandle, &woken);
     if (woken) portYIELD_FROM_ISR();
 }
 
 // The PMU holds its IRQ line low until the status is cleared over I2C, which cannot be done
 // from the interrupt handler.
-static void powerKeyTask(void*) {
+static void pmuIrqTask(void*) {
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         PMU->getIrqStatus();
         bool pressed = PMU->isPekeyShortPressIrq();
+        bool batteryChanged = PMU->isBatInsertIrq() || PMU->isBatRemoveIrq();
         PMU->clearIrqStatus();
+        if (batteryChanged) applyChargeLed();
         if (pressed && powerKeyHandler) powerKeyHandler();
     }
 }
 
-void InitDevices::startPowerKeyTask() {
-    if (xTaskCreate(powerKeyTask, "PowerKey", 3072, nullptr, 2, &powerKeyTaskHandle) != pdPASS) {
-        ESP_LOGE("InitDevices", "Power key task creation failed");
+void InitDevices::startPmuIrqTask() {
+    if (xTaskCreate(pmuIrqTask, "PmuIrq", 3072, nullptr, 2, &pmuIrqTaskHandle) != pdPASS) {
+        ESP_LOGE("InitDevices", "PMU interrupt task creation failed");
         return;
     }
     pinMode(PMU_IRQ, INPUT);
@@ -76,6 +102,40 @@ bool InitDevices::readPower(PowerState& out) {
 #endif
 }
 
+std::string InitDevices::powerReport() {
+#ifdef HAS_PMU
+    if (!PMU) return "No PMU";
+    char text[200];
+    int length = snprintf(text, sizeof(text), "vbus=%s battery=%s %umV %d%% charging=%s",
+                          PMU->isVbusIn() ? "yes" : "no", PMU->isBatteryConnect() ? "yes" : "no",
+                          PMU->getBattVoltage(), PMU->getBatteryPercent(),
+                          PMU->isCharging() ? "yes" : "no");
+    if (PMU->getChipModel() == XPOWERS_AXP2101) {
+        static const char* STATES[] = {"TRICKLE", "PRE", "CC", "CV", "DONE", "STOP"};
+        auto* axp = static_cast<XPowersAXP2101*>(PMU);
+        size_t state = static_cast<size_t>(axp->getChargerStatus());
+        snprintf(text + length, sizeof(text) - length,
+                 " state=%s s1=%02x s2=%02x ts=%02x batdet=%02x led=%02x timer=%02x icc=%02x",
+                 state < sizeof(STATES) / sizeof(STATES[0]) ? STATES[state] : "?",
+                 axp->readRegister(XPOWERS_AXP2101_STATUS1),
+                 axp->readRegister(XPOWERS_AXP2101_STATUS2),
+                 axp->readRegister(XPOWERS_AXP2101_TS_PIN_CTRL),
+                 axp->readRegister(XPOWERS_AXP2101_BAT_DET_CTRL),
+                 axp->readRegister(XPOWERS_AXP2101_CHGLED_SET_CTRL),
+                 axp->readRegister(XPOWERS_AXP2101_CHG_TIMEOUT_SET_CTRL),
+                 axp->readRegister(XPOWERS_AXP2101_ICC_CHG_SET));
+    } else if (PMU->getChipModel() == XPOWERS_AXP192) {
+        auto* axp = static_cast<XPowersAXP192*>(PMU);
+        snprintf(text + length, sizeof(text) - length, " status=%02x mode=%02x chgctl=%02x",
+                 axp->readRegister(XPOWERS_AXP192_STATUS), axp->readRegister(XPOWERS_AXP192_MODE_CHGSTATUS),
+                 axp->readRegister(XPOWERS_AXP192_CHARGE1));
+    }
+    return text;
+#else
+    return "No PMU";
+#endif
+}
+
 void InitDevices::initTBeam() {
     // After reset the pin's pull-down lights the LED; drive it off.
     pinMode(LED_PIN, OUTPUT);
@@ -113,9 +173,6 @@ bool InitDevices::beginPower() {
         return false;
     }
 
-    // Charge LED driven by the charger: on while charging (powered by USB or the solar panel),
-    // off when full or running on battery, blinking on a charge fault.
-    PMU->setChargingLedMode(XPOWERS_CHG_LED_CTRL_CHG);
 
 
     if (PMU->getChipModel() == XPOWERS_AXP192) {
@@ -135,7 +192,8 @@ bool InitDevices::beginPower() {
         PMU->setChargeTargetVoltage(XPOWERS_AXP192_CHG_VOL_4V2);
 
         PMU->disableIRQ(XPOWERS_AXP192_ALL_IRQ);
-        PMU->enableIRQ(XPOWERS_AXP192_PKEY_SHORT_IRQ);
+        PMU->enableIRQ(XPOWERS_AXP192_PKEY_SHORT_IRQ | XPOWERS_AXP192_BAT_INSERT_IRQ |
+                       XPOWERS_AXP192_BAT_REMOVE_IRQ);
     } else if (PMU->getChipModel() == XPOWERS_AXP2101) {
         // Unused channels
         PMU->disablePowerOutput(XPOWERS_DCDC2);
@@ -164,10 +222,13 @@ bool InitDevices::beginPower() {
         PMU->setChargeTargetVoltage(XPOWERS_AXP2101_CHG_VOL_4V2);
 
         PMU->disableIRQ(XPOWERS_AXP2101_ALL_IRQ);
-        PMU->enableIRQ(XPOWERS_AXP2101_PKEY_SHORT_IRQ);
+        PMU->enableIRQ(XPOWERS_AXP2101_PKEY_SHORT_IRQ | XPOWERS_AXP2101_BAT_INSERT_IRQ |
+                       XPOWERS_AXP2101_BAT_REMOVE_IRQ);
     }
+    restartCharger();
+    applyChargeLed();
     PMU->clearIrqStatus();
-    startPowerKeyTask();
+    startPmuIrqTask();
 
     PMU->enableSystemVoltageMeasure();
     PMU->enableVbusVoltageMeasure();

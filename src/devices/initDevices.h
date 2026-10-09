@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
 
 /** Battery and supply as read from the PMU. */
 struct PowerState {
@@ -30,8 +31,14 @@ public:
     /** Reads battery and supply from the PMU. @return false if the board has no PMU. */
     static bool readPower(PowerState& out);
 
+    /**
+     * @return supply, battery and charger state as one line; on the AXP2101 also the raw
+     *         status, TS, battery detection, charge LED and charge timer registers.
+     */
+    static std::string powerReport();
+
 private:
     static void initTBeam();
     static bool beginPower();
-    static void startPowerKeyTask();
+    static void startPmuIrqTask();
 };
