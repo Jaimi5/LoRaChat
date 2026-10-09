@@ -3,6 +3,13 @@
 constexpr size_t ReportBuilder::MAX_SIZE;
 constexpr size_t ReportBuilder::MAX_TEXT;
 
+std::vector<uint8_t> verdictId(const OtaRecord& record) {
+    std::vector<uint8_t> id(record.attemptSha.begin(), record.attemptSha.end());
+    id.push_back(static_cast<uint8_t>(record.lastOutcome));
+    id.push_back(record.unexplainedRollbacks);
+    return id;
+}
+
 const char* reportEventName(ReportEvent event) {
     switch (event) {
         case ReportEvent::NOOP:

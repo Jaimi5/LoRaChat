@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
+
+#include "otaRecord.h"
 
 /** What a node report tells the server. The names are the server's schema v1 events. */
 enum class ReportEvent : uint8_t {
@@ -20,6 +23,14 @@ enum class ReportEvent : uint8_t {
 
 /** @return the schema name of @p event. */
 const char* reportEventName(ReportEvent event);
+
+/**
+ * @brief Identifies the verdict of an update attempt, so that it is reported once.
+ *
+ * The attempted image, its outcome and the count of unexplained rollbacks: each rollback of
+ * the same image is a new verdict.
+ */
+std::vector<uint8_t> verdictId(const OtaRecord& record);
 
 /**
  * @brief Writes the JSON body of a node report for POST /report (server schema v1).

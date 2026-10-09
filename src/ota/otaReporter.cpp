@@ -31,17 +31,6 @@ static constexpr uint32_t VERDICT_TASK_STACK = 6144;
 // One verdict sender at a time, so a verdict is sent once.
 static std::mutex verdictMutex;
 
-namespace {
-
-/** NVS blob of the last verdict sent: attempt SHA prefix and outcome. */
-std::vector<uint8_t> verdictKey(const OtaRecord& record) {
-    std::vector<uint8_t> key(record.attemptSha.begin(), record.attemptSha.end());
-    key.push_back(static_cast<uint8_t>(record.lastOutcome));
-    return key;
-}
-
-}  // namespace
-
 bool OtaReporter::send(ReportEvent event, const ReportDetails& details) {
     char node[5];
     snprintf(node, sizeof(node), "%04X", LoRaMeshService::getInstance().getLocalAddress());
@@ -97,7 +86,7 @@ void OtaReporter::sendPendingVerdict() {
     std::lock_guard<std::mutex> lock(verdictMutex);
     OtaRecord record = OtaBootGuard::getInstance().record();
     if (record.lastOutcome == OtaOutcome::NONE) return;
-    std::vector<uint8_t> key = verdictKey(record);
+    std::vector<uint8_t> key = verdictId(record);
 
     nvs_handle_t handle;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;

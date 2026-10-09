@@ -5,6 +5,7 @@
 
 #include "deploymentKey.h"
 #include "otaReport.h"
+#include "otaRecord.h"
 #include "reportVectors.h"
 
 namespace {
@@ -98,6 +99,33 @@ TEST(OtaReport, RefusesABodyOverTheLimit) {
     ReportBuilder builder;
     for (int i = 0; i < 40; i++) builder.addText("field", std::string(40, 'x'));
     EXPECT_EQ(builder.body(), "");
+}
+
+namespace {
+
+OtaRecord rolledBack(uint8_t seed, uint8_t unexplained) {
+    OtaRecord record;
+    record.attemptSha.fill(seed);
+    record.lastOutcome = OtaOutcome::ROLLED_BACK;
+    record.unexplainedRollbacks = unexplained;
+    return record;
+}
+
+}  // namespace
+
+TEST(VerdictId, SameVerdictHasTheSameId) {
+    EXPECT_EQ(verdictId(rolledBack(0xA0, 1)), verdictId(rolledBack(0xA0, 1)));
+}
+
+TEST(VerdictId, EachRollbackOfTheSameImageIsANewVerdict) {
+    EXPECT_NE(verdictId(rolledBack(0xA0, 1)), verdictId(rolledBack(0xA0, 2)));
+}
+
+TEST(VerdictId, ImageAndOutcomeChangeTheId) {
+    OtaRecord valid = rolledBack(0xA0, 0);
+    valid.lastOutcome = OtaOutcome::VALID;
+    EXPECT_NE(verdictId(rolledBack(0xA0, 0)), verdictId(valid));
+    EXPECT_NE(verdictId(rolledBack(0xA0, 1)), verdictId(rolledBack(0xB0, 1)));
 }
 
 int main(int argc, char** argv) {
