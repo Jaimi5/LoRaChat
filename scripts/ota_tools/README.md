@@ -17,6 +17,7 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 | `otadata.py` | Reads and rewrites the `otadata` partition to boot a chosen slot (bench) |
 | `fw_server.py` | Bench firmware server for the WiFi pull, with injected faults |
 | `ap_pass.py` | Deployment key, and the name, password and QR text of a node's access point |
+| `flash_floor.py` | Flashes the floor image on a node over USB and provisions it (key, WiFi, role, inventory) |
 | `license_gate.py` | Fails on GPL/LGPL/AGPL or unknown licenses in the resolved libraries (CI) |
 | `lmcmd.py` | Signs commands for nodes, and encrypts WiFi credentials for `/maint.wifi` |
 | `ap_upload.py` | Bench: uploads a bundle to a node's access point through a second T-Beam (`extras/bench_ap_bridge`) |
@@ -202,6 +203,17 @@ scripts/ota_tools/build_test_images.sh        # all kinds, or e.g. "build_test_i
 ```
 
 They land in `release/tbeam/<version>-t<kind>/`. The script reuses the `tbeam` build directory, so the next normal build recompiles, mostly from the build cache.
+
+## Floor image and provisioning
+
+The floor image is the release every field node gets over USB; a failed update always rolls back to it, so it must already contain the boot guard, the blacklist and the reports. Collect it with `release.py`, then for each node, with Windows Python:
+
+```bat
+python flash_floor.py D:\path\to\release\tbeam\0.2.0+gabc1234 --port COM6 --key-file deploy.key ^
+    --wifi-ssid FarmNet --role sensor --inventory nodes.csv
+```
+
+It writes bootloader, partition table, an erased NVS (`--keep-nvs` keeps it), erased `otadata` and the image in `app0`, resets the node once, waits for its `BOOT` line, then sends `/key.set` (and checks the fingerprint), `/maint.wifi` (asks for the password) and `/role.set`. Each node adds a row to the inventory: MAC, node address, version, bootloader hash, key fingerprint, AP name and the WiFi QR text for its sticker. The QR text contains the AP password, so keep the inventory like the key.
 
 ## License gate
 
