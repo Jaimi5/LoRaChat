@@ -48,7 +48,9 @@ jobs:
             .pio/build_cache
           key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini', 'sdkconfig.*') }}
           restore-keys: pio-${{ matrix.env }}-
-      - run: pip install platformio
+      # The espressif32 6.5.0 build scripts import pkg_resources from setuptools, which the
+      # Python 3.12 runner does not ship; the local PlatformIO environment has 80.9.
+      - run: pip install platformio "setuptools<81"
       - name: Site settings with every feature on, as in a release image
         run: |
           cat > src/config_local.h <<'CONFIG'
