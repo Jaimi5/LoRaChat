@@ -56,7 +56,11 @@ public:
 
     DataMessage* getDataMessage(JsonObject data);
 
+    /** @return the message for @p command, or nullptr if @p text is longer than one radio frame takes. */
     DataMessage* getDisplayMessage(DisplayCommand command, uint16_t dst, String text = "");
+
+    /** @return the longest text /displayText sends to another node in one message. */
+    static size_t maxRemoteTextLength();
 
     void processReceivedMessage(messagePort port, DataMessage* message);
 

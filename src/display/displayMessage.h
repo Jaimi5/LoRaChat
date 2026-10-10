@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include <algorithm>
+
 #include "message/dataMessage.h"
 
 static const char* DISPLAY_TAG = "DisplayService";
@@ -24,7 +26,11 @@ public:
         char displayText[128];
     };
 
-    uint32_t getDisplayTextSize() { return this->messageSize - sizeof(DisplayCommand); }
+    /** @return the bytes of displayText that the message carries, NUL included if sent. */
+    uint32_t getDisplayTextSize() {
+        if (this->messageSize <= sizeof(DisplayCommand)) return 0;
+        return std::min<uint32_t>(this->messageSize - sizeof(DisplayCommand), sizeof(displayText));
+    }
 
     void serialize(JsonObject& doc) { ESP_LOGE(DISPLAY_TAG, "Display Message not implemented"); }
 
@@ -39,12 +45,14 @@ public:
 
         switch (displayCommand) {
             case DisplayText: {
-                displayTextSize = strlen(doc["displayText"]);
-                if (displayTextSize > 32) {
+                const char* text = doc["displayText"] | "";
+                size_t length = strlen(text);
+                if (length > 32) {
                     ESP_LOGE(DISPLAY_TAG, "displayText is too long");
-                    return;
+                    break;
                 }
-                strcpy(displayText, doc["displayText"]);
+                memcpy(displayText, text, length + 1);
+                displayTextSize = length + 1;
                 break;
             }
             default:

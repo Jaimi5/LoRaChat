@@ -122,7 +122,7 @@ Every command has a permission: **Open** commands run from any channel, **Signed
 | `/getIP` | Open | Gateway IP address |
 | `/addSSID`, `/addPassword` | local | Gateway WiFi credentials (prefer `/maint.wifi`) |
 | `/connectWiFi`, `/resetWiFiData` | Signed | Gateway WiFi |
-| `/displayOn`, `/displayOff`, `/displayBlink`, `/displayClear`, `/displayLogo`, `/displayText` | Open | Display |
+| `/displayOn`, `/displayOff`, `/displayBlink`, `/displayClear`, `/displayLogo`, `/displayText` | Open | Display. `/displayText <addr> <text>` sent to another node takes up to 100 characters at SF9 (one LoRa packet); longer text is refused |
 
 One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there); longer replies end in `~`.
 

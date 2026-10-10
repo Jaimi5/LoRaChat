@@ -1,6 +1,8 @@
 #include "displayService.h"
 #include "images.h"
 
+#include "displayText.h"
+
 #include "esp_ota_ops.h"
 #include "esp_timer.h"
 
@@ -247,6 +249,8 @@ String DisplayService::displayText(uint16_t dst, String text, uint16_t src) {
 
     if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
         DataMessage* msg = getDisplayMessage(DisplayCommand::DisplayText, dst, text);
+        if (msg == nullptr)
+            return "Text longer than " + String(maxRemoteTextLength()) + " characters";
         MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg);
 
         delete msg;
@@ -276,6 +280,11 @@ DataMessage* DisplayService::getDataMessage(JsonObject data) {
     return ((DataMessage*)displayMessage);
 }
 
+size_t DisplayService::maxRemoteTextLength() {
+    return displayTextLimit(LoRaMeshService::getInstance().maxAppPayload(),
+                            sizeof(DisplayMessage::displayText));
+}
+
 DataMessage* DisplayService::getDisplayMessage(DisplayCommand command, uint16_t dst, String text) {
     DisplayMessage* displayMessage = new DisplayMessage();
 
@@ -285,12 +294,13 @@ DataMessage* DisplayService::getDisplayMessage(DisplayCommand command, uint16_t 
 
     switch (command) {
         case DisplayCommand::DisplayText: {
-            displayTextSize = text.length();
-            if (displayTextSize > 128) {
+            if (text.length() > maxRemoteTextLength()) {
                 ESP_LOGE(DISPLAY_TAG, "displayText is too long");
+                delete displayMessage;
                 return nullptr;
             }
-            strcpy(displayMessage->displayText, text.c_str());
+            displayTextSize = text.length() + 1;
+            memcpy(displayMessage->displayText, text.c_str(), displayTextSize);
             break;
         }
         default:
@@ -311,6 +321,8 @@ DataMessage* DisplayService::getDisplayMessage(DisplayCommand command, uint16_t 
 void DisplayService::processReceivedMessage(messagePort port, DataMessage* message) {
     DisplayService& displayService = DisplayService::getInstance();
     DisplayMessage* displayMessage = (DisplayMessage*)message;
+    if (displayMessage->messageSize < sizeof(DisplayCommand))
+        return;
 
     switch (displayMessage->displayCommand) {
         case DisplayCommand::DisplayOn:
@@ -326,7 +338,9 @@ void DisplayService::processReceivedMessage(messagePort port, DataMessage* messa
             displayService.clearDisplay(0);
             break;
         case DisplayCommand::DisplayText:
-            displayService.displayText(0, displayMessage->displayText);
+            displayService.displayText(
+                0, displayTextFrom(displayMessage->displayText, displayMessage->getDisplayTextSize())
+                       .c_str());
             break;
         case DisplayCommand::DisplayLogo:
             displayService.displayLogo(0);
