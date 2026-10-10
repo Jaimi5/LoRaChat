@@ -13,6 +13,7 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 | `release.py` | Checks a build and collects it into `release/<env>/<version>/`, optionally signed |
 | `sign_manifest.py` | Keys, signed manifests, manifest inspection and test vectors |
 | `build_test_images.sh` | Builds the boot-guard fault images, signed with the test key |
+| `fault_matrix.py` | Runs the fault images on bench nodes and checks every rollback and report |
 | `check_guards.py` | Static checks that keep app rollback working |
 | `otadata.py` | Reads and rewrites the `otadata` partition to boot a chosen slot (bench) |
 | `fw_server.py` | Bench firmware server for the WiFi pull, with injected faults |
@@ -204,6 +205,27 @@ scripts/ota_tools/build_test_images.sh        # all kinds, or e.g. "build_test_i
 ```
 
 They land in `release/tbeam/<version>-t<kind>/`. The script reuses the `tbeam` build directory, so the next normal build recompiles, mostly from the build cache.
+
+## Fault matrix
+
+`fault_matrix.py` runs the four fault images on bench nodes and judges each rollback, with Windows Python:
+
+```bat
+python fault_matrix.py --floor D:\path\to\release\tbeam\0.1.2+gabc1234-floor ^
+    --images D:\path\to\release\tbeam --sensors COM6,COM7,COM9 --gateway COM3 ^
+    --key-file deploy.key --server-url http://192.168.1.26:8070/ --runs 3
+```
+
+For each run and kind every node gets the floor again (so its blacklist is empty), the script serves the newest `<version>-t<kind>` image itself (as `fw_server.py`, on the port of `--server-url`, which must be this PC's address as the nodes reach it) and takes the reports, and each node opens a pull window; a gateway checks over its own WiFi and gets a new window after a rollback. The serial log is followed until the node refuses the image as blacklisted. Expected:
+
+| Kind | Installs | Rollback | Reset after the fault |
+|---|---|---|---|
+| 1 crash | 2 | unexplained, blacklisted on the second | `PANIC` |
+| 2 irq-hang | 2 | unexplained, blacklisted on the second | `INT_WDT` |
+| 3 loop-hang | 1 | reason 6 (deadline), blacklisted at once | `SW` |
+| 4 selftest-fail | 1 | reason 5 (OTA path), blacklisted at once | `SW` |
+
+Every install and rollback must be reported (in the log and at the server), the refusal too (`noop`), and the node must end on a valid image. A table per run is printed, the details go to `fault_matrix.json`, and the exit code is 0 only if everything passed. One run of the four kinds takes about 20 min.
 
 ## Floor image and provisioning
 
