@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -59,7 +59,9 @@ def body_for(name: str, data: bytes, faults: Faults, request: int) -> Tuple[byte
 
 
 def make_server(directory, port: int, faults: Faults, bind: str = "0.0.0.0",
-                deployment_key: Optional[bytes] = None):
+                deployment_key: Optional[bytes] = None,
+                on_report: Optional[Callable[[dict], None]] = None):
+    """@p on_report receives the fields of every report whose signature is valid."""
     directory = Path(directory)
     state = {"image_requests": 0}
     kr = ap_pass.report_key(deployment_key) if deployment_key else None
@@ -86,6 +88,8 @@ def make_server(directory, port: int, faults: Faults, bind: str = "0.0.0.0",
                 return
             self.log_message("report %s %s %s", fields.get("node"), fields.get("event"),
                              body.decode(errors="replace"))
+            if on_report is not None:
+                on_report(fields)
             self.send_response(204)
             self.end_headers()
 

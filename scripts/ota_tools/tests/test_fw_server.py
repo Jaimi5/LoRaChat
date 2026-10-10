@@ -27,8 +27,9 @@ def release(tmp_path):
 KEY = bytes(range(32))
 
 
-def serve(directory, faults, deployment_key=None):
-    server = fs.make_server(directory, 0, faults, bind="127.0.0.1", deployment_key=deployment_key)
+def serve(directory, faults, deployment_key=None, on_report=None):
+    server = fs.make_server(directory, 0, faults, bind="127.0.0.1", deployment_key=deployment_key,
+                            on_report=on_report)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}/"
 
@@ -133,3 +134,16 @@ def test_report_without_a_key_is_refused(release):
         assert post_report(base, "{}", "00" * 32) == 404
     finally:
         server.shutdown()
+
+
+def test_accepted_reports_reach_the_callback(release):
+    received = []
+    server, base = serve(release, fs.Faults(), deployment_key=KEY, on_report=received.append)
+    try:
+        body = json.dumps({"v": 1, "node": "7680", "event": "rollback", "reason": 5})
+        kr = hmac.new(KEY, b"LMR1", hashlib.sha256).digest()
+        assert post_report(base, body, hmac.new(kr, body.encode(), hashlib.sha256).hexdigest()) == 204
+        assert post_report(base, body, "00" * 32) == 401
+    finally:
+        server.shutdown()
+    assert received == [{"v": 1, "node": "7680", "event": "rollback", "reason": 5}]
