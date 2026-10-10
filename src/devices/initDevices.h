@@ -36,6 +36,13 @@ public:
      */
     static std::string powerReport();
 
+    /**
+     * @brief Blinks the user LED and the charge LED for @p seconds so the board can be found.
+     *        A second call while blinking sets a new end time.
+     * @return the reply for the command.
+     */
+    static std::string identify(uint32_t seconds);
+
 private:
     static void initTBeam();
     static bool beginPower();

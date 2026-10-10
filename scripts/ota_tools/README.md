@@ -17,7 +17,7 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 | `otadata.py` | Reads and rewrites the `otadata` partition to boot a chosen slot (bench) |
 | `fw_server.py` | Bench firmware server for the WiFi pull, with injected faults |
 | `ap_pass.py` | Deployment key, and the name, password and QR text of a node's access point |
-| `flash_floor.py` | Flashes the floor image on a node over USB and provisions it (key, WiFi, role, inventory) |
+| `flash_floor.py` | Flashes the floor image on nodes over USB (several in parallel), provisions them (key, WiFi, role, inventory) and checks them before deployment |
 
 | `lmcmd.py` | Signs commands for nodes, and encrypts WiFi credentials for `/maint.wifi` |
 | `ap_upload.py` | Bench: uploads a bundle to a node's access point through a second T-Beam (`extras/bench_ap_bridge`) |
@@ -210,11 +210,25 @@ They land in `release/tbeam/<version>-t<kind>/`. The script reuses the `tbeam` b
 The floor image is the release every field node gets over USB; a failed update always rolls back to it, so it must already contain the boot guard, the blacklist and the reports. Collect it with `release.py`, then for each node, with Windows Python:
 
 ```bat
-python flash_floor.py D:\path\to\release\tbeam\0.2.0+gabc1234 --port COM6 --key-file deploy.key ^
-    --wifi-ssid FarmNet --role sensor --inventory nodes.csv
+python flash_floor.py D:\path\to\release\tbeam\0.2.0+gabc1234 --port COM6,COM7,COM9 ^
+    --key-file deploy.key --wifi-ssid FarmNet --role sensor --inventory nodes.csv ^
+    --check --ota-server http://loramesher.com/fw/tbeam/
 ```
 
 It writes bootloader, partition table, an erased NVS (`--keep-nvs` keeps it), erased `otadata` and the image in `app0`, resets the node once, waits for its `BOOT` line, then sends `/key.set` (and checks the fingerprint), `/maint.wifi` (asks for the password) and `/role.set`. Each node adds a row to the inventory: MAC, node address, version, bootloader hash, key fingerprint, AP name and the WiFi QR text for its sticker. The QR text contains the AP password, so keep the inventory like the key.
+
+Several ports (comma separated) are flashed and provisioned in parallel. With `--check` each node is then tested before it joins the deployment; a gateway must be running for the mesh check:
+
+| Check | Passes when |
+|---|---|
+| `boot` | the floor image boots `VALID` |
+| `bl` | the bootloader hash matches the release (`info.json`) |
+| `pmu` | a power chip (AXP192 or AXP2101) answers; boards without one cannot run the self-test |
+| `key` | `/key` shows the fingerprint of the key file |
+| `mesh` | `/getRT` lists a route within `--mesh-timeout` (180 s) |
+| `wifi` | a 90 s pull window joins the network, reaches the OTA server (`--ota-server`, else the image's) and gets a report accepted |
+
+The result (`pmu`, `checks`, `PASS`/`FAIL`) goes into the inventory row, a table is printed, and nodes that pass blink their LEDs for 2 min (`/identify`), so the good boards stand out on the table. The exit code is 0 only if every node passes.
 
 ## Guards
 

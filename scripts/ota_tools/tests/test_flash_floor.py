@@ -15,19 +15,25 @@ KEY = bytes(range(32))
 class FakeNode:
     """Serial port of a node running the floor image."""
 
-    def __init__(self, address=0x7680, fingerprint=None, boots=True):
+    def __init__(self, address=0x7680, fingerprint=None, boots=True, pmu="AXP2101",
+                 routes=True, report="HTTP 204"):
         self.address = address
         self.fingerprint = fingerprint or ap_pass.key_fingerprint(KEY)
         self.out = []
         self.written = []
         self.boots = boots
+        self.pmu = pmu
+        self.routes = routes
+        self.report = report
         self.rts = False
         self.dtr = False
 
+    def boot_line(self):
+        return b"I (45) BOOT part=app0 state=VALID ver=0.2.0+gabc1234 bl=20f487 rr=POWERON\n"
+
     def reset(self):
         if self.boots:
-            self.out += [b"rst:0x1 (POWERON_RESET)\n",
-                         b"I (45) BOOT part=app0 state=VALID ver=0.2.0+gabc1234 bl=20f487 rr=POWERON\n"]
+            self.out += [b"rst:0x1 (POWERON_RESET)\n", self.boot_line()]
 
     def write(self, data):
         line = data.decode().strip()
@@ -36,10 +42,25 @@ class FakeNode:
         replies = {
             "/version": f"0.2.0+gabc1234 app0 VALID bl=20f487 env=tbeam node={self.address:04X}",
             "/key.set": f"Deployment key stored, fingerprint {self.fingerprint}",
+            "/key": f"Deployment key stored, fingerprint {self.fingerprint}",
             "/maint.wifi": "WiFi credentials stored for FarmNet",
             "/role.set": "Role set to sensor, restarting",
+            "/power": f"pmu={self.pmu} vbus=yes battery=no 0mV -1% charging=no"
+                      if self.pmu else "pmu=none",
+            "/ota.server": "OTA server: http://example/fw/tbeam/",
+            "/maint.open": "Pull window open for 90 s (1 of 8 in 24 h)",
+            "/identify": "Blinking for 120 s",
+            "/getRT": "--- Routing Table ---",
         }
         self.out += [f"> {name}\n".encode(), (replies.get(name, "Unknown") + "\n").encode()]
+        if name == "/role.set":
+            self.out += [b"rst:0xc (SW_CPU_RESET)\n", self.boot_line()]
+        if name == "/getRT":
+            self.out.append(b"5E9C (hops:1 lq:200) - Via: 5E9C\n" if self.routes
+                            else b"No routes\n")
+        if name == "/maint.open":
+            self.out += [b"I (9000) MaintWifi: Joined FarmNet in 4000 ms, RSSI -60 dBm\n",
+                         f"I (9300) OtaReport: Report noop: {self.report}\n".encode()]
         return len(data)
 
     def readline(self):
@@ -105,3 +126,63 @@ def test_refuses_a_node_that_stores_another_key():
 def test_reports_a_node_that_does_not_boot():
     with pytest.raises(ff.FloorError, match="BOOT"):
         ff.wait_for_boot(FakeNode(boots=False), timeout=0.3)
+
+
+def test_parses_a_port_list():
+    assert ff.parse_ports("COM6") == ["COM6"]
+    assert ff.parse_ports("COM6, COM7,COM9") == ["COM6", "COM7", "COM9"]
+    for bad in ("", ",", "COM6,COM6"):
+        with pytest.raises(ff.FloorError):
+            ff.parse_ports(bad)
+
+
+def test_parses_the_power_chip():
+    assert ff.parse_power("pmu=AXP192 vbus=yes battery=no") == "AXP192"
+    assert ff.parse_power("pmu=none") == "none"
+    assert ff.parse_power("vbus=yes") == "none"
+
+
+def test_waits_for_the_restart_after_the_role_is_set():
+    node = FakeNode()
+    ff.provision(node, KEY, role="sensor", timeout=0.5)
+    assert ff.wait_for_restart(node, timeout=0.5)["state"] == "VALID"
+
+
+def test_a_good_node_passes_every_check():
+    node = FakeNode()
+    boot = {"state": "VALID", "bl": "20f487"}
+    results = ff.run_checks(node, boot, "20f487", ap_pass.key_fingerprint(KEY),
+                            "http://example/fw/tbeam/", mesh_timeout=1, wifi_timeout=1)
+    assert ff.summarize(results) == ("boot=ok bl=ok pmu=ok key=ok mesh=ok wifi=ok", "PASS")
+    assert results["pmu_model"] == "AXP2101"
+    assert "/ota.server http://example/fw/tbeam/" in node.written
+    assert "/maint.open 90" in node.written
+
+
+def test_each_fault_shows_in_its_check():
+    node = FakeNode(pmu=None, routes=False, report="HTTP 401", fingerprint="deadbeef")
+    boot = {"state": "PENDING_VERIFY", "bl": "aaaaaa"}
+    results = ff.run_checks(node, boot, "20f487", ap_pass.key_fingerprint(KEY), None,
+                            mesh_timeout=0.3, wifi_timeout=1)
+    text, verdict = ff.summarize(results)
+    assert verdict == "FAIL"
+    assert text == ("boot=PENDING_VERIFY bl=aaaaaa pmu=none key=wrong key mesh=no neighbour "
+                    "wifi=HTTP 401")
+
+
+def test_reads_the_expected_bootloader_from_the_release(tmp_path):
+    (tmp_path / "info.json").write_text('{"bootloader_sha256": "20f487dd7cf9"}')
+    images = ff.ReleaseImages.from_folder(tmp_path)
+    assert images.expected_bootloader() == "20f487"
+    assert ff.ReleaseImages.from_folder(tmp_path / "missing").expected_bootloader() == ""
+
+
+def test_prints_one_table_row_per_port():
+    rows = [{"port": "COM6", "mac": "34:98:7a:6d:76:80", "node": "7680", "ver": "0.1.2",
+             "pmu": "AXP2101", "result": "PASS", "checks": "boot=ok"},
+            {"port": "COM8", "result": "ERROR", "checks": "esptool failed"}]
+    table = ff.format_table(rows).splitlines()
+    assert table[0].split() == ["port", "mac", "node", "ver", "pmu", "result", "checks"]
+    assert table[1].split()[:6] == ["COM6", "34:98:7a:6d:76:80", "7680", "0.1.2", "AXP2101",
+                                    "PASS"]
+    assert table[2].startswith("COM8") and "ERROR" in table[2]

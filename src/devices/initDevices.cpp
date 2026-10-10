@@ -3,11 +3,15 @@
 #include "config.h"
 
 #include <functional>
+
+#include "esp_timer.h"
 #if defined(T_BEAM)
 #include <XPowersLib.h>
 #endif
 
 #define PMU_WIRE_PORT Wire
+
+static const char* ID_TAG = "InitDevices";
 
 #ifdef HAS_PMU
 XPowersLibInterface* PMU = NULL;
@@ -39,6 +43,22 @@ static void restartCharger() {
     }
 }
 
+/**
+ * @brief Probes one PMU model. The destructor of a failed probe ends the shared I2C bus, so the
+ *        bus is started again for the next probe and for the display.
+ */
+template <typename Chip>
+static XPowersLibInterface* probePmu(const char* name) {
+    auto* chip = new Chip(PMU_WIRE_PORT);
+    if (chip->init()) {
+        ESP_LOGI(ID_TAG, "Power chip %s found", name);
+        return chip;
+    }
+    delete chip;
+    PMU_WIRE_PORT.begin((int)I2C_SDA, (int)I2C_SCL);
+    return nullptr;
+}
+
 static void onPmuIrq() {
     BaseType_t woken = pdFALSE;
     vTaskNotifyGiveFromISR(pmuIrqTaskHandle, &woken);
@@ -61,7 +81,7 @@ static void pmuIrqTask(void*) {
 
 void InitDevices::startPmuIrqTask() {
     if (xTaskCreate(pmuIrqTask, "PmuIrq", 3072, nullptr, 2, &pmuIrqTaskHandle) != pdPASS) {
-        ESP_LOGE("InitDevices", "PMU interrupt task creation failed");
+        ESP_LOGE(ID_TAG, "PMU interrupt task creation failed");
         return;
     }
     pinMode(PMU_IRQ, INPUT);
@@ -104,9 +124,10 @@ bool InitDevices::readPower(PowerState& out) {
 
 std::string InitDevices::powerReport() {
 #ifdef HAS_PMU
-    if (!PMU) return "No PMU";
-    char text[200];
-    int length = snprintf(text, sizeof(text), "vbus=%s battery=%s %umV %d%% charging=%s",
+    if (!PMU) return "pmu=none";
+    char text[220];
+    int length = snprintf(text, sizeof(text), "pmu=%s vbus=%s battery=%s %umV %d%% charging=%s",
+                          PMU->getChipModel() == XPOWERS_AXP2101 ? "AXP2101" : "AXP192",
                           PMU->isVbusIn() ? "yes" : "no", PMU->isBatteryConnect() ? "yes" : "no",
                           PMU->getBattVoltage(), PMU->getBatteryPercent(),
                           PMU->isCharging() ? "yes" : "no");
@@ -133,8 +154,42 @@ std::string InitDevices::powerReport() {
     }
     return text;
 #else
-    return "No PMU";
+    return "pmu=none";
 #endif
+}
+
+static TaskHandle_t identifyTaskHandle = nullptr;
+static volatile int64_t identifyUntilUs = 0;
+
+static void identifyTask(void*) {
+    constexpr uint32_t BLINK_MS = 250;
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+#ifdef HAS_PMU
+        if (PMU) PMU->setChargingLedMode(XPOWERS_CHG_LED_BLINK_4HZ);
+#endif
+        bool on = false;
+        while (esp_timer_get_time() < identifyUntilUs) {
+            on = !on;
+            digitalWrite(LED_PIN, on ? LED_ON : LED_OFF);
+            vTaskDelay(pdMS_TO_TICKS(BLINK_MS));
+        }
+        digitalWrite(LED_PIN, LED_OFF);
+#ifdef HAS_PMU
+        if (PMU) applyChargeLed();
+#endif
+    }
+}
+
+std::string InitDevices::identify(uint32_t seconds) {
+    identifyUntilUs = esp_timer_get_time() + static_cast<int64_t>(seconds) * 1000000;
+    if (identifyTaskHandle == nullptr &&
+        xTaskCreate(identifyTask, "Identify", 2048, nullptr, 1, &identifyTaskHandle) != pdPASS) {
+        identifyTaskHandle = nullptr;
+        return "Identify task creation failed";
+    }
+    xTaskNotifyGive(identifyTaskHandle);
+    return "Blinking for " + std::to_string(seconds) + " s";
 }
 
 void InitDevices::initTBeam() {
@@ -146,34 +201,15 @@ void InitDevices::initTBeam() {
 
 bool InitDevices::beginPower() {
 #ifdef HAS_PMU
-    ESP_LOGV("InitDevices", "beginPower");
+    ESP_LOGV(ID_TAG, "beginPower");
 
+    if (!PMU) PMU = probePmu<XPowersAXP2101>("AXP2101");
+    if (!PMU) PMU = probePmu<XPowersAXP192>("AXP192");
     if (!PMU) {
-        PMU = new XPowersAXP2101(PMU_WIRE_PORT);
-        if (!PMU->init()) {
-            Serial.println("Warning: Failed to find AXP2101 power management");
-            delete PMU;
-            PMU = NULL;
-        } else {
-            Serial.println("AXP2101 PMU init succeeded, using AXP2101 PMU");
-        }
-    }
-
-    if (!PMU) {
-        PMU = new XPowersAXP192(PMU_WIRE_PORT);
-        if (!PMU->init()) {
-            Serial.println("Warning: Failed to find AXP192 power management");
-            delete PMU;
-            PMU = NULL;
-        } else {
-            Serial.println("AXP192 PMU init succeeded, using AXP192 PMU");
-        }
-    }
-
-    if (!PMU) {
+        ESP_LOGE(ID_TAG, "No power chip (AXP192 or AXP2101) answers on I2C: battery, charger "
+                         "and radio supply are not managed");
         return false;
     }
-
 
 
     if (PMU->getChipModel() == XPOWERS_AXP192) {
@@ -251,7 +287,7 @@ bool InitDevices::beginPower() {
         rails += std::string(" ") + rail.name + "=" +
                  std::to_string(PMU->getPowerChannelVoltage(rail.channel));
     }
-    ESP_LOGI("InitDevices", "PMU rails on (mV):%s", rails.c_str());
+    ESP_LOGI(ID_TAG, "PMU rails on (mV):%s", rails.c_str());
 
     PMU->setPowerKeyPressOffTime(XPOWERS_POWEROFF_4S);
 #endif
