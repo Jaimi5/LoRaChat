@@ -50,6 +50,22 @@ class RunRecorder:
             phase.extra = {**(phase.extra or {}), **extra}
         self._flush()
 
+    def clock_mark(self, name: str) -> None:
+        """Instantaneous phase carrying the host's clocks. Comparing two marks
+        tells whether the host slept during the run: time.sleep() runs on the
+        monotonic clock, which stops while the host (or the WSL VM) is
+        suspended, whereas wall time and CLOCK_BOOTTIME keep counting."""
+        p = self.begin(name, **host_clocks())
+        self.end(p, ok=True)
+
+
+def host_clocks() -> dict:
+    """time.monotonic(), CLOCK_BOOTTIME (Linux; None elsewhere) and time.time()."""
+    boot = getattr(time, "CLOCK_BOOTTIME", None)
+    return {"monotonic": time.monotonic(),
+            "boottime": time.clock_gettime(boot) if boot is not None else None,
+            "wall": time.time()}
+
     def _flush(self) -> None:
         data = [
             {

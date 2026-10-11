@@ -22,6 +22,13 @@ set -euo pipefail
 
 CONFIG_H="${{CONFIG_H:-src/config.h}}"
 [[ -f "$CONFIG_H" ]] || {{ echo "ERROR: $CONFIG_H not found (run from repo root)" >&2; exit 1; }}
+# Start from the committed config.h: gateways flash several boards from one
+# checkout, so a value sed-edited for the previous board (or batch) would
+# otherwise leak into this one. Keys this experiment leaves unset revert to
+# the firmware defaults. Skipped when CONFIG_H points elsewhere (tests).
+if [[ "$CONFIG_H" == "src/config.h" ]]; then
+    git checkout -- src/config.h
+fi
 """
 
 

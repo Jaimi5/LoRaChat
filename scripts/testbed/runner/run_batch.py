@@ -243,6 +243,7 @@ def _run_one_batch(
                 continue
 
             recorder = RunRecorder(run_dir)
+            recorder.clock_mark("clock-run-start")
 
             report_t0: SkewReport | None = None
             if not is_warmup and not args.skip_clock_check:
@@ -288,6 +289,7 @@ def _run_one_batch(
             if is_warmup:
                 wait_phase("boot-verify", batch.boot_verify_sec, recorder)
                 stop_monitors(deploy_sh, repo_root, recorder)
+                recorder.clock_mark("clock-run-end")
                 continue
 
             warmup = (cell.warmup_min if cell.warmup_min is not None else batch.warmup_min) * 60
@@ -321,6 +323,7 @@ def _run_one_batch(
                     print(f"  warning: t1 clock-check failed ({e})")
 
             collect_logs(deploy_sh, repo_root, session, recorder)
+            recorder.clock_mark("clock-run-end")
 
             logs_dir = run_dir / "logs"
             moved = move_session_logs(local_log_dir, session, logs_dir)

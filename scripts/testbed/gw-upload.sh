@@ -60,24 +60,39 @@ for device_spec in "$@"; do
     echo "  Env:  $ENV"
     echo "========================================"
 
+    # Step 0: Reset src/config.h to the committed file, so nothing the previous
+    # device's change-config script sed-edited leaks into this device's build
+    # (also when this device has no script and builds the defaults).
+    if ! git -C "$REPO" checkout -- src/config.h; then
+        echo "FAILED: $DEVICE_ID could not reset src/config.h"
+        FAILED_DEVICES="$FAILED_DEVICES $DEVICE_ID"
+        continue
+    fi
+
     # Step 1: Run change-config script (uses SHORT_ID, e.g., 7B6C)
     SHORT_ID="${DEVICE_ID##*-}"
     CONFIG_SCRIPT="change-config-${SHORT_ID}.sh"
+    CONFIG_RC=0
     if [[ -x "$REPO/$CONFIG_SCRIPT" ]]; then
         echo "--- Running ./$CONFIG_SCRIPT ---"
-        (cd "$REPO" && ./"$CONFIG_SCRIPT")
+        (cd "$REPO" && ./"$CONFIG_SCRIPT") || CONFIG_RC=$?
     elif [[ -f "$REPO/$CONFIG_SCRIPT" ]]; then
         echo "--- Running $CONFIG_SCRIPT (via bash) ---"
-        (cd "$REPO" && bash "$CONFIG_SCRIPT")
+        (cd "$REPO" && bash "$CONFIG_SCRIPT") || CONFIG_RC=$?
     elif [[ -f "$REPO/scripts/testbed/change-config/$CONFIG_SCRIPT" ]]; then
         echo "--- Running scripts/testbed/change-config/$CONFIG_SCRIPT ---"
-        (cd "$REPO" && bash "scripts/testbed/change-config/$CONFIG_SCRIPT")
+        (cd "$REPO" && bash "scripts/testbed/change-config/$CONFIG_SCRIPT") || CONFIG_RC=$?
     elif [[ -x "$REPO/scripts/testbed/$CONFIG_SCRIPT" ]]; then
         echo "--- Running scripts/testbed/$CONFIG_SCRIPT ---"
-        (cd "$REPO" && bash "scripts/testbed/$CONFIG_SCRIPT")
+        (cd "$REPO" && bash "scripts/testbed/$CONFIG_SCRIPT") || CONFIG_RC=$?
     else
         echo "WARNING: $CONFIG_SCRIPT not found in repo root, scripts/testbed/change-config/, or scripts/testbed/"
-        echo "         Proceeding with current src/config.h"
+        echo "         Proceeding with the committed src/config.h"
+    fi
+    if [[ $CONFIG_RC -ne 0 ]]; then
+        echo "FAILED: $DEVICE_ID change-config script exited $CONFIG_RC"
+        FAILED_DEVICES="$FAILED_DEVICES $DEVICE_ID"
+        continue
     fi
 
     # Step 2: Compile + Upload

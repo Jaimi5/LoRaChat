@@ -116,10 +116,16 @@ PARAMS: dict[str, Param] = {p.yaml_key: p for p in [
     Param("sim_group",             "SIM_GROUP",             "uint",   "0=off, 1=group member only (no burst), 2=member + send the burst to SIM_GROUP_ADDR"),
     Param("sim_group_addr",        "SIM_GROUP_ADDR",        "hex16",  "Group address in [0x8000, 0xFFFE]"),
     Param("sim_group_window_ms",   "SIM_GROUP_WINDOW_MS",   "uint",   "Group ACK collection window per message (ms)"),
-    Param("sim_stopstart",         "SIM_STOPSTART",         "uint",   "1=periodically Stop()/Start() the mesher on this node"),
+    Param("sim_stopstart",         "SIM_STOPSTART",         "uint",   "1=periodically Stop()/Start() the mesher on this node, 2=same but SaveState() before Stop() (warm restart)"),
     Param("sim_stopstart_period_ms", "SIM_STOPSTART_PERIOD_MS", "uint", "Time running between stops (ms)"),
     Param("sim_stopstart_off_ms",  "SIM_STOPSTART_OFF_MS",  "uint",   "Time stopped before Start() (ms)"),
     Param("sim_nm_failover_ms",    "SIM_NM_FAILOVER_MS",    "uint",   ">0: the Network Manager restarts itself when uptime enters [X, X+60 s]"),
+    # --- Member sleep (LoRaMesher feat/member-sleep; 0 = previous behaviour) --
+    Param("lora_min_sleep_fraction", "LORA_MIN_SLEEP_FRACTION", "float", "Minimum share of the superframe the NM keeps as sleep slots, 0.0..1.0"),
+    Param("sim_sleep_mode",        "SIM_SLEEP_MODE",        "uint",   "0=radio sleep only (MCU awake), 1=MCU light sleep in sleep slots, 2=members deep-sleep between their active slots"),
+    Param("lora_deep_sleep_min_ms", "LORA_DEEP_SLEEP_MIN_MS", "uint", "Shortest gap (ms) worth a deep sleep; shorter gaps stay in light/radio sleep"),
+    Param("lora_deep_sleep_boot_ms", "LORA_DEEP_SLEEP_BOOT_MS", "uint", "Wake-to-ready time (ms) budgeted before the next active slot after a deep sleep"),
+    Param("sim_send_path",         "SIM_SEND_PATH",         "uint",   "Sim load generator send path: 0=sendPacketsToServer (classic), 1=sendPacketsOnSchedule (scheduled)"),
     # --- WiFi + MQTT credentials ---------------------------------------------
     Param("wifi_ssid",             "WIFI_SSID",             "str",    "WiFi SSID"),
     Param("wifi_password",         "WIFI_PASSWORD",         "str",    "WiFi password"),
