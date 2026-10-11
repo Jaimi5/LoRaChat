@@ -582,12 +582,15 @@ cmd_upgrade() {
     [[ -n "$upd_envs" ]] && echo "pio pkg update limited to:${upd_envs}"
     local pkg_update="for i in 1 2 3; do \$PIO_NICE pio pkg update${upd_envs} && break; [ \$i = 3 ] && exit 1; echo \"pkg update attempt \$i failed, retrying in 30s\"; sleep 30; done"
 
+    # GW-4 also drops the TLS connection on git fetch now and then.
+    local fetch="for i in 1 2 3 4 5; do git fetch origin && break; [ \$i = 5 ] && exit 1; echo \"git fetch attempt \$i failed, retrying in 20s\"; sleep 20; done"
+
     local args=()
     for gw_id in "${ACTIVE_GWS[@]}"; do
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
         # Inline git commands (not gw-upgrade.sh) so it works even on first run
         # before the testbed scripts exist on the gateway
-        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== sync to origin/$GIT_BRANCH (untracked files kept, old HEAD -> backup/pre-sync) ===' && git branch -f backup/pre-sync HEAD && git checkout -f -B $GIT_BRANCH origin/$GIT_BRANCH && git reset --hard origin/$GIT_BRANCH && echo '=== pio pkg update ===' && { $pkg_update; } && echo '=== Upgrade complete ==='")
+        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && { $fetch; } && echo '=== sync to origin/$GIT_BRANCH (untracked files kept, old HEAD -> backup/pre-sync) ===' && git branch -f backup/pre-sync HEAD && git checkout -f -B $GIT_BRANCH origin/$GIT_BRANCH && git reset --hard origin/$GIT_BRANCH && echo '=== pio pkg update ===' && { $pkg_update; } && echo '=== Upgrade complete ==='")
     done
 
     if [[ ${#args[@]} -eq 0 ]]; then
