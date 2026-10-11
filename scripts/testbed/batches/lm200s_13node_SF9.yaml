@@ -1,0 +1,42 @@
+# Sleep campaign (lm200/campaign_sleep.yaml) — 13-node delivery A/B arm, SF9.
+#
+# Same cell as lm200_13node.yaml SF9_d63000 (one load point past relay saturation), run on
+# both firmwares: the campaign tags the batch dir per env (lm200s_13node__fix / __slp) and
+# the `ab` gate pairs the two by cell id. sim_sleep_mode 0 on both: this arm checks that the
+# sleep build does not regress delivery when it is not sleeping.
+#
+# Every key the firmware reports in its CFG line is set explicitly (the runner also
+# resets src/config.h before each board, so nothing leaks from a previous batch).
+batch: lm200s_13node
+description: 13-node fair PDR A/B, SF9 past saturation (sleep campaign)
+base: ../lm200/experiments/lm200_base.yaml
+
+runs: 2
+warmup_min: 15
+duration_min: 21
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: SF9_d63000
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.0
+      lora_manager_id: '0x006C'
+      sim_sleep_mode: 0
+      sim_send_path: 0   # 0 = classic sendPacketsToServer
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 13
+      packet_delay: 63000
+      sim_testbed_warmup_ms: 900000   # = warmup_min 15 (warmup must exceed the upload phase)
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0
+    inactive_devices: [DD58, 14A4, '3428']

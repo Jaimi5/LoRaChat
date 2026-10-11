@@ -1,0 +1,233 @@
+# Member-sleep testbed campaign (LoRaMesher feat/member-sleep) — configuration.
+#
+#   python3 scripts/testbed/lm200/campaign.py --config scripts/testbed/lm200/campaign_sleep.yaml
+#   python3 scripts/testbed/lm200/campaign.py --config ... --dry-run     # plan + renders, no testbed
+#
+# Two firmwares built from the same LoRaChat tree: FIX (env `fix`, the current library
+# with its fixes) and SLP (env `sleep`, the member-sleep library). Every stage names its
+# env; batch dirs are tagged runs/<batch>__fix / runs/<batch>__slp, and the `ab` gate pairs
+# them by cell id. Paths are relative to scripts/testbed/. See lm200/README.md.
+
+title: Member-sleep testbed campaign
+campaign_dir: runs/lm200_sleep_campaign    # state.json, campaign.log, gates/, report/
+
+envs:
+  fix: ttgo-t-beam-v2                      # platformio.ini: LoRaMesher with fixes
+  sleep: ttgo-t-beam-v2-sleep              # platformio.ini: LoRaMesher feat/member-sleep
+  old: ttgo-t-beam-v2-old                  # LoRaMesher 134ae25 (July baseline), unused here
+default_env: fix
+tags: {fix: fix, sleep: slp, old: old}     # batch dir suffix per env
+ab_tags: {a: fix, b: slp}                  # ab gate: B must not regress against A
+
+# LoRaMesher sha each env must build ("LoRaMesher @ x+sha.<sha>" in the upload logs).
+# The campaign refuses to start (outside --dry-run) while any of these is a TODO.
+# Prefix-matched: the 7-char form works whether pio prints the short or the full sha.
+lib_sha:
+  fix: ab9449a                             # ab9449a9659f8ab2481bbb7fb4857ab35b917834 (prefix-matched)
+  sleep: 86a4072                           # 86a4072d9fc5ece3e1508967ec7d375a6ee4ef42 (feat/member-sleep incl. Stop/Start fix)
+  old: 134ae25
+
+expected_radiolib: "7.7.1"                 # pinned in platformio.ini for every v2 env
+
+gate_ids_per_stage: true                   # gates/<gate>-<stage>.json (several g0/g1/g2/ab)
+warmup_run: false                          # no r00 flash-only rep in any batch
+stop_on_fail_scope: env                    # a failing stop_on_fail gate skips only that env's stages
+budget_h: 23                               # optional stages run only if they still fit
+prewarm_envs: [fix, sleep]
+
+# Wall-clock model for the plan / budget (minutes): per cell one upload, per run fixed
+# overhead. Measured on the October lm200 runs (47 uploads, 54 runs): upload median 14.7 min
+# (max 20.1), clock checks + resets + monitors + log pull median 1.5 min per run.
+overhead:
+  upload_min: 16
+  per_run_min: 2
+  prewarm_min: 30
+  gate_min: 5
+
+# G1 kind per batch name (the __tag is stripped first).
+g1_kinds:
+  lm200s_formation: formation
+  lm200s_13node: 13node
+
+# Stages run in order; a stage is skipped once recorded complete in state.json.
+#   env / tag:      firmware env key (above) and batch dir tag (default: tags[env])
+#   batches:        [{yaml, extra}] — each one run_batch.py invocation
+#   gates:          g0 | g1 | g2 (+required) | ab (+with_stages) | sleep
+#   stop_on_fail:   list of gate types whose FAIL/INCOMPLETE stops this env (scope above)
+#   optional:       skipped when elapsed > budget_h - stage estimate
+#   informational:  the stage's gates never block the verdict (FAIL -> caveat)
+stages:
+  - name: S1
+    title: FIX 13-node SF9 (A/B arm A, smoke)
+    env: fix
+    gates: [g0]
+    stop_on_fail: [g0]
+    gate_attempts: 2
+    batches:
+      - {yaml: batches/lm200s_13node_SF9.yaml}
+  - name: S2
+    title: SLP 13-node SF9 (A/B arm B, smoke)
+    env: sleep
+    gates: [g0, {gate: ab, with_stages: [S1]}]
+    stop_on_fail: [g0]
+    gate_attempts: 2
+    batches:
+      - {yaml: batches/lm200s_13node_SF9.yaml}
+  - name: S3
+    title: FIX Stop/Start, 3 nodes
+    env: fix
+    gates: [{gate: g2, required: [stopstart]}]
+    batches:
+      - {yaml: batches/lm200s_stopstart.yaml}
+  - name: S4
+    title: SLP Stop/Start, 2 plain + 2 warm restart
+    env: sleep
+    gates: [{gate: g2, required: [stopstart]}]
+    batches:
+      - {yaml: batches/lm200s_stopstart_warm.yaml}
+  - name: S5
+    title: SLP sleep control (radio sleep only)
+    env: sleep
+    batches:
+      - {yaml: batches/lm200s_sleep_control.yaml}
+  - name: S6
+    title: SLP light sleep
+    env: sleep
+    batches:
+      - {yaml: batches/lm200s_sleep_light.yaml}
+  - name: S7
+    title: SLP deep sleep (gate over control + light + deep)
+    env: sleep
+    gates: [sleep]
+    batches:
+      - {yaml: batches/lm200s_sleep_deep.yaml}
+  - name: S8
+    title: FIX formation SF7, 16 nodes
+    env: fix
+    gates: [g1]
+    batches:
+      - {yaml: batches/lm200s_formation.yaml}
+  - name: S9
+    title: SLP formation SF7, 16 nodes
+    env: sleep
+    gates: [g1, {gate: ab, with_stages: [S8]}]
+    batches:
+      - {yaml: batches/lm200s_formation.yaml}
+  - name: S10
+    title: SLP 13-node SF12
+    env: sleep
+    gates: [g1]
+    batches:
+      - {yaml: batches/lm200s_13node_SF12.yaml}
+  - name: S11
+    title: FIX 13-node SF12 (+ G1 / ab over SF9 and SF12)
+    env: fix
+    gates: [g1, {gate: ab, with_stages: [S10]}]
+    batches:
+      - {yaml: batches/lm200s_13node_SF12.yaml}
+  - name: S12
+    title: FIX reliable SF9, 2 data slots x3 and 3 data slots x1
+    env: fix
+    gates: [{gate: g2, required: [reliable_SF9_dds2, reliable_SF9_dds3]}]
+    batches:
+      - {yaml: batches/lm200s_reliable_dds2.yaml}
+      - {yaml: batches/lm200s_reliable_dds3.yaml}
+  # Optional tail: only if the budget still allows.
+  - name: O1
+    title: SLP NM failover, pinned manager
+    env: sleep
+    optional: true
+    gates: [{gate: g2, required: [nm_failover_SF9]}]
+    batches:
+      - {yaml: batches/lm200s_nm_failover.yaml}
+  - name: O2
+    title: SLP NM failover by election (informational)
+    env: sleep
+    optional: true
+    informational: true
+    gates: [{gate: g2, required: [nm_failover_auto]}]
+    batches:
+      - {yaml: batches/lm200s_nm_failover_auto.yaml}
+  - name: O3
+    title: FIX group messaging
+    env: fix
+    optional: true
+    gates: [{gate: g2, required: [group]}]
+    batches:
+      - {yaml: batches/lm200s_group.yaml}
+
+auto_ab: false                             # no T1b run_full_redo A/B in this campaign
+
+# July 134ae25 reference runs (read only): G1 baselines and the G0 superframe reference.
+baseline:
+  lm200_formation: runs/formation__lmv2
+  lm200_13node: runs/sim_load_compare_13node__lmv2
+  lm200_reach16: runs/sim_load_compare_reach16__lmv2
+  lm200_dataslots: runs/dataslots_check__lmv2
+  long_link: runs/long_link__lmv2
+
+retries:
+  status_wait_min: 30
+  prewarm_attempts: 3
+  prewarm_after_wipe_attempts: 2
+  cell_attempts: 3
+  upgrade_attempts: 3
+
+notify: ""                                 # e.g. 'curl -s -d "{summary}" ntfy.sh/my-topic'
+
+remote_nodes: [DD58, 14A4, "3428"]
+
+open_items:
+  - "Deep-sleep wake/boot budgets (LORA_DEEP_SLEEP_MIN_MS / LORA_DEEP_SLEEP_BOOT_MS) run at the firmware defaults."
+  - "Energy figures are modelled (analysis/energy_model.py + energy_params.yaml), not measured."
+
+thresholds:
+  g_minus1:
+    max_ram_pct: 90
+    max_flash_pct: 95
+  g0:
+    min_fair_pdr: 0.95
+    superframe_grey_rel: 0.25
+  g1:
+    pdr_13node_drop: 0.02
+    pdr_reach16_drop: 0.05
+    join_margin_superframes: 1
+    join_retry_grey_factor: 2.0
+  g2:
+    ack_ratio: 0.95
+    rtt_p95_max_s: 900
+    not_queued_grey_frac: 0.05
+    group_rx_fail: 0.50
+    group_rx: 0.90
+    group_dup: 0.01
+    rejoin_superframes: 3
+    min_stack_free_bytes: 512
+    nm_takeover_max_s: 900
+    nm_restart_max_s: 120
+    unresolved_grey_frac: 0.10
+    rejected_grey_frac: 0.02
+    longlink_min_remote_joined: 3
+    min_heap_bytes: 10000
+    # Cross-rep verdict for reliable cells with extra data slots (cell id contains one of these)
+    dds_verdict_cells: ["_dds2"]
+    dds_verdict_min_reps: 2
+    dds_verdict_pass: 0.95                 # every rep >= this -> the earlier failure was a one-off
+    dds_verdict_fail: 0.80                 # any rep < this -> reproducible (FAIL)
+  ab:                                      # SLP (B) vs FIX (A), per cell
+    pdr_drop: 0.02                         # PASS if fair PDR B >= A - this
+    pdr_grey_drop: 0.05                    # GREY down to A - this, FAIL below
+    conv_superframes: 1                    # convergence from reset: median B <= A + N superframes
+    conv_grey_superframes: 2
+    latency_ratio: 1.25                    # app latency p95 B <= ratio x A
+    latency_grey_ratio: 1.5
+  sleep:
+    min_members_deep_slept: 0.80           # share of members with >= 1 deep sleep
+    min_resume_success: 0.95               # "Resumed network" / deep sleeps
+    max_cannot_resume_frac: 0.05           # "Cannot resume" / deep sleeps
+    max_sleep_clock_ppm_p95: 10000         # |ms off| / ms slept, p95 over Sleep clock samples
+    max_time_to_ready_superframes: 1       # rst:0x5 -> "Schedule confirmed ...", p95
+    boot_time_ms: 1000                     # fallback if neither config.yaml nor src/config.h sets LORA_DEEP_SLEEP_BOOT_MS
+    deep_pdr_drop: 0.05                    # deep fair PDR >= control - this (GREY to grey_drop)
+    deep_pdr_grey_drop: 0.10
+    light_pdr_drop: 0.02
+    light_pdr_grey_drop: 0.05

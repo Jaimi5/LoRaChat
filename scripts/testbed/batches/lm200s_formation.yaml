@@ -1,0 +1,33 @@
+# Sleep campaign — cold-start formation, SF7, all 16 boards (G1 formation vs July + ab).
+#
+# Clean config: MQTT monitor (no sim load generator), every feature flag off, no sleep.
+# No warmup: convergence from the synchronized reset is what is measured. Same cell id
+# as July's formation__lmv2 SF7 so G1 finds its baseline; the campaign tags the dir per
+# env (lm200s_formation__fix / __slp) for the ab gate.
+batch: lm200s_formation
+description: Cold-start convergence, SF7, 16 nodes, clean config (sleep campaign)
+base: ../lm200/experiments/lm200_base.yaml
+
+runs: 3
+warmup_min: 0
+duration_min: 15
+cooldown_min: 1
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: SF7
+    overrides:
+      lora_spreading_factor: 7
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.0
+      lora_manager_id: '0x006C'
+      sim_sleep_mode: 0
+      sim_send_path: 0   # 0 = classic sendPacketsToServer
+      sim_pdr_compare: 0
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0

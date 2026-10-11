@@ -1,0 +1,36 @@
+# Sleep campaign, optional tail — group messaging with ACKs (FIX firmware, G2 group).
+# Base lm200_group.yaml: every node joins SIM_GROUP_ADDR (sim_group 1), 7B6C is the sole
+# group sender (sim_group 2 in the base's per-device block, which wins over defaults).
+batch: lm200s_features
+description: Group messaging, one sender + 12 members, SF9 (sleep campaign, optional)
+base: ../lm200/experiments/lm200_group.yaml
+
+runs: 1
+warmup_min: 15
+duration_min: 20
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: group_SF9
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.0
+      lora_manager_id: '0x006C'
+      sim_sleep_mode: 0
+      sim_send_path: 0   # 0 = classic sendPacketsToServer
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 20
+      packet_delay: 45000             # 15 min of group sends
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 1                    # members; 7B6C = 2 (sender) from the base
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0
+    inactive_devices: [DD58, 14A4, '3428']

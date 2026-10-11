@@ -7,6 +7,8 @@ Each gate turns one tier of the plan into machine-checkable results:
     g0        smoke run(s): flash, boot, crashes, LDRO, join, NM, routing, PDR
     g1        core regression vs the July 134ae25 runs (computed, not hard-coded)
     g2        feature/stress cells (reliable, group, Stop/Start, NM failover, ...)
+    ab        same cells on two firmwares: <batch>__fix vs <batch>__slp (sleep campaign)
+    sleep     member-sleep cells: sleep_control / sleep_light / sleep_deep
 
 Every gate returns {"gate", "status", "checks": [...], ...} where status is the
 worst check status: FAIL > INCOMPLETE > GREY > PASS. A check never raises: a
@@ -20,8 +22,12 @@ CLI (paths relative to scripts/testbed/ or absolute):
     gates.py g1 formation=runs/lm200_formation 13node=runs/lm200_13node \\
                 reach16=runs/lm200_reach16 dataslots=runs/lm200_dataslots
          (KIND=NEW_DIR[:BASELINE_DIR]; baseline defaults to campaign.yaml)
-    gates.py g2 runs/lm200_features
+    gates.py g2 runs/lm200_features [--required reliable_SF9_dds2,stopstart]
+    gates.py ab runs/lm200s_13node__fix runs/lm200s_13node__slp
+    gates.py sleep runs/lm200s_sleep__slp
   common: --config lm200/campaign.yaml --out <json> --expect-sha <sha>
+
+Runs listed in runs/EXCLUDED.txt are skipped everywhere (reported as "excluded").
 """
 
 from __future__ import annotations
@@ -48,11 +54,12 @@ from analysis import app_pdr as _app_pdr  # noqa: E402
 from analysis import formation as _formation  # noqa: E402
 from analysis import superframe as _superframe  # noqa: E402
 from analysis.check_reset import check_run as _check_reset  # noqa: E402
-from analysis.parse_logs import is_v2_run, parse_run  # noqa: E402
+from analysis.exclusions import excluded_reason  # noqa: E402
+from analysis.parse_logs import DEEP_WAKE_SLACK_S, is_v2_run, parse_run  # noqa: E402
 
 PASS, GREY, INCOMPLETE, FAIL = "PASS", "GREY", "INCOMPLETE", "FAIL"
 _RANK = {PASS: 0, GREY: 1, INCOMPLETE: 2, FAIL: 3}
-SUMMARY_VERSION = 7  # bump to invalidate cached run summaries
+SUMMARY_VERSION = 8  # bump to invalidate cached run summaries
 
 # ── small helpers ─────────────────────────────────────────────────────────────
 
@@ -82,7 +89,9 @@ def gate_result(gate: str, checks: list[dict], **extra) -> dict:
 
 
 def load_config(path: Path | None) -> dict:
-    p = path or (TESTBED / "lm200" / "campaign.yaml")
+    p = Path(path) if path else (TESTBED / "lm200" / "campaign.yaml")
+    if not p.is_absolute() and not p.is_file():
+        p = TESTBED / p
     with open(p) as f:
         return yaml.safe_load(f) or {}
 
@@ -119,11 +128,19 @@ def cell_of(run_dir: Path) -> tuple[str, int] | None:
     return (m.group("cell"), int(m.group("rep"))) if m else None
 
 
+EXCLUDED_SEEN: dict[str, str] = {}   # run name -> reason, for the gate output
+
+
 def run_dirs(path: Path, include_warmup: bool = False) -> list[Path]:
     """A run dir itself, or every valid run dir under a batch dir (sorted).
-    Skips moved-aside failures (*.FAILED-*, *.INVALID*, *.stale-*)."""
+    Skips moved-aside failures (*.FAILED-*, *.INVALID*, *.stale-*) and runs
+    listed in runs/EXCLUDED.txt (recorded in EXCLUDED_SEEN)."""
     path = tpath(path)
     if (path / "logs").is_dir() or (path / "config.yaml").is_file() and cell_of(path):
+        why = excluded_reason(path)
+        if why:
+            EXCLUDED_SEEN[path.name] = why
+            return []
         return [path]
     out = []
     if not path.is_dir():
@@ -135,6 +152,10 @@ def run_dirs(path: Path, include_warmup: bool = False) -> list[Path]:
         if c is None:
             continue
         if c[1] == 0 and not include_warmup:
+            continue
+        why = excluded_reason(d)
+        if why:
+            EXCLUDED_SEEN[d.name] = why
             continue
         out.append(d)
     return out
@@ -185,6 +206,8 @@ def run_config(run_dir: Path) -> dict:
         "sim_group": per_dev("sim_group"),
         "sim_stopstart": per_dev("sim_stopstart"),
         "sim_nm_failover_ms": defaults.get("sim_nm_failover_ms", 0),
+        "sim_sleep_mode": defaults.get("sim_sleep_mode", 0),
+        "boot_budget_ms": defaults.get("lora_deep_sleep_boot_ms"),
         # LORA_MANAGER_ID: a non-zero id pins the Network Manager (every other node is
         # NODE_ONLY); 0 leaves all nodes AUTO so a lost manager is replaced by election.
         "manager_id": str(defaults.get("lora_manager_id", "")).upper().replace("0X", "") or None,
@@ -208,6 +231,8 @@ _RE_STACK = re.compile(r"STACK\[([^\]]+)\]\s+total=(\d+)\s+free=(\d+)(?=\s|\x1b|
 _RE_HEAP = re.compile(r"FREE HEAP:\s*(\d+)")
 _RE_LIBSHA = re.compile(r"LoRaMesher @ (\S+)")
 _RE_RADIOLIB = re.compile(r"RadioLib @ (\S+)")
+_RE_RST = re.compile(r"rst:0x([0-9A-Fa-f]+)")
+_RE_DEEP = re.compile(r"Deep sleep for (\d+) ms|SLEEPCB node=0x[0-9A-Fa-f]+ type=deep planned_ms=(\d+)")
 _RE_OK = re.compile(r"^OK: (\S+)")
 _RE_FAILED = re.compile(r"^FAILED: (\S+)")
 
@@ -235,8 +260,9 @@ def scan_device_logs(run_dir: Path) -> dict:
         d = {"lines": 0, "boots": 0, "expected_reboots": 0, "unexpected_reboots": 0,
              "crashes": [], "toa_mismatch": 0, "build_env": None, "app_version": None,
              "join_slots": [], "stack_min_free": {}, "heap_min": None,
-             "nm_failover": 0, "last_ts": None, "first_ts": None}
+             "nm_failover": 0, "last_ts": None, "first_ts": None, "deep_sleep_wakes": 0}
         last_failover_ts = None
+        sleep_announced = None   # (ts, planned_s) of the last announced deep sleep
         try:
             with _open(p) as fh:
                 for line in fh:
@@ -248,7 +274,16 @@ def scan_device_logs(run_dir: Path) -> dict:
                             d["first_ts"] = t
                     if "rst:0x" in line:
                         d["boots"] += 1
-                        if d["boots"] > 1:
+                        m = _RE_RST.search(line)
+                        # A DEEPSLEEP_RESET the node announced ("Deep sleep for N ms" /
+                        # SLEEPCB type=deep) within N ms + slack is its planned wake.
+                        wake = (m is not None and m.group(1).lower() == "5" and sleep_announced
+                                and t is not None
+                                and 0 <= t - sleep_announced[0] <= sleep_announced[1] + DEEP_WAKE_SLACK_S)
+                        sleep_announced = None
+                        if wake:
+                            d["deep_sleep_wakes"] += 1
+                        elif d["boots"] > 1:
                             if last_failover_ts is not None and t is not None and t - last_failover_ts < 60:
                                 d["expected_reboots"] += 1
                             elif "--- RESET via gw-reset.sh" in line:
@@ -263,6 +298,11 @@ def scan_device_logs(run_dir: Path) -> dict:
                     if "NM_FAILOVER" in line:
                         d["nm_failover"] += 1
                         last_failover_ts = t
+                    if ("Deep sleep for" in line or "type=deep" in line) and (m := _RE_DEEP.search(line)):
+                        if t is not None:
+                            sleep_announced = (t, int(m.group(1) or m.group(2)) / 1000.0)
+                    elif "No deep sleep:" in line:
+                        sleep_announced = None
                     if "Time-on-air looks wrong" in line:
                         d["toa_mismatch"] += 1
                     for pat in _CRASH_PATTERNS:
@@ -432,10 +472,11 @@ def _safe(fn, *a, **kw):
         return None, f"{type(e).__name__}: {e}"
 
 
-def _full_formation(run_dir: Path, active: list[str]) -> dict:
+def _full_formation(run_dir: Path, active: list[str], events=None) -> dict:
     """Join / routing-table completeness over the FULL log (formation.analyse
     windows to the measurement window, which misses joins made during warmup)."""
-    events = parse_run(run_dir, window=(None, None))
+    if events is None:
+        events = parse_run(run_dir, window=(None, None))
     expected = set(active)
     v2 = is_v2_run(events)
     joined = _formation._compute_join(events)
@@ -479,14 +520,26 @@ def summarize_run(run_dir: Path, cache_dir: Path, with_metrics: bool = False) ->
     s["upload"], err = _safe(scan_upload_logs, run_dir)
     if err:
         s["errors"]["upload"] = err
-    fm, err = _safe(_formation.analyse, run_dir)
+    events, err = _safe(parse_run, run_dir, window=(None, None))
+    if err:
+        s["errors"]["parse"] = err
+    fm, err = _safe(_formation.analyse, run_dir, all_events=events)
     if err:
         s["errors"]["formation"] = err
     s["formation"] = {k: (fm or {}).get(k) for k in (
         "network_convergence_at", "n_active_devices", "n_nodes_joined", "n_nodes_rt_complete",
         "join_retries_total", "flaps_total", "flaps", "rejoins_total", "max_concurrent_nm",
         "dual_nm_seconds", "nm_nodes", "nm_intervals")}
-    s["formation_full"], err = _safe(_full_formation, run_dir, cfg["active"])
+    # Formation from the synchronized reset to the end of the logs: runs with a
+    # warmup still show the cold start ("Resumed network" is not a join).
+    fr, err = _safe(_formation.analyse, run_dir, window="run", all_events=events)
+    if err:
+        s["errors"]["formation_from_reset"] = err
+    s["formation"]["from_reset"] = {k: (fr or {}).get(k) for k in (
+        "t_reset", "first_join_since_reset_s", "network_convergence_since_reset_s",
+        "all_joined_since_reset_s", "network_convergence_at", "n_nodes_joined",
+        "n_nodes_rt_complete", "flaps_total", "rejoins_total")}
+    s["formation_full"], err = _safe(_full_formation, run_dir, cfg["active"], events)
     if err:
         s["errors"]["formation_full"] = err
     if cfg.get("sim_pdr_compare"):
@@ -569,6 +622,9 @@ def check_health(s: dict, expected_env: str | None = None,
                        run=run, blocker=True))
     else:
         det = f"expected (NM failover / host reset): {expd}" if expd else ""
+        wakes = sum(d.get("deep_sleep_wakes", 0) for d in scan.values())
+        if wakes:
+            det = (det + "; " if det else "") + f"{wakes} deep-sleep wake(s) (rst:0x5 after 'Deep sleep for')"
         out.append(chk("reboots", PASS, value=0, detail=det, run=run))
     if not allow_failover_reboots and any(d["nm_failover"] for d in scan.values()):
         out.append(chk("nm_failover_flag", FAIL, detail="NM_FAILOVER fired outside the failover cell",
@@ -723,10 +779,11 @@ def _superframe_ref(path: Path, cache_dir: Path, sf, cell_hint: str | None = Non
             "n": len(tots), "source": str(path)}
 
 
-def g0(paths: list[Path], cfg: dict, expect_sha: str | None, cache_dir: Path) -> dict:
+def g0(paths: list[Path], cfg: dict, expect_sha: str | None, cache_dir: Path,
+       expect_env: str | None = None) -> dict:
     th = dig(cfg, "thresholds.g0", {}) or {}
     remote = {str(x).upper() for x in cfg.get("remote_nodes", [])}
-    env = dig(cfg, "envs.new")
+    env = expect_env or dig(cfg, "envs.new")
     checks = []
     runs = [r for p in paths for r in run_dirs(p)]
     if not runs:
@@ -1129,6 +1186,9 @@ def _g2_cell(s: dict, cfg: dict) -> list[dict]:
                            threshold=lim, run=run, detail=f"cycles={cycles}" if cycles is not None else ""))
         if cycles == 0:
             out.append(chk("stopstart:cycles", FAIL, value=0, run=run, detail="no Stop/Start cycle observed"))
+        ss = {k: int(v or 0) for k, v in (s["cfg"].get("sim_stopstart") or {}).items()}
+        if any(v == 2 for v in ss.values()):
+            out.append(_warm_restart_info(s, ss, run))
     elif is_failover:
         fired = sum(d["nm_failover"] for d in (s.get("scan") or {}).values())
         out.append(chk("nm_failover:fired", PASS if fired else FAIL, value=fired, run=run,
@@ -1202,7 +1262,74 @@ def _g2_cell(s: dict, cfg: dict) -> list[dict]:
     return [dict(c, cell=s.get("cell")) for c in out]
 
 
-def g2(paths: list[Path], cfg: dict, cache_dir: Path) -> dict:
+def _warm_restart_info(s: dict, ss: dict[str, int], run: str) -> dict:
+    """sim_stopstart=2 nodes SaveState() before Stop(): report their rejoin time
+    next to the plain Stop/Start nodes (ss=1) and whether every stop saved."""
+    cyc = _m(s, "stopstart.cycles") or []
+    warm = _m(s, "stopstart.warm_restart") or {}
+    groups = {}
+    for mode in (1, 2):
+        nodes = sorted(n for n, v in ss.items() if v == mode)
+        rj = [c["rejoin_s"] for c in cyc if c.get("node") in nodes and c.get("rejoin_s") is not None]
+        groups[f"ss{mode}"] = {"nodes": nodes, "cycles": sum(1 for c in cyc if c.get("node") in nodes),
+                               "rejoin_s_median": statistics.median(rj) if rj else None,
+                               "rejoin_s_max": max(rj) if rj else None}
+    saved = {n: (warm.get(n) or {}).get("saved_state", 0) for n in groups["ss2"]["nodes"]}
+    cold = {n: (warm.get(n) or {}).get("resume_state_invalid", 0) for n in groups["ss2"]["nodes"]}
+    short = [n for n in groups["ss2"]["nodes"]
+             if saved[n] < sum(1 for c in cyc if c.get("node") == n)]
+    det = (f"ss2 rejoin median {groups['ss2']['rejoin_s_median']} s vs ss1 "
+           f"{groups['ss1']['rejoin_s_median']} s; 'Saved state' lines {saved}; "
+           f"restores that fell back to cold start {cold}")
+    if short:
+        det += f"; fewer 'Saved state' lines than stops on {short}"
+    return chk("stopstart:warm_restart", GREY if (short or any(cold.values())) else PASS,
+               value=groups, run=run, detail=det)
+
+
+def _reliable_ack(s: dict) -> float | None:
+    """Resolved ACK ratio exactly as reliable:ack_ratio computes it."""
+    n_ack, n_fail = _m(s, "reliable.n_ack"), _m(s, "reliable.n_fail")
+    if n_ack is None:
+        return None
+    reasons = _m(s, "reliable.fail_reasons") or {}
+    n_rej = int(reasons.get("rejected", 0)) if isinstance(reasons, dict) else 0
+    resolved = n_ack + max((n_fail or 0) - n_rej, 0)
+    return (n_ack / resolved) if resolved else None
+
+
+def _dds_verdicts(by_cell: dict[str, list[dict]], cfg: dict) -> list[dict]:
+    """Cross-rep verdict for reliable cells with extra data slots (`*_dds2`):
+    every rep >= pass -> the earlier failure was a one-off; any rep < fail ->
+    reproducible; otherwise inconclusive. Needs dds_verdict_min_reps reps."""
+    th = dig(cfg, "thresholds.g2", {}) or {}
+    ok_at, bad_at = th.get("dds_verdict_pass", 0.95), th.get("dds_verdict_fail", 0.80)
+    pat = th.get("dds_verdict_cells", ["_dds2"])
+    min_reps = th.get("dds_verdict_min_reps", 2)
+    out = []
+    for cell, ss in sorted(by_cell.items()):
+        if not cell.startswith("reliable") or not any(p in cell for p in pat) or len(ss) < min_reps:
+            continue
+        acks = [a for a in (_reliable_ack(s) for s in ss) if a is not None]
+        if not acks:
+            out.append(dict(chk(f"reliable:{cell}:verdict", INCOMPLETE,
+                                detail="no resolved reliable send in any rep"), cell=cell))
+            continue
+        vals = [round(a, 4) for a in acks]
+        if all(a >= ok_at for a in acks):
+            st, word = PASS, "one-off (every rep passes)"
+        elif any(a < bad_at for a in acks):
+            st, word = FAIL, f"reproducible (a rep below {bad_at})"
+        else:
+            st, word = GREY, "inconclusive"
+        c = chk(f"reliable:{cell}:verdict", st, value=vals, threshold=f"all >= {ok_at}; any < {bad_at} fails",
+                detail=f"{word} over {len(acks)} rep(s)", blocker=st == FAIL)
+        c["cell"] = cell
+        out.append(c)
+    return out
+
+
+def g2(paths: list[Path], cfg: dict, cache_dir: Path, required: list[str] | None = None) -> dict:
     checks = []
     runs = [r for p in paths for r in run_dirs(p)]
     if not runs:
@@ -1215,12 +1342,26 @@ def g2(paths: list[Path], cfg: dict, cache_dir: Path) -> dict:
     runs = [r for r in runs if r not in superseded]
     for r in superseded:
         checks.append(chk("superseded", PASS, run=r.name, detail="replaced by the _rerun batch"))
-    for r in runs:
-        s = summarize_run(r, cache_dir, with_metrics=True)
-        checks += _g2_cell(s, cfg)
+    summaries = [summarize_run(r, cache_dir, with_metrics=True) for r in runs]
+    by_cell = defaultdict(list)
+    for s in summaries:
+        by_cell[s.get("cell") or ""].append(s)
+    verdicts = _dds_verdicts(by_cell, cfg)
+    verdict_cells = {c["cell"] for c in verdicts if c.get("cell")}
+    for s in summaries:
+        cs = _g2_cell(s, cfg)
+        if s.get("cell") in verdict_cells:
+            # One rep below the ratio is judged by the cross-rep verdict below.
+            for c in cs:
+                if c["name"] == "reliable:ack_ratio" and c["status"] == FAIL:
+                    c["blocker"] = False
+                    c["detail"] += " — see the cross-rep verdict"
+        checks += cs
+    checks += verdicts
     # Expected cells present?
-    want = ["reliable_SF7", "reliable_SF9", "group", "stopstart", "nm_failover", "slot_overflow",
-            "highsf_join", "long_link"]
+    want = required or cfg.get("g2_required") or [
+        "reliable_SF7", "reliable_SF9", "group", "stopstart", "nm_failover", "slot_overflow",
+        "highsf_join", "long_link"]
     seen = {cell_of(r)[0] for r in runs if cell_of(r)}
     for w in want:
         if not any(c.startswith(w) for c in seen):
@@ -1228,12 +1369,285 @@ def g2(paths: list[Path], cfg: dict, cache_dir: Path) -> dict:
     return gate_result("g2", checks)
 
 
+# ── AB: same cells, two firmwares (sleep campaign) ───────────────────────────
+
+
+def _split_tag(name: str) -> tuple[str, str | None]:
+    base, sep, tag = name.rpartition("__")
+    return (base, tag) if sep else (name, None)
+
+
+def _conv_from_reset(s: dict):
+    return first_of(s, "formation.from_reset.network_convergence_since_reset_s")
+
+
+def _median(xs):
+    xs = [x for x in xs if x is not None]
+    return statistics.median(xs) if xs else None
+
+
+def _mean(xs):
+    xs = [x for x in xs if x is not None]
+    return statistics.fmean(xs) if xs else None
+
+
+def ab(paths: list[Path], cfg: dict, cache_dir: Path) -> dict:
+    """Pair <batch>__<a> with <batch>__<b> (default fix / slp) by cell id: the B
+    firmware must deliver as much (fair PDR), converge as fast (from the reset)
+    and not stretch latency (app p95) compared with A on the same cell."""
+    th = dig(cfg, "thresholds.ab", {}) or {}
+    ta, tb = dig(cfg, "ab_tags.a", "fix"), dig(cfg, "ab_tags.b", "slp")
+    sides: dict[str, dict[str, Path]] = defaultdict(dict)
+    for p in paths:
+        p = tpath(p)
+        base, tag = _split_tag(p.name)
+        if tag in (ta, tb):
+            sides[base][tag] = p
+    checks = []
+    if not sides:
+        return gate_result("ab", [chk("ab:pairs", INCOMPLETE, detail=f"no <batch>__{ta}/__{tb} dirs in {paths}")])
+    d_pdr, g_pdr = th.get("pdr_drop", 0.02), th.get("pdr_grey_drop", 0.05)
+    m_sf, g_sf = th.get("conv_superframes", 1), th.get("conv_grey_superframes", 2)
+    r_lat, g_lat = th.get("latency_ratio", 1.25), th.get("latency_grey_ratio", 1.5)
+    summary = {}
+    for base, d in sorted(sides.items()):
+        if ta not in d or tb not in d:
+            checks.append(chk(f"{base}:pair", INCOMPLETE, detail=f"only {sorted(d)} present"))
+            continue
+        ca, _ = _cells_with_logs(run_dirs(d[ta]), cache_dir)
+        cb, _ = _cells_with_logs(run_dirs(d[tb]), cache_dir)
+        for cell in sorted(set(ca) | set(cb)):
+            name = f"{base}:{cell}"
+            if cell not in ca or cell not in cb:
+                checks.append(chk(f"{name}:pair", INCOMPLETE, detail=f"cell only on {ta if cell in ca else tb}"))
+                continue
+            A, B = ca[cell], cb[cell]
+            row = summary.setdefault(name, {"runs": {ta: len(A), tb: len(B)}})
+            pa, pb = _mean([dig(s, "app.fair_pdr") for s in A]), _mean([dig(s, "app.fair_pdr") for s in B])
+            if pa is not None or pb is not None:
+                row["fair_pdr"] = {ta: pa, tb: pb}
+                if pa is None or pb is None:
+                    checks.append(chk(f"{name}:fair_pdr", INCOMPLETE, value=row["fair_pdr"]))
+                else:
+                    diff = pb - pa
+                    st = PASS if diff >= -d_pdr else (GREY if diff >= -g_pdr else FAIL)
+                    checks.append(chk(f"{name}:fair_pdr", st, value=round(pb, 4), threshold=round(pa - d_pdr, 4),
+                                      detail=f"{tb} {pb:.3f} (n={len(B)}) vs {ta} {pa:.3f} (n={len(A)}); "
+                                             f"GREY down to {ta} - {g_pdr}", blocker=st == FAIL))
+            sf_s = _median([dig(s, "superframe.superframe_s") for s in A + B])
+            va, vb = [_conv_from_reset(s) for s in A], [_conv_from_reset(s) for s in B]
+            ma, mb = _median(va), _median(vb)
+            row["convergence_from_reset_s"] = {ta: ma, tb: mb, "superframe_s": sf_s}
+            if ma is None or mb is None or not sf_s:
+                checks.append(chk(f"{name}:convergence", INCOMPLETE, value=row["convergence_from_reset_s"],
+                                  detail="no converged run on one side, or no superframe length"))
+            else:
+                st = PASS if mb <= ma + m_sf * sf_s else (GREY if mb <= ma + g_sf * sf_s else FAIL)
+                n_none = sum(v is None for v in vb) - sum(v is None for v in va)
+                det = (f"median from reset {tb} {mb:.0f} s vs {ta} {ma:.0f} s (+{m_sf}x{sf_s:.1f} s superframe; "
+                       f"GREY to +{g_sf})")
+                if n_none > 0 and st == PASS:
+                    st, det = GREY, det + f"; {n_none} more {tb} run(s) never converged"
+                checks.append(chk(f"{name}:convergence", st, value=round(mb, 1),
+                                  threshold=round(ma + m_sf * sf_s, 1), detail=det, blocker=st == FAIL))
+            la, lb = _mean([dig(s, "app.latency_p95_ms") for s in A]), _mean([dig(s, "app.latency_p95_ms") for s in B])
+            if la is not None and lb is not None and la > 0:
+                row["latency_p95_ms"] = {ta: la, tb: lb}
+                st = PASS if lb <= r_lat * la else (GREY if lb <= g_lat * la else FAIL)
+                checks.append(chk(f"{name}:latency_p95", st, value=round(lb), threshold=round(r_lat * la),
+                                  detail=f"{tb} {lb:.0f} ms vs {ta} {la:.0f} ms (x{lb / la:.2f})", blocker=False))
+    return gate_result("ab", checks, summary=summary, tags={"a": ta, "b": tb})
+
+
+# ── Sleep: member deep / light sleep cells ───────────────────────────────────
+
+
+def _energy_cached(run_dir: Path, cache_dir: Path) -> dict | None:
+    from analysis import energy_model
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    p = cache_dir / f"energy-{_key(run_dir)}.json"
+    if p.is_file():
+        return json.loads(p.read_text())
+    x, err = _safe(energy_model.analyse, run_dir)
+    x = {k: v for k, v in (x or {}).items() if k != "params"} if x else {"_error": err}
+    p.write_text(json.dumps(x, default=list))
+    return x
+
+
+def _sleep_kind(s: dict) -> str | None:
+    cell = (s.get("cell") or "").lower()
+    for k in ("control", "light", "deep"):
+        if f"sleep_{k}" in cell:
+            return k
+    return None
+
+
+def sleep_gate(paths: list[Path], cfg: dict, cache_dir: Path) -> dict:
+    th = dig(cfg, "thresholds.sleep", {}) or {}
+    runs = [r for p in paths for r in run_dirs(p) if _has_logs(r)]
+    if not runs:
+        return gate_result("sleep", [chk("runs", INCOMPLETE, detail=f"no run dirs under {paths}")])
+    summ = [summarize_run(r, cache_dir, with_metrics=True) for r in runs]
+    by = defaultdict(list)
+    for s in summ:
+        by[_sleep_kind(s)].append(s)
+    checks = []
+    ctrl_pdr = _mean([dig(s, "app.fair_pdr") for s in by.get("control", [])])
+    energy, late_by = {}, {}
+    for kind in ("control", "light", "deep"):
+        for s in by.get(kind, []):
+            run = s["run"]
+            e = _energy_cached(Path(s["path"]), cache_dir) or {}
+            energy.setdefault(kind, []).append(dig(e, "mean_current_mA") or {})
+            late = (_m(s, "sleep.app_tx_late") or {}) if _m(s, "sleep.present") else {}
+            late_by.setdefault(kind, []).append(late)
+            cs = [c for c in check_health(s) if c["name"] in ("boot", "crashes", "reboots")]
+            sl = _m(s, "sleep") or {}
+            fp = dig(s, "app.fair_pdr")
+            if kind == "control":
+                cs.append(chk("sleep:control:fair_pdr", PASS if fp is not None else INCOMPLETE,
+                              value=None if fp is None else round(fp, 4), run=run,
+                              detail="reference for the light/deep cells"))
+            elif kind == "light":
+                ls = sl.get("light_sleep") or {}
+                if not ls.get("present"):
+                    cs.append(chk("sleep:light:members_light_slept", INCOMPLETE, run=run,
+                                  detail="no HEALTH lsl_n counters (firmware without them?)"))
+                else:
+                    miss = ls.get("members_without_light_sleep") or []
+                    cs.append(chk("sleep:light:members_light_slept", FAIL if miss else PASS,
+                                  value=f"{len(sl.get('members', [])) - len(miss)}/{len(sl.get('members', []))}",
+                                  run=run, detail=f"no light sleep on {miss}" if miss else
+                                  f"{ls.get('n_total')} light sleeps, {ls.get('ms_total')} ms", blocker=bool(miss)))
+                cs.append(_pdr_vs("sleep:light:fair_pdr", fp, ctrl_pdr, th.get("light_pdr_drop", 0.02),
+                                  th.get("light_pdr_grey_drop", 0.05), run))
+            else:
+                cs += _deep_checks(s, sl, th, run)
+                cs.append(_pdr_vs("sleep:deep:fair_pdr", fp, ctrl_pdr, th.get("deep_pdr_drop", 0.05),
+                                  th.get("deep_pdr_grey_drop", 0.10), run))
+            cs.append(chk(f"sleep:{kind}:app_tx_late", PASS, value=late.get("n", 0), run=run,
+                          detail=f"scheduled sends that missed their slot: p95 {late.get('p95_ms')} ms, "
+                                 f"{late.get('n_app_tx')} APP_TX; informational"))
+            checks += [dict(c, cell=s.get("cell")) for c in cs]
+    for s in by.get(None, []):
+        checks.append(chk("sleep:cell", INCOMPLETE, run=s["run"],
+                          detail=f"cell {s.get('cell')!r} is not sleep_control/light/deep"))
+    if not by.get("deep") and not by.get("light"):
+        checks.append(chk("sleep:cells_present", INCOMPLETE, detail="no sleep_light / sleep_deep run"))
+
+    def avg(kind, variant):
+        return _mean([e.get(variant) for e in energy.get(kind, [])])
+    table = {k: {"chip_mA": avg(k, "chip"), "board_mA": avg(k, "board")} for k in energy}
+    base = table.get("control") or {}
+    for k, v in table.items():
+        for var in ("chip", "board"):
+            b, x = base.get(f"{var}_mA"), v.get(f"{var}_mA")
+            v[f"{var}_delta_pct"] = ((x - b) / b * 100.0) if (b and x is not None) else None
+    for k, lst in late_by.items():
+        vals = [x for d in lst for x in [d.get("p95_ms")] if x is not None]
+        table.setdefault(k, {}).update({"app_tx_late_n": sum(d.get("n", 0) for d in lst),
+                                        "app_tx_late_p95_ms_max_run": max(vals) if vals else None})
+    checks.append(chk("sleep:energy_delta_modelled", PASS, value=table,
+                      detail="MODELLED (energy_model.py: radio + ESP32 states [+ board floor]); "
+                             "reported, not gated"))
+    return gate_result("sleep", checks, energy_modelled=table)
+
+
+_CONFIG_H_CACHE: dict[str, str] = {}
+
+
+def _config_h_define(define: str) -> int | None:
+    """Integer value of a #define in the committed src/config.h (firmware default)."""
+    if "text" not in _CONFIG_H_CACHE:
+        try:
+            from runner.run_checks import committed_config_h
+            _CONFIG_H_CACHE["text"] = committed_config_h()
+        except Exception:  # noqa: BLE001
+            _CONFIG_H_CACHE["text"] = ""
+    m = re.search(rf"^\s*#define\s+{define}\s+(\d+)", _CONFIG_H_CACHE["text"], re.M)
+    return int(m.group(1)) if m else None
+
+
+def _pdr_vs(name, fp, ctrl, drop, grey, run):
+    if fp is None:
+        return chk(name, INCOMPLETE, run=run, detail="no fair PDR (sim_pdr_compare off?)")
+    if ctrl is None:
+        return chk(name, GREY, value=round(fp, 4), run=run, detail="no sleep_control run to compare with")
+    st = PASS if fp >= ctrl - drop else (GREY if fp >= ctrl - grey else FAIL)
+    return chk(name, st, value=round(fp, 4), threshold=round(ctrl - drop, 4), run=run, blocker=st == FAIL,
+               detail=f"control {ctrl:.3f}; GREY down to control - {grey}")
+
+
+def _deep_checks(s: dict, sl: dict, th: dict, run: str) -> list[dict]:
+    out = []
+    if not sl.get("present") or not sl.get("n_deep_sleeps"):
+        return [chk("sleep:deep:deep_sleeps", FAIL, value=0, run=run, blocker=True,
+                    detail="no 'Deep sleep for' line: no member deep-slept")]
+    frac = sl.get("frac_members_deep_slept") or 0.0
+    lim = th.get("min_members_deep_slept", 0.80)
+    out.append(chk("sleep:deep:members_deep_slept", PASS if frac >= lim else FAIL, value=round(frac, 3),
+                   threshold=lim, run=run, blocker=frac < lim,
+                   detail=f"{sl.get('n_members_deep_slept')}/{sl.get('n_members')} members; "
+                          f"none on {sl.get('members_without_deep_sleep')}"))
+    rs = sl.get("resume_success")
+    lim = th.get("min_resume_success", 0.95)
+    out.append(chk("sleep:deep:resume_success", PASS if rs is not None and rs >= lim else FAIL,
+                   value=None if rs is None else round(rs, 4), threshold=lim, run=run,
+                   blocker=rs is None or rs < lim,
+                   detail=f"{sl.get('n_resumed')} resumed / {sl.get('n_deep_sleeps')} deep sleeps; "
+                          f"cold starts after a wake {sl.get('cold_starts_after_wake')}"))
+    cf = sl.get("cannot_resume_frac") or 0.0
+    lim = th.get("max_cannot_resume_frac", 0.05)
+    out.append(chk("sleep:deep:cannot_resume", PASS if cf <= lim else FAIL, value=round(cf, 4), threshold=lim,
+                   run=run, blocker=cf > lim, detail=f"by reason {sl.get('cannot_resume_by_reason')}"))
+    ppm = dig(sl, "sleep_clock.abs_residual_ppm.p95")
+    lim = th.get("max_sleep_clock_ppm_p95", 10000)
+    if ppm is None:
+        out.append(chk("sleep:deep:sleep_clock_ppm_p95", INCOMPLETE, run=run, detail="no 'Sleep clock:' sample"))
+    else:
+        out.append(chk("sleep:deep:sleep_clock_ppm_p95", PASS if ppm <= lim else FAIL, value=round(ppm),
+                       threshold=lim, run=run, blocker=ppm > lim,
+                       detail=f"|ms off| p95 {dig(sl, 'sleep_clock.abs_off_ms.p95')}; learned |ppm| p95 "
+                              f"{dig(sl, 'sleep_clock.abs_learned_ppm.p95')}"))
+    sf_s = dig(s, "superframe.superframe_s") or _m(s, "superframe_s")
+    tr = dig(sl, "time_to_ready_ms.p95")
+    lim_sf = th.get("max_time_to_ready_superframes", 1)
+    if tr is None or not sf_s:
+        out.append(chk("sleep:deep:time_to_ready_p95", INCOMPLETE, run=run,
+                       detail="no 'Schedule confirmed' after a wake, or no superframe length"))
+    else:
+        lim_ms = lim_sf * sf_s * 1000.0
+        out.append(chk("sleep:deep:time_to_ready_p95", PASS if tr <= lim_ms else FAIL, value=round(tr),
+                       threshold=round(lim_ms), run=run, blocker=tr > lim_ms,
+                       detail=f"rst:0x5 -> sync-beacon confirmation; {lim_sf} superframe = {sf_s:.1f} s"))
+    bp = dig(sl, "boot_ms.p95")
+    budget = (s["cfg"].get("boot_budget_ms") or _config_h_define("LORA_DEEP_SLEEP_BOOT_MS")
+              or th.get("boot_time_ms"))
+    if bp is None or not budget:
+        out.append(chk("sleep:deep:boot_ms_p95", INCOMPLETE, run=run,
+                       detail="no rst:0x5 -> BOOT_READY pair, or no boot budget"))
+    else:
+        out.append(chk("sleep:deep:boot_ms_p95", PASS if bp <= float(budget) else FAIL, value=round(bp),
+                       threshold=budget, run=run, blocker=bp > float(budget),
+                       detail=f"rst:0x5 -> BOOT_READY; -> Resumed network p95 "
+                              f"{dig(sl, 'wake_to_resumed_ms.p95')}"))
+    rj = sl.get("rejoined_members") or []
+    out.append(chk("sleep:deep:rejoins_after_resume", FAIL if rj else PASS, value=len(rj), threshold=0, run=run,
+                   blocker=bool(rj), detail=f"members that joined again after resuming: {rj}; join attempts "
+                                            f"{sl.get('join_attempts_after_resume')}" if rj else
+                   f"join attempts after a resume {sl.get('join_attempts_after_resume')}"))
+    if sl.get("n_unannounced_deepsleep_resets"):
+        out.append(chk("sleep:deep:unannounced_wakes", GREY, value=sl["n_unannounced_deepsleep_resets"], run=run,
+                       detail="rst:0x5 without a matching 'Deep sleep for' line (counted as unexpected reboots)"))
+    return out
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("gate", choices=["g_minus1", "g0", "g1", "g2"])
+    ap.add_argument("gate", choices=["g_minus1", "g0", "g1", "g2", "ab", "sleep"])
     ap.add_argument("paths", nargs="+")
     ap.add_argument("--config", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=None)
@@ -1246,6 +1660,11 @@ def main(argv=None) -> int:
                          "from campaign.yaml; '' disables, e.g. for July runs that predate the pin)")
     ap.add_argument("--radiolib-probe", type=Path, default=None,
                     help="per-gateway RadioLib snapshot (default: <campaign_dir>/radiolib.json)")
+    ap.add_argument("--expect-env", default=None,
+                    help="g0: PlatformIO env every board must report (default: envs.new)")
+    ap.add_argument("--required", default=None,
+                    help="g2: comma-separated cell-id prefixes that must have a valid run "
+                         "(default: g2_required from the config, else the lm200 feature set)")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     sha = dig(cfg, "lib_sha.new") if a.expect_sha == "__config__" else (a.expect_sha or None)
@@ -1257,7 +1676,7 @@ def main(argv=None) -> int:
     if a.gate == "g_minus1":
         res = g_minus1([Path(p) for p in a.paths], cfg, sha)
     elif a.gate == "g0":
-        res = g0([tpath(p) for p in a.paths], cfg, sha, cache)
+        res = g0([tpath(p) for p in a.paths], cfg, sha, cache, expect_env=a.expect_env)
     elif a.gate == "g1":
         pairs = {}
         for spec in a.paths:
@@ -1267,8 +1686,17 @@ def main(argv=None) -> int:
                 base = dig(cfg, f"baseline.lm200_{kind}")
             pairs[kind] = (tpath(new), tpath(base) if base else None)
         res = g1(pairs, cfg, sha, cache)
+    elif a.gate == "ab":
+        res = ab([tpath(p) for p in a.paths], cfg, cache)
+    elif a.gate == "sleep":
+        res = sleep_gate([tpath(p) for p in a.paths], cfg, cache)
     else:
-        res = g2([tpath(p) for p in a.paths], cfg, cache)
+        req = [x for x in a.required.split(",") if x] if a.required else None
+        res = g2([tpath(p) for p in a.paths], cfg, cache, required=req)
+    if EXCLUDED_SEEN:
+        res["excluded_runs"] = dict(EXCLUDED_SEEN)
+        res["checks"] += [chk("excluded", PASS, run=n, detail=f"skipped (runs/EXCLUDED.txt): {why}")
+                          for n, why in sorted(EXCLUDED_SEEN.items())]
     res["inputs"] = a.paths
     text = json.dumps(res, indent=2, default=list)
     if a.out:

@@ -1,0 +1,36 @@
+# Sleep campaign, optional tail — NM failover with election (SLP firmware, informational).
+# LORA_MANAGER_ID 0 leaves every node on role AUTO, so another node must take over by
+# election when the manager restarts. Informational: its gate never blocks the verdict.
+batch: lm200s_features_auto
+description: NM failover by election (manager id 0), SF9 (sleep campaign, optional, informational)
+base: ../lm200/experiments/lm200_base.yaml
+
+runs: 1
+warmup_min: 15
+duration_min: 45
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: nm_failover_auto_SF9
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.0
+      lora_manager_id: 0
+      sim_sleep_mode: 0
+      sim_send_path: 0   # 0 = classic sendPacketsToServer
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 28
+      packet_delay: 90000
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 1200000
+    inactive_devices: [DD58, 14A4, '3428']

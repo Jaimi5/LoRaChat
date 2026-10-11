@@ -6,6 +6,9 @@ the existing plotting code can handle the lm200 dirs, figures under report/fig/.
 Never fails because of a missing piece: absent gates show as NOT RUN and plots
 are best-effort.
 
+Gates are read from gates/*.json (one file per gate, or per gate and stage
+when the config sets gate_ids_per_stage, e.g. g0-S1.json, ab-S2.json).
+
 Verdict:
     NO-GO            preflight/prewarm failed, a gate did not run to completion
                      of T0, or any FAIL check flagged as a blocker
@@ -19,6 +22,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -33,7 +37,40 @@ sys.path.insert(0, str(HERE))
 import gates  # noqa: E402
 
 GATE_TITLES = {"g_minus1": "G-1 local build", "g0": "G0 smoke (T0)", "g1": "G1 core regression (T1a)",
-               "g2": "G2 features & stress (T2)"}
+               "g2": "G2 features & stress (T2)", "ab": "A/B same cells, two firmwares",
+               "sleep": "Member sleep"}
+_GATE_FILE = re.compile(r"^(g_minus1|g0|g1|g2|ab|sleep)(?:-(\w+))?\.json$")
+
+
+def gate_title(gid: str, stage_info: dict) -> str:
+    gate, _, stage = gid.partition("-")
+    t = GATE_TITLES.get(gate, gate)
+    if not stage:
+        return t
+    t = t.split(" (")[0]
+    st = stage_info.get(stage) or {}
+    env = f", env {st.get('env')}" if st.get("env") else ""
+    tag = f", tag {st.get('tag')}" if st.get("tag") else ""
+    return f"{t} — stage {stage}{env}{tag}"
+
+
+def load_gates(campaign_dir: Path, order: list[str]) -> dict:
+    """Every gates/<gate>[-<stage>].json (attempt/backup copies skipped), in
+    stage order."""
+    found = {}
+    for p in sorted((campaign_dir / "gates").glob("*.json")):
+        m = _GATE_FILE.match(p.name)
+        if not m:
+            continue
+        r = _load(p)
+        if r:
+            found[p.stem] = r
+
+    def rank(gid):
+        gate, _, stage = gid.partition("-")
+        g = list(GATE_TITLES).index(gate) if gate in GATE_TITLES else 99
+        return (order.index(stage) if stage in order else -1, g)
+    return dict(sorted(found.items(), key=lambda kv: rank(kv[0])))
 
 
 def _load(p: Path):
@@ -56,7 +93,8 @@ def _md_escape(s: str) -> str:
     return str(s).replace("|", "\\|").replace("\n", " ")
 
 
-def verdict_of(state: dict, gres: dict, forced: str | None, reason: str | None) -> tuple[str, list[str], list[str]]:
+def verdict_of(state: dict, gres: dict, forced: str | None, reason: str | None,
+               cfg: dict | None = None) -> tuple[str, list[str], list[str]]:
     blockers, caveats = [], []
     if forced:
         blockers.append(reason or forced)
@@ -64,18 +102,26 @@ def verdict_of(state: dict, gres: dict, forced: str | None, reason: str | None) 
     for name in ("preflight", "prewarm"):
         if st.get(name, {}).get("status") == "failed":
             blockers.append(f"{name} failed")
-    if "g0" not in gres:
+    if not any(g.partition("-")[0] == "g0" for g in gres):
         blockers.append("G0 smoke gate never evaluated")
+    info = {s["name"] for s in (cfg or {}).get("stages", []) if s.get("informational")}
     for g, res in gres.items():
+        informational = g.partition("-")[2] in info
         for c in res.get("checks", []):
             label = f"{g}: {c['name']}{' [' + c['run'] + ']' if c.get('run') else ''}"
             if c["status"] == "FAIL":
-                (blockers if c.get("blocker", True) else caveats).append(f"{label} — {c.get('detail') or _fmt(c.get('value'))}")
+                blocks = c.get("blocker", True) and not informational
+                (blockers if blocks else caveats).append(f"{label} — {c.get('detail') or _fmt(c.get('value'))}")
             elif c["status"] in ("GREY", "INCOMPLETE"):
                 caveats.append(f"{label} ({c['status']}) — {c.get('detail') or _fmt(c.get('value'))}")
-    for name in ("T1a", "T2"):
+    stages = (cfg or {}).get("stages") or []
+    required = ([s["name"] for s in stages if not s.get("optional") and not s.get("conditional")
+                 and s["name"] not in ("T0",)] if stages else ["T1a", "T2"])
+    for name in required:
         if st.get(name, {}).get("status") not in ("done", "skipped") and not forced:
             caveats.append(f"stage {name} did not complete")
+        elif st.get(name, {}).get("status") == "skipped" and "env" in str(st[name].get("reason", "")):
+            caveats.append(f"stage {name} skipped: {st[name]['reason']}")
     for inc in state.get("incomplete", []):
         caveats.append(f"INCOMPLETE cell {inc['batch']}/{inc['cell']}")
     # RadioLib is pinned in platformio.ini; the compiled version is checked per run
@@ -133,33 +179,73 @@ def _plots(campaign_dir: Path, state: dict) -> list[str]:
     return figs
 
 
+def _ab_section(res: dict) -> list[str]:
+    tags = res.get("tags") or {"a": "fix", "b": "slp"}
+    a, b = tags["a"], tags["b"]
+    md = [f"| Batch:cell | runs {a}/{b} | fair PDR {a} | fair PDR {b} | conv. from reset {a} (s) | "
+          f"conv. {b} (s) | superframe (s) | latency p95 {a} (ms) | latency p95 {b} (ms) |",
+          "|---|---|---|---|---|---|---|---|---|"]
+    for name, row in (res.get("summary") or {}).items():
+        pdr, cv, lat = row.get("fair_pdr") or {}, row.get("convergence_from_reset_s") or {}, row.get("latency_p95_ms") or {}
+        runs = row.get("runs") or {}
+        md.append("| " + " | ".join(_md_escape(_fmt(x, 30)) for x in (
+            name, f"{runs.get(a)}/{runs.get(b)}", pdr.get(a), pdr.get(b), cv.get(a), cv.get(b),
+            cv.get("superframe_s"), lat.get(a), lat.get(b))) + " |")
+    return md + [""]
+
+
+def _sleep_section(res: dict) -> list[str]:
+    md = []
+    table = res.get("energy_modelled") or {}
+    if table:
+        md += ["Modelled mean current per node (analysis/energy_model.py; radio + ESP32 states, "
+               "board adds the AXP192/GPS/OLED floor). **Modelled, not measured.**", "",
+               "| Cell | chip mA | Δ chip vs control | board mA | Δ board vs control | APP_TX_LATE | late p95 ms |",
+               "|---|---|---|---|---|---|---|"]
+        for k, v in table.items():
+            md.append("| {} | {} | {} | {} | {} | {} | {} |".format(
+                k, _fmt(v.get("chip_mA")), _fmt(v.get("chip_delta_pct")) + ("%" if v.get("chip_delta_pct") is not None else ""),
+                _fmt(v.get("board_mA")), _fmt(v.get("board_delta_pct")) + ("%" if v.get("board_delta_pct") is not None else ""),
+                _fmt(v.get("app_tx_late_n")), _fmt(v.get("app_tx_late_p95_ms_max_run"))))
+        md.append("")
+    return md
+
+
 def build(campaign_dir: Path, cfg: dict, forced: str | None, reason: str | None, plots: bool) -> dict:
     state = _load(campaign_dir / "state.json") or {}
-    gres = {}
-    for g in ("g_minus1", "g0", "g1", "g2"):
-        r = _load(campaign_dir / "gates" / f"{g}.json")
-        if r:
-            gres[g] = r
-    verdict, blockers, caveats = verdict_of(state, gres, forced, reason)
+    order = [s["name"] for s in cfg.get("stages", [])]
+    gres = load_gates(campaign_dir, order)
+    stage_info = state.get("stages", {})
+    verdict, blockers, caveats = verdict_of(state, gres, forced, reason, cfg)
     rep = campaign_dir / "report"
     rep.mkdir(parents=True, exist_ok=True)
     figs = _plots(campaign_dir, state) if plots else []
     headline = (f"{len(blockers)} blocker(s), {len(caveats)} caveat(s)" if verdict != "GO"
                 else "all gates PASS")
 
-    md = [f"# LoRaMesher 2.0.0 testbed campaign — **{verdict}**", "",
+    title = cfg.get("title", "LoRaMesher 2.0.0 testbed campaign")
+    libs = cfg.get("lib_sha") or {}
+    if set(libs) <= {"new", "old"}:
+        lib_line = (f"Library `{gates.dig(cfg, 'lib_sha.new')}` (release/2.0.0) vs July baseline "
+                    f"`{gates.dig(cfg, 'lib_sha.old')}`")
+    else:
+        lib_line = "Firmware envs: " + ", ".join(
+            f"{k} = `{(cfg.get('envs') or {}).get(k, '?')}` (LoRaMesher `{v}`)" for k, v in libs.items())
+    md = [f"# {title} — **{verdict}**", "",
           f"Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}. "
-          f"Library `{gates.dig(cfg, 'lib_sha.new')}` (release/2.0.0) vs July baseline "
-          f"`{gates.dig(cfg, 'lib_sha.old')}`; LoRaChat `{(state.get('lorachat_head') or '?')[:9]}`. "
+          f"{lib_line}; LoRaChat `{(state.get('lorachat_head') or '?')[:9]}`. "
           f"Campaign status: {state.get('status', '?')}.", "",
           f"**{headline}.**", ""]
     if blockers:
         md += ["## Blockers", ""] + [f"- {_md_escape(b)}" for b in blockers] + [""]
-    md += ["## Stages", "", "| Stage | Status | Gate | Time (UTC) |", "|---|---|---|---|"]
-    for name in ("preflight", "prewarm", "T0", "T1a", "T1b", "T2", "report"):
-        s = state.get("stages", {}).get(name)
+    md += ["## Stages", "", "| Stage | Status | Env | Tag | Gate(s) | Time (UTC) | Note |",
+           "|---|---|---|---|---|---|---|"]
+    for name in ["preflight", "prewarm"] + (order or ["T0", "T1a", "T1b", "T2"]) + ["report"]:
+        s = stage_info.get(name)
         if s:
-            md.append(f"| {name} | {s.get('status')} | {s.get('gate', '') or ''} | {s.get('ts', '')} |")
+            gs = s.get("gates") or s.get("gate") or ""
+            md.append(f"| {name} | {s.get('status')} | {s.get('env') or ''} | {s.get('tag') or ''} | "
+                      f"{_md_escape(_fmt(gs, 80))} | {s.get('ts', '')} | {_md_escape(s.get('reason', ''))} |")
     md.append("")
     rl = state.get("radiolib_prewarm")
     rlh = state.get("radiolib") or {}
@@ -171,12 +257,18 @@ def build(campaign_dir: Path, cfg: dict, forced: str | None, reason: str | None,
                "dependency graph. Recorded only, never changed.", "",
                "| When | Versions per gateway |", "|---|---|"]
         md += [f"| {k} | `{_md_escape(json.dumps(v))}` |" for k, v in rlh.items()] + [""]
+    excluded = {}
     for g, res in gres.items():
+        excluded.update(res.get("excluded_runs") or {})
         counts = Counter(c["status"] for c in res["checks"])
-        md += [f"## {GATE_TITLES.get(g, g)} — {res['status']}", "",
+        md += [f"## {gate_title(g, stage_info)} — {res['status']}", "",
                " · ".join(f"{k} {v}" for k, v in sorted(counts.items())), ""]
         if g == "g1" and res.get("ab_trigger"):
             md += ["_G1 had GREY regression checks → interleaved A/B (T1b) was triggered._", ""]
+        if g.partition("-")[0] == "ab" and res.get("summary"):
+            md += _ab_section(res)
+        if g.partition("-")[0] == "sleep":
+            md += _sleep_section(res)
         md += ["| Status | Check | Run/cell | Value | Threshold | Detail |", "|---|---|---|---|---|---|"]
         order = {"FAIL": 0, "INCOMPLETE": 1, "GREY": 2, "PASS": 3}
         rows = sorted(res["checks"], key=lambda c: order.get(c["status"], 9))
@@ -200,6 +292,9 @@ def build(campaign_dir: Path, cfg: dict, forced: str | None, reason: str | None,
                    json.dumps(res["baseline"], indent=1, default=list)[:6000], "```", "</details>", ""]
     if caveats:
         md += ["## Caveats", ""] + [f"- {_md_escape(c)}" for c in caveats[:200]] + [""]
+    if excluded:
+        md += ["## Excluded runs (runs/EXCLUDED.txt)", ""] + \
+              [f"- `{n}` — {_md_escape(w)}" for n, w in sorted(excluded.items())] + [""]
     inc = state.get("incomplete") or []
     if inc:
         md += ["## Incomplete cells", ""] + [f"- {i['batch']}/{i['cell']} ({i['ts']})" for i in inc] + [""]
@@ -213,14 +308,18 @@ def build(campaign_dir: Path, cfg: dict, forced: str | None, reason: str | None,
         md += ["## Interleaved A/B (T1b)", "", f"`{json.dumps(state['ab'])}` — see figures_ab/.", ""]
     if figs:
         md += ["## Figures", ""] + [f"- ![]({f})" if f.endswith(".png") else f"- {f}" for f in figs] + [""]
-    md += ["## Known open items in 2.0.0 (context, not gated as blockers)", "",
+    if cfg.get("open_items"):
+        md += ["## Known open items (context, not gated as blockers)", ""] + \
+              [f"- {x}" for x in cfg["open_items"]] + [""]
+    elif set(libs) <= {"new", "old"}:
+        md += ["## Known open items in 2.0.0 (context, not gated as blockers)", "",
            "- 4 KB protocol task stack not measured upstream under reliable/group traffic (see G2 stack_free).",
            "- Reliable group ACK completeness ~28% at 25 nodes (upstream TODO-016).",
            "- Receivers keep 32 delivery windows → possible duplicate delivery (G2 group:dup_ratio).",
            "- `echo_ts` unclamped → RTT outliers (excluded and counted in G2 reliable:rtt_p95_ms).",
            "- Data-slot overflow: control indices ≥ max_data_slots get zero slots (behaviour change vs 134ae25).",
-           "- `STACK free=` units changed (bytes); never compare with 134ae25 values.", "",
-           "## Next steps", "",
+           "- `STACK free=` units changed (bytes); never compare with 134ae25 values.", ""]
+    md += ["## Next steps", "",
            "- GO / GO-WITH-CAVEATS: review caveats, then merge `lm200-eval` into `new_loramesher` and set "
            "`GIT_BRANCH` back in `scripts/testbed/testbed.conf` (not done automatically).",
            "- NO-GO: fix the blockers; re-run with `campaign.py --reset-state` (or `--from-stage T1a` to "
@@ -228,16 +327,16 @@ def build(campaign_dir: Path, cfg: dict, forced: str | None, reason: str | None,
     (rep / "report.md").write_text("\n".join(md))
 
     verdict_json = {"verdict": verdict, "headline": headline, "blockers": blockers, "caveats": caveats,
-                    "gates": {g: r["status"] for g, r in gres.items()},
+                    "gates": {g: r["status"] for g, r in gres.items()}, "excluded_runs": excluded,
                     "stages": {k: v.get("status") for k, v in (state.get("stages") or {}).items()},
                     "incomplete": inc, "radiolib_prewarm": rl,
                     "generated": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     (rep / "verdict.json").write_text(json.dumps(verdict_json, indent=2, default=list))
-    (rep / "report.html").write_text(_html(md, verdict))
+    (rep / "report.html").write_text(_html(md, verdict, title))
     return verdict_json
 
 
-def _html(md_lines: list[str], verdict: str) -> str:
+def _html(md_lines: list[str], verdict: str, title: str = "LoRaMesher 2.0.0 campaign") -> str:
     """Minimal self-contained HTML rendering of the markdown (tables, headings, lists)."""
     color = {"GO": "#1a7f37", "GO-WITH-CAVEATS": "#9a6700", "NO-GO": "#cf222e"}.get(verdict, "#555")
     out, in_table, in_list, in_pre = [], False, False, False
@@ -298,7 +397,7 @@ def _html(md_lines: list[str], verdict: str) -> str:
            "tr.INCOMPLETE td:first-child{color:#8250df}tr.PASS td:first-child{color:#1a7f37}"
            f"h1{{color:{color}}}pre{{overflow-x:auto;font-size:11px}}")
     return (f"<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' "
-            f"content='width=device-width,initial-scale=1'><title>LoRaMesher 2.0.0 campaign</title>"
+            f"content='width=device-width,initial-scale=1'><title>{html.escape(title)}</title>"
             f"<style>{css}</style></head><body>{''.join(out)}</body></html>")
 
 

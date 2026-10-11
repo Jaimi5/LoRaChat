@@ -1,0 +1,39 @@
+# Sleep campaign — Stop/Start on the SLEEP firmware, with and without warm restart (G2
+# stopstart + warm-restart info). Base lm200_stopstart_warm.yaml: CB34, 2A9C plain
+# Stop()/Start() (sim_stopstart 1); B4DC, 7B6C SaveState() before Stop() (sim_stopstart 2),
+# so their Start() restores the saved network state. Same timing as lm200s_stopstart.yaml.
+batch: lm200s_stopstart
+description: Stop/Start 2 plain + 2 warm-restart nodes, 5 min period / 1 min off (sleep campaign, SLP)
+base: ../lm200/experiments/lm200_stopstart_warm.yaml
+
+runs: 1
+warmup_min: 15
+duration_min: 30
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: stopstart_SF9
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.0
+      lora_manager_id: '0x006C'
+      sim_sleep_mode: 0
+      sim_send_path: 0   # 0 = classic sendPacketsToServer
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 20
+      packet_delay: 90000
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0                # per device in the base: 1 on CB34/2A9C, 2 on B4DC/7B6C
+      sim_stopstart_period_ms: 300000
+      sim_stopstart_off_ms: 60000
+      sim_nm_failover_ms: 0
+    inactive_devices: [DD58, 14A4, '3428']

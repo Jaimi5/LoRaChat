@@ -1,0 +1,37 @@
+# Sleep campaign, optional tail — NM failover with the manager pinned (SLP firmware, G2).
+# Whichever node is Network Manager when its uptime reaches 20 min restarts itself
+# (SIM_NM_FAILOVER_MS). With LORA_MANAGER_ID pinned every other node is NODE_ONLY, so G2
+# checks that 006C comes back as manager and that there are never two.
+batch: lm200s_features
+description: NM failover, pinned manager, SF9 (sleep campaign, optional)
+base: ../lm200/experiments/lm200_base.yaml
+
+runs: 1
+warmup_min: 15
+duration_min: 45
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: nm_failover_SF9
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.0
+      lora_manager_id: '0x006C'
+      sim_sleep_mode: 0
+      sim_send_path: 0   # 0 = classic sendPacketsToServer
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 28
+      packet_delay: 90000
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 1200000     # NM restarts 5 min into the measurement window
+    inactive_devices: [DD58, 14A4, '3428']

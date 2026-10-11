@@ -1,0 +1,45 @@
+# Sleep campaign — member sleep, deep cell (gate `sleep`, evaluated after sleep_deep).
+#
+# sim_sleep_mode 2: members deep-sleep between their active slots and resume.
+# The three sleep cells (control / light / deep) share batch name lm200s_sleep and the
+# same load, so the sleep gate compares light and deep against control in one dir.
+# lora_min_sleep_fraction 0.5 makes the Network Manager keep at least half of every
+# superframe as sleep slots (longer superframe, long gaps worth sleeping through); the
+# load is light (9 packets, one per 4 min per node) so members are idle most of the time.
+# sim_send_path 1: the sim sends with sendPacketsOnSchedule (APP_TX_LATE when a send
+# misses its slot); every other lm200s cell uses the classic path (0).
+# LORA_DEEP_SLEEP_MIN_MS / LORA_DEEP_SLEEP_BOOT_MS stay at the firmware defaults
+# (src/config.h, restored before every board).
+batch: lm200s_sleep
+description: Member sleep deep (sim_sleep_mode 2), SF9, min sleep fraction 0.5
+base: ../lm200/experiments/lm200_base.yaml
+
+runs: 2
+warmup_min: 15
+duration_min: 40
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: sleep_deep_SF9
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.5
+      lora_manager_id: '0x006C'
+      sim_sleep_mode: 2
+      sim_send_path: 1   # 1 = sendPacketsOnSchedule (sleep cells)
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 9
+      packet_delay: 240000            # 36 min of traffic inside the 40 min window
+      sim_testbed_warmup_ms: 900000   # = warmup_min 15
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0
+    inactive_devices: [DD58, 14A4, '3428']

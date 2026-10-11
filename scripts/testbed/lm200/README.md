@@ -53,11 +53,18 @@ The **verdict** works like this:
 
 - Every batch invocation runs `deploy.sh upgrade` first. Its `git reset --hard` restores
   the committed `src/config.h`, so no value sed-edited by a previous batch leaks into the next one.
+  `gw-upload.sh` and every generated `change-config-*.sh` also run `git checkout -- src/config.h`
+  before each board, so a retry (which skips the upgrade) cannot leak a value either.
 - After each batch, every run is validated:
   - the critical lifecycle phases succeeded;
   - every board flashed, if the run uploaded;
   - the expected LoRaMesher sha was built;
-  - every board has a log with a boot banner.
+  - every board has a log with a boot banner;
+  - `runner/run_checks.py`: the host did not sleep (lifecycle `clock-run-start/-end`:
+    CLOCK_BOOTTIME or wall time ran > 60 s ahead of the monotonic clock), warmup → cooldown
+    took ≤ 1.25 × planned + 10 min, the boards never all went silent together for > 5 min,
+    and every board's `CFG node=...` line matches `config.yaml` (skipped for firmware without CFG).
+    `python3 scripts/testbed/runner/run_checks.py runs/<batch>` audits finished runs.
 
   An invalid run is moved to `<run>.FAILED-<ts>` (never deleted). The cell is then re-run as a
   single-cell temp batch with the same batch name, up to `retries.cell_attempts`, with a
@@ -106,3 +113,29 @@ python3 scripts/testbed/lm200/gates.py g_minus1 build-ttgo-t-beam-v2.log   # loc
   `lm200_reach16` and the `long_link_SF10` feature cell.
 - **T1b needs `ttgo-t-beam-v2-old` to compile** with the current LoRaChat sources. If it doesn't,
   prewarm of the old env fails and T1b is recorded as failed.
+
+## Sleep campaign (`campaign_sleep.yaml`)
+
+Same driver, another config: FIX (`ttgo-t-beam-v2`) vs SLP (`ttgo-t-beam-v2-sleep`) firmware,
+member deep / light sleep, Stop/Start with warm restart, formation, reliable dds2/dds3.
+
+```
+python3 scripts/testbed/lm200/campaign.py --config scripts/testbed/lm200/campaign_sleep.yaml --dry-run
+nohup python3 scripts/testbed/lm200/campaign.py --config scripts/testbed/lm200/campaign_sleep.yaml \
+      > lm200_sleep_campaign.out 2>&1 &
+```
+
+- Fill in `lib_sha.fix` / `lib_sha.sleep` first: the campaign refuses to start on a `TODO` sha.
+- Stages name their firmware (`env:`) and tag (`tag:`, default from `tags:`); batch dirs are
+  `runs/<batch>__fix` / `runs/<batch>__slp`. Each env is prewarmed on first use.
+- Gates per stage (`gates/<gate>-<stage>.json`): `g0`, `g1`, `g2 --required ...`, `ab`
+  (`<batch>__fix` vs `<batch>__slp` per cell: fair PDR, convergence from the reset, latency
+  p95) and `sleep` (members deep-slept, resume success, Cannot resume, sleep-clock ppm,
+  time-to-ready, boot time, PDR vs the control cell, rejoins after a resume; light-sleep
+  counters; modelled energy delta, not gated). Thresholds under `thresholds.ab` / `.sleep`.
+- `stop_on_fail: [g0]` with `stop_on_fail_scope: env`: a failing smoke on one firmware skips
+  only that firmware's later stages. `optional: true` stages (O1-O3) run only while
+  `budget_h` still fits their estimate; `informational: true` gates never block the verdict.
+- The dry run prints the plan (env, tag, expected sha, estimated minutes, cumulative hours)
+  and renders every batch into throw-away `runs/lm200dry_*` dirs; it runs no deploy.sh
+  command, no ssh and no git fetch.

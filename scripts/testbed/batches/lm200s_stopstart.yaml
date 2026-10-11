@@ -1,0 +1,40 @@
+# Sleep campaign — Stop/Start churn on the FIX firmware (gate G2 stopstart).
+# Base lm200_stopstart.yaml: CB34, 2A9C, B4DC call Stop() for 1 min every 5 min, then
+# Start(); every active node keeps a light sim load so rejoin, sequence continuity and
+# deadlock-freedom are observable. Shorter period than lm200_features_stopstart.yaml
+# (5 min / 1 min off vs 10 / 2) to get ~6 cycles per node in 30 min.
+batch: lm200s_stopstart
+description: Stop/Start churn, 3 nodes, 5 min period / 1 min off (sleep campaign, FIX)
+base: ../lm200/experiments/lm200_stopstart.yaml
+
+runs: 1
+warmup_min: 15
+duration_min: 30
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: stopstart_SF9
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.0
+      lora_manager_id: '0x006C'
+      sim_sleep_mode: 0
+      sim_send_path: 0   # 0 = classic sendPacketsToServer
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 20
+      packet_delay: 90000             # 30 min of traffic
+      sim_testbed_warmup_ms: 900000
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0                # per device in the base: 1 on CB34/2A9C/B4DC
+      sim_stopstart_period_ms: 300000
+      sim_stopstart_off_ms: 60000
+      sim_nm_failover_ms: 0
+    inactive_devices: [DD58, 14A4, '3428']
