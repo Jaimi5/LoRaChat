@@ -333,3 +333,48 @@ def test_dds_verdict():
     assert v[0]["status"] == "GREY"
     assert gates._dds_verdicts({"reliable_SF9_dds2": [s(99, 1)]}, cfg) == []   # one rep: no verdict
     assert json.dumps(v)
+
+
+# ── AP8 smoke script ─────────────────────────────────────────────────────────
+
+def _smoke_member(addr: str, pd: int) -> list[tuple[float, str]]:
+    cfgl = app(f"CFG node=0x{addr} sf=9 pdr=1 sleep=2 msf=0.50 dds=1 mgr=0x006C pc=7 pd={pd} ss=0 rel=0 grp=0 send=1")
+    L = [(0.0, "rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)"),
+         (0.5, app("Build environment name: ttgo-t-beam-v2-sleep")), (1.0, cfgl),
+         (40.0, lib(addr, "Network service state changed to 3"))]
+    seq = 0
+    for k, t in enumerate((100.0, 200.0, 300.0)):
+        L += [(t - 5, app(f"APP_TX src=0x{addr} seq={seq} size=40")),
+              (t - 1, app(f"HEALTH node=0x{addr} heap=1 minheap=1 role=1 state=3 lsl_n=0 lsl_ms=0 dsl_n={k} dsl_ms=0 boot_reason=8")),
+              (t, lib(addr, "Deep sleep for 20000 ms (state 300 bytes, waking 50 ms early)")),
+              (t + 20.0, "rst:0x5 (DEEPSLEEP_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)"),
+              (t + 20.3, app(f"BOOT node=0x{addr} reason=8 app_ms=40")),
+              (t + 20.9, app(f"BOOT_READY node=0x{addr} app_ms=600")), (t + 20.95, cfgl),
+              (t + 21.0, lib(addr, "Network service state changed to 3")),
+              (t + 21.0, lib(addr, "Resumed membership of network 0x006C: manager 0x006C, control slot 3, 2 routes")),
+              (t + 21.1, lib(addr, "Resumed network 0x006C after 19950 ms of deep sleep")),
+              (t + 25.0, lib(addr, "Schedule confirmed by a sync beacon after the resume"))]
+        seq += 1
+    return L
+
+
+def test_smoke_script(tmp_path, capsys):
+    import smoke_deep_sleep
+    nm = [(0.0, "rst:0x1 (POWERON_RESET)"), (0.5, app("Build environment name: ttgo-t-beam-v2-sleep")),
+          (1.0, app("CFG node=0x006C sf=9 pdr=1 sleep=2 msf=0.50 dds=1 mgr=0x006C pc=7 pd=240000 ss=0 rel=0 grp=0 send=1")),
+          (2.0, lib("006C", "Network service state changed to 4"))]
+    nm += [(t, app("HEALTH node=0x006C heap=1 minheap=1 role=4 state=4 lsl_n=0 lsl_ms=0 dsl_n=0 dsl_ms=0 boot_reason=1"))
+           for t in range(30, 400, 60)]
+    nm += [(t + 3, app(f"APP_RX src=0x{a} seq={k} app=1")) for k, t in enumerate((100, 200, 300)) for a in ("4B34", "7984")]
+    run = make_run(tmp_path, {"CB34": _smoke_member("4B34", 240000), "7984": _smoke_member("7984", 241000), "006C": nm},
+                   defaults={"sim_sleep_mode": 2, "sim_send_path": 1, "lora_min_sleep_fraction": 0.5,
+                             "sim_pdr_compare": 1, "packet_count": 7, "packet_delay": 240000},
+                   devices={"CB34": {}, "7984": {"packet_delay": 241000}, "006C": {"wifi_ssid": "loramesher"}},
+                   name="lm200s_smoke_deep__slp-20261010-100000-sleep_deep_smoke_SF9-r01")
+    (run / "logs" / "GW-1-upload.log").write_text(
+        "|-- LoRaMesher @ 2.0.0+sha.86a4072\n|-- RadioLib @ 7.7.1\nOK: C6E104-CB34\nOK: GV-7984\nOK: C6213-006C\n")
+    rc = smoke_deep_sleep.main([str(run)])
+    out = capsys.readouterr().out
+    assert "cfg_check_catches_leak" in out and "dropped 7984 packet_delay=241000" in out
+    assert "suggest 1100 ms" in out          # worst rst -> BOOT_READY 900 ms x 1.2
+    assert rc == 0, out

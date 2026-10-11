@@ -1,0 +1,45 @@
+# AP8 attended deep-sleep smoke (SLP firmware, ttgo-t-beam-v2-sleep). Not part of
+# campaign_sleep.yaml: launched by hand with run_batch.py, checked with
+# lm200/smoke_deep_sleep.py.
+#
+# Same nodes and load schedule as lm200s_sleep_deep.yaml (13 active, SF9, min sleep
+# fraction 0.5, members deep-sleep, scheduled send path, one packet per 4 min per node),
+# shortened to a 30-min window with 7 packets. It answers:
+#   - LORA_DEEP_SLEEP_BOOT_MS calibration: rst:0x5 / BOOT -> BOOT_READY after each wake
+#   - the radio rail survives deep sleep (sync-beacon confirmation and RX after the
+#     resume) and the APP_TX seq keeps counting across wakes
+#   - HEALTH lines (with sleep counters) on every active board, rst:0x5 not flagged
+#   - the CFG leak check: base lm200_smoke_leak gives 7984 packet_delay 241000 (see there)
+batch: lm200s_smoke_deep__slp
+description: AP8 deep-sleep smoke, SF9, 30 min, SLP firmware (attended)
+base: ../lm200/experiments/lm200_smoke_leak.yaml
+
+runs: 1
+warmup_min: 15
+duration_min: 30
+cooldown_min: 2
+reset_between_runs: true
+upload_between_cells: true
+warmup_run: false
+
+cells:
+  - id: sleep_deep_smoke_SF9
+    overrides:
+      lora_spreading_factor: 9
+      lora_default_data_slots: 1
+      lora_max_data_slots: 50
+      lora_min_sleep_fraction: 0.5
+      lora_manager_id: '0x006C'
+      sim_sleep_mode: 2
+      sim_send_path: 1
+      sim_pdr_compare: 1
+      one_sender: 0
+      packet_size: 40
+      packet_count: 7
+      packet_delay: 240000            # 28 min of traffic inside the 30 min window
+      sim_testbed_warmup_ms: 900000   # = warmup_min 15 (must exceed the upload phase)
+      sim_reliable: 0
+      sim_group: 0
+      sim_stopstart: 0
+      sim_nm_failover_ms: 0
+    inactive_devices: [DD58, 14A4, '3428']

@@ -1,0 +1,100 @@
+# AP8 deep-sleep smoke base: lm200_base + ONE per-board value on 7984 (packet_delay 241000).
+# The board really runs that value and config.yaml records it, so run_checks passes; the
+# smoke's leak drill then compares the real CFG lines against a copy of config.yaml with
+# that override removed, which must flag exactly 7984 (pd=241000, want 240000).
+#
+# lm200_base header follows.
+#
+# Derived from experiments/example-baseline.yaml. ALL lm200 feature flags are set in
+# `defaults` (0 unless a cell overrides them): change-config's sed edits ONE shared
+# src/config.h per gateway, so a flag set only on one device would leak into the next
+# device flashed on that gateway. Per-device values below override defaults.
+# sim_group_addr is deliberately left at the firmware default (config.h).
+experiment: lm200_smoke_leak
+description: 'Deep-sleep smoke base: lm200_base + packet_delay 241000 on 7984 (CFG leak drill)'
+defaults:
+  lora_bandwidth: 125.0
+  lora_coding_rate: 7
+  lora_frequency: 869.525
+  lora_manager_id: '0x006C'
+  lora_spreading_factor: 9
+  lora_sync_word: 20
+  lora_duty_cycle: 0.1
+  mqtt_password: public
+  mqtt_port: 1883
+  mqtt_server: 192.168.192.1
+  mqtt_topic_out: to-server/
+  mqtt_topic_sub: from-server/
+  mqtt_username: admin
+  sim_reliable: 0
+  sim_group: 0
+  sim_stopstart: 0
+  sim_stopstart_period_ms: 600000
+  sim_stopstart_off_ms: 120000
+  sim_nm_failover_ms: 0
+devices:
+  006C:
+    lora_power: 14
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  '1484':
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  14A4:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  2A9C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  2AD4:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  '3428':
+    lora_power: 14
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  77A4:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  7B6C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  B4DC:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  CB34:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DD3C:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DD58:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+  DF10:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  E464:
+    lora_power: 2
+    wifi_password: YOUR_PASSWORD
+    wifi_ssid: loramesher
+  '7984':
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
+    packet_delay: 241000   # leak-drill board (see header)
+  C270:
+    lora_power: 2
+    wifi_password: xxx
+    wifi_ssid: nowifi
