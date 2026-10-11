@@ -24,7 +24,7 @@ from pathlib import Path
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 NODE = re.compile(r"monitor-dev-.*-([0-9A-Fa-f]{4})\.log(?:\.gz)?$")
 WARN = re.compile(r"\[WARNING\].*Task (\S+) stack low: (\d+) bytes free")
-STACK = re.compile(r"STACK\[([^\]]+)\] total=(\d+) free=(\d+)")
+STACK = re.compile(r"STACK\[([^\]]+)\] total=(\d+) free=(\d+)(?=\s|$)")  # skip lines cut by other tasks
 
 
 def open_log(path: Path):

@@ -52,7 +52,7 @@ from analysis.parse_logs import is_v2_run, parse_run  # noqa: E402
 
 PASS, GREY, INCOMPLETE, FAIL = "PASS", "GREY", "INCOMPLETE", "FAIL"
 _RANK = {PASS: 0, GREY: 1, INCOMPLETE: 2, FAIL: 3}
-SUMMARY_VERSION = 6  # bump to invalidate cached run summaries
+SUMMARY_VERSION = 7  # bump to invalidate cached run summaries
 
 # ── small helpers ─────────────────────────────────────────────────────────────
 
@@ -203,7 +203,8 @@ _TS_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\]")
 _RE_BUILD_ENV = re.compile(r"Build environment name:\s*(\S+)")
 _RE_APP_VER = re.compile(r"App version:\s*(\S+)")
 _RE_JOIN_SLOT = re.compile(r"Join request scheduled in discovery slot (\d+)")
-_RE_STACK = re.compile(r"STACK\[([^\]]+)\]\s+total=(\d+)\s+free=(\d+)")
+# Lookahead drops lines cut by another task's output ("free=1I (1822..." was free=1216).
+_RE_STACK = re.compile(r"STACK\[([^\]]+)\]\s+total=(\d+)\s+free=(\d+)(?=\s|\x1b|$)")
 _RE_HEAP = re.compile(r"FREE HEAP:\s*(\d+)")
 _RE_LIBSHA = re.compile(r"LoRaMesher @ (\S+)")
 _RE_RADIOLIB = re.compile(r"RadioLib @ (\S+)")
