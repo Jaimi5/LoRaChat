@@ -378,3 +378,16 @@ def test_smoke_script(tmp_path, capsys):
     assert "cfg_check_catches_leak" in out and "dropped 7984 packet_delay=241000" in out
     assert "suggest 1100 ms" in out          # worst rst -> BOOT_READY 900 ms x 1.2
     assert rc == 0, out
+
+
+def test_run_recorder_writes_clock_marks(tmp_path):
+    from runner.lifecycle import RunRecorder
+    rec = RunRecorder(tmp_path)
+    assert json.loads((tmp_path / "lifecycle.json").read_text()) == []
+    rec.clock_mark("clock-start")
+    p = rec.begin("upload", yaml="x.yaml")
+    rec.end(p, ok=True, rc=0)
+    data = json.loads((tmp_path / "lifecycle.json").read_text())
+    assert [d["name"] for d in data] == ["clock-start", "upload"]
+    assert {"monotonic", "boottime", "wall"} <= data[0].keys()
+    assert data[1]["ok"] is True and data[1]["rc"] == 0

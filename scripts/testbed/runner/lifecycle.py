@@ -58,14 +58,6 @@ class RunRecorder:
         p = self.begin(name, **host_clocks())
         self.end(p, ok=True)
 
-
-def host_clocks() -> dict:
-    """time.monotonic(), CLOCK_BOOTTIME (Linux; None elsewhere) and time.time()."""
-    boot = getattr(time, "CLOCK_BOOTTIME", None)
-    return {"monotonic": time.monotonic(),
-            "boottime": time.clock_gettime(boot) if boot is not None else None,
-            "wall": time.time()}
-
     def _flush(self) -> None:
         data = [
             {
@@ -78,6 +70,14 @@ def host_clocks() -> dict:
             for p in self.phases
         ]
         self.path.write_text(json.dumps(data, indent=2))
+
+
+def host_clocks() -> dict:
+    """time.monotonic(), CLOCK_BOOTTIME (Linux; None elsewhere) and time.time()."""
+    boot = getattr(time, "CLOCK_BOOTTIME", None)
+    return {"monotonic": time.monotonic(),
+            "boottime": time.clock_gettime(boot) if boot is not None else None,
+            "wall": time.time()}
 
 
 def _now_iso() -> str:
