@@ -199,8 +199,15 @@ def sleep_stats(events: list[Event], superframe_s: float | None = None,
             joined_state[e.node] = False
 
     clock = [e for e in events if e.kind == "sleep_clock"]
-    resid_ppm = [abs(e.fields["off_ms"]) / e.fields["slept_ms"] * 1e6
-                 for e in clock if e.fields["slept_ms"]]
+
+    def clock_summary(samples) -> dict:
+        return {
+            "n": len(samples),
+            "abs_off_ms": _dist([abs(e.fields["off_ms"]) for e in samples]),
+            "abs_residual_ppm": _dist([abs(e.fields["off_ms"]) / e.fields["slept_ms"] * 1e6
+                                       for e in samples if e.fields["slept_ms"]]),
+            "abs_learned_ppm": _dist([abs(e.fields["ppm"]) for e in samples]),
+        }
 
     boot_ms = [(it["ready"] - it["wake"]) * 1000.0 for it in sleeps
                if it["wake"] is not None and it["ready"] is not None]
@@ -272,11 +279,11 @@ def sleep_stats(events: list[Event], superframe_s: float | None = None,
         "n_saved_state": kinds.get("saved_state", 0),
         "no_deep_sleep_reasons": dict(Counter(e.fields["reason"] for e in events
                                               if e.kind == "no_deep_sleep").most_common()),
+        # All samples, plus per kind: the library calibrates light and deep sleep apart.
         "sleep_clock": {
-            "n": len(clock),
-            "abs_off_ms": _dist([abs(e.fields["off_ms"]) for e in clock]),
-            "abs_residual_ppm": _dist(resid_ppm),
-            "abs_learned_ppm": _dist([abs(e.fields["ppm"]) for e in clock]),
+            **clock_summary(clock),
+            "by_kind": {k: clock_summary([e for e in clock if e.fields.get("sleep_kind") == k])
+                        for k in ("light", "deep")},
         },
         "boot_ms": _dist(boot_ms),
         "wake_to_resumed_ms": _dist(to_resumed_ms),

@@ -46,7 +46,7 @@ def member_log() -> list[tuple[float, str]]:
         (120.6, lib(M, "Resumed membership of network 0x006C: manager 0x006C, control slot 3, 12 routes")),
         (120.7, lib(M, "Resuming superframe #12 at slot 5 (start 1234 ms)")),
         (120.7, lib(M, "Resumed network 0x006C after 19950 ms of deep sleep")),
-        (125.0, lib(M, "Sleep clock: 30 ms off after 19950 ms of sleep, error now 1500 ppm (3 samples)")),
+        (125.0, lib(M, "Sleep clock: 30 ms off after 19950 ms of deep sleep, error now 1500 ppm (3 samples)")),
         (125.1, lib(M, "Schedule confirmed by a sync beacon after the resume")),
         (150.0, app(f"HEALTH node=0x{M} heap=150000 minheap=140000 role=1 state=3 "
                     "lsl_n=4 lsl_ms=8000 dsl_n=1 dsl_ms=20000 boot_reason=8")),
@@ -391,3 +391,16 @@ def test_run_recorder_writes_clock_marks(tmp_path):
     assert [d["name"] for d in data] == ["clock-start", "upload"]
     assert {"monotonic", "boottime", "wall"} <= data[0].keys()
     assert data[1]["ok"] is True and data[1]["rc"] == 0
+
+
+@pytest.mark.parametrize("line,kind", [
+    ("Sleep clock: -5 ms off after 34752 ms of light sleep, error now 4623 ppm (3 samples)", "light"),
+    ("Sleep clock: 40 ms off after 20000 ms of deep sleep, error now 2000 ppm (1 samples)", "deep"),
+    ("Sleep clock: 30 ms off after 19950 ms of sleep, error now 1500 ppm (3 samples)", None),
+])
+def test_sleep_clock_line_with_kind(line, kind):
+    from analysis.parse_logs import _PATTERNS, _extract_fields
+    m = _PATTERNS["sleep_clock"].search(line)
+    assert m, line
+    f = _extract_fields("sleep_clock", m)
+    assert f["sleep_kind"] == kind and f["slept_ms"] > 0 and f["samples"] >= 1

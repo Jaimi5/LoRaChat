@@ -222,9 +222,12 @@ def main(argv=None) -> int:
                 f"{sl['cold_starts_after_wake']}")
         rep.add("sleep", "cannot_resume", PASS if (sl["cannot_resume_frac"] or 0) <= 0.05 else FAIL,
                 f"{sl['n_cannot_resume']} {sl['cannot_resume_by_reason']}")
-        ppm = sl["sleep_clock"]["abs_residual_ppm"]
-        rep.add("sleep", "sleep_clock_ppm", INFO if ppm["p95"] is None else (PASS if ppm["p95"] <= 10000 else FAIL),
-                f"residual |ppm| {ppm}; |ms off| {sl['sleep_clock']['abs_off_ms']}")
+        for kind, ck in sl["sleep_clock"].get("by_kind", {}).items():
+            ppm = ck["abs_residual_ppm"]
+            rep.add("sleep", f"sleep_clock_ppm_{kind}",
+                    INFO if ppm["p95"] is None or kind != "deep" else (PASS if ppm["p95"] <= 10000 else FAIL),
+                    f"n={ck['n']} residual |ppm| {ppm}; |ms off| {ck['abs_off_ms']}; "
+                    f"learned |ppm| p95 {ck['abs_learned_ppm']['p95']}")
         tr = sl["time_to_ready_ms"]
         rep.add("sleep", "time_to_ready", INFO, f"rst:0x5 -> sync-beacon confirmation {tr}")
         rep.add("sleep", "rejoins_after_resume", FAIL if sl["rejoined_members"] else PASS,

@@ -176,8 +176,9 @@ _PATTERNS = {
         r"Resuming superframe #(\d+) at slot (\d+) \(start (\d+) ms\)"),
     "schedule_confirmed": re.compile(r"Schedule confirmed by a sync beacon after the resume"),
     "sleep_clock": re.compile(
-        r"Sleep clock: (-?\d+) ms off after (\d+) ms of sleep, error now (-?\d+) ppm "
-        r"\((\d+) samples\)"),
+        # member-sleep >= 0b04d0f names the kind ("ms of light sleep" / "ms of deep sleep").
+        r"Sleep clock: (-?\d+) ms off after (\d+) ms of (?:(light|deep) )?sleep, "
+        r"error now (-?\d+) ppm \((\d+) samples?\)"),
     "saved_state": re.compile(
         r"Saved state: network 0x([0-9A-Fa-f]+), (\w+), (\d+) member slots, seq (\d+)"),
     # "Cannot resume: <why>" and "Cannot resume the superframe: <why>".
@@ -451,8 +452,8 @@ def _extract_fields(kind: str, m: re.Match) -> dict:
     if kind == "schedule_confirmed":
         return {}
     if kind == "sleep_clock":
-        return {"off_ms": int(g[0]), "slept_ms": int(g[1]), "ppm": int(g[2]),
-                "samples": int(g[3])}
+        return {"off_ms": int(g[0]), "slept_ms": int(g[1]), "sleep_kind": g[2],
+                "ppm": int(g[3]), "samples": int(g[4])}
     if kind == "saved_state":
         return {"network": g[0].upper(), "role": g[1], "member_slots": int(g[2]),
                 "seq": int(g[3])}

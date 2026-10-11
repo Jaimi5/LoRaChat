@@ -1600,15 +1600,18 @@ def _deep_checks(s: dict, sl: dict, th: dict, run: str) -> list[dict]:
     lim = th.get("max_cannot_resume_frac", 0.05)
     out.append(chk("sleep:deep:cannot_resume", PASS if cf <= lim else FAIL, value=round(cf, 4), threshold=lim,
                    run=run, blocker=cf > lim, detail=f"by reason {sl.get('cannot_resume_by_reason')}"))
-    ppm = dig(sl, "sleep_clock.abs_residual_ppm.p95")
+    # Judge the deep-sleep clock on deep samples; older logs carry no kind (all samples).
+    ck = "sleep_clock.by_kind.deep" if dig(sl, "sleep_clock.by_kind.deep.n") else "sleep_clock"
+    ppm = dig(sl, f"{ck}.abs_residual_ppm.p95")
     lim = th.get("max_sleep_clock_ppm_p95", 10000)
     if ppm is None:
         out.append(chk("sleep:deep:sleep_clock_ppm_p95", INCOMPLETE, run=run, detail="no 'Sleep clock:' sample"))
     else:
         out.append(chk("sleep:deep:sleep_clock_ppm_p95", PASS if ppm <= lim else FAIL, value=round(ppm),
                        threshold=lim, run=run, blocker=ppm > lim,
-                       detail=f"|ms off| p95 {dig(sl, 'sleep_clock.abs_off_ms.p95')}; learned |ppm| p95 "
-                              f"{dig(sl, 'sleep_clock.abs_learned_ppm.p95')}"))
+                       detail=f"{dig(sl, f'{ck}.n')} {ck.rsplit('.', 1)[-1]} samples; |ms off| p95 "
+                              f"{dig(sl, f'{ck}.abs_off_ms.p95')}; learned |ppm| p95 "
+                              f"{dig(sl, f'{ck}.abs_learned_ppm.p95')}"))
     sf_s = dig(s, "superframe.superframe_s") or _m(s, "superframe_s")
     tr = dig(sl, "time_to_ready_ms.p95")
     lim_sf = th.get("max_time_to_ready_superframes", 1)

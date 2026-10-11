@@ -420,8 +420,10 @@
 // Shortest SLEEP run worth a deep sleep (reboot) (ms)
 #define LORA_DEEP_SLEEP_MIN_MS 30000
 // Time from a deep-sleep wake-up to the protocol running again (ms); compare with
-// BOOT -> BOOT_READY in the logs
-#define LORA_DEEP_SLEEP_BOOT_MS 1200
+// rst:0x5 -> BOOT_READY in the logs. AP8 smoke (2026-10-11, 133 wakes): p50 2101,
+// p95 3471, max 3497 ms -> max x 1.2. About 1.7 s of it is the VERBOSE ESP-IDF
+// startup log (CONFIG_LOG_DEFAULT_LEVEL=5, ~20 KB at 115200 baud).
+#define LORA_DEEP_SLEEP_BOOT_MS 4200
 
 // PDR send loop: 0 = classic sendPacketsToServer (vTaskDelay pacing), 1 = sendPacketsOnSchedule
 // (persistent clock, waits for IsReadyToSend, survives deep sleep). Set it explicitly so the
