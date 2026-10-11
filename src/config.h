@@ -405,11 +405,46 @@
 // Group ACK collection window per message (ms); spans several superframes at high SF
 #define SIM_GROUP_WINDOW_MS 120000
 // 1 = periodically Stop() the mesher for SIM_STOPSTART_OFF_MS every SIM_STOPSTART_PERIOD_MS
+// 2 = same, but SaveState() into a MemoryStateStore before each Stop() so Start() resumes
+//     (needs LM_HAS_MEMBER_SLEEP)
 #define SIM_STOPSTART 0
 #define SIM_STOPSTART_PERIOD_MS 600000
 #define SIM_STOPSTART_OFF_MS 120000
 // >0: if this node is Network Manager when uptime enters [X, X+60 s], log NM_FAILOVER and restart
 #define SIM_NM_FAILOVER_MS 0
+
+// --- Member sleep (needs LM_HAS_MEMBER_SLEEP, env ttgo-t-beam-v2-sleep) ---
+// 0 = off, 1 = light sleep in SLEEP slots, 2 = deep sleep through long SLEEP runs
+// (light sleep for shorter ones). The Network Manager never sleeps.
+#define SIM_SLEEP_MODE 0
+// Shortest SLEEP run worth a deep sleep (reboot) (ms)
+#define LORA_DEEP_SLEEP_MIN_MS 30000
+// Time from a deep-sleep wake-up to the protocol running again (ms); compare with
+// BOOT -> BOOT_READY in the logs
+#define LORA_DEEP_SLEEP_BOOT_MS 1200
+
+// PDR send loop: 0 = classic sendPacketsToServer (vTaskDelay pacing), 1 = sendPacketsOnSchedule
+// (persistent clock, waits for IsReadyToSend, survives deep sleep). Set it explicitly so the
+// sleep and no-sleep cells of a comparison use the same loop; default follows SIM_SLEEP_MODE.
+#ifndef SIM_SEND_PATH
+#define SIM_SEND_PATH (SIM_SLEEP_MODE != 0)
+#endif
+
+#if SIM_SLEEP_MODE && !defined(LM_HAS_MEMBER_SLEEP)
+#error "SIM_SLEEP_MODE needs LoRaMesher with member sleep (env ttgo-t-beam-v2-sleep)"
+#endif
+#if SIM_STOPSTART == 2 && !defined(LM_HAS_MEMBER_SLEEP)
+#error "SIM_STOPSTART 2 needs LoRaMesher with SaveState() (env ttgo-t-beam-v2-sleep)"
+#endif
+#if SIM_SEND_PATH == 1 && !defined(LM_HAS_MEMBER_SLEEP)
+#error "SIM_SEND_PATH 1 needs LoRaMesher with member sleep (env ttgo-t-beam-v2-sleep)"
+#endif
+#if SIM_SLEEP_MODE == 2 && SIM_SEND_PATH == 0
+#error "SIM_SLEEP_MODE 2 needs SIM_SEND_PATH 1: the classic loop's progress is lost in deep sleep"
+#endif
+#if SIM_STOPSTART == 2 && SIM_SLEEP_MODE == 2
+#error "SIM_STOPSTART 2 (MemoryStateStore) and SIM_SLEEP_MODE 2 (RtcStateStore) need different state stores"
+#endif
 
 // Simulator Delay Configuration (all times in milliseconds unless specified)
 #define SIM_NETWORK_PROPAGATION_MULTIPLIER 5

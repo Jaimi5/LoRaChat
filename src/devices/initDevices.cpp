@@ -25,6 +25,21 @@ void InitDevices::init() {
 #endif
 }
 
+void InitDevices::initPower() {
+#ifdef HAS_PMU
+    if (!findPmu()) {
+        return;
+    }
+    if (PMU->getChipModel() == XPOWERS_AXP192) {
+        PMU->enablePowerOutput(XPOWERS_LDO2);
+    } else if (PMU->getChipModel() == XPOWERS_AXP2101) {
+        PMU->enablePowerOutput(XPOWERS_ALDO2);
+    }
+#else
+    init();
+#endif
+}
+
 void InitDevices::initMakerfabsSenseLoraMoisture() {
 #ifdef MAKERFABS_SENSELORA_MOISTURE
     pinMode(POWER_LORA, OUTPUT);
@@ -39,10 +54,8 @@ void InitDevices::initTBeam() {
     beginPower();
 }
 
-bool InitDevices::beginPower() {
+bool InitDevices::findPmu() {
 #ifdef HAS_PMU
-    ESP_LOGV("InitDevices", "beginPower");
-
     if (!PMU) {
         PMU = new XPowersAXP2101(PMU_WIRE_PORT);
         if (!PMU->init()) {
@@ -65,7 +78,17 @@ bool InitDevices::beginPower() {
         }
     }
 
-    if (!PMU) {
+    return PMU != NULL;
+#else
+    return false;
+#endif
+}
+
+bool InitDevices::beginPower() {
+#ifdef HAS_PMU
+    ESP_LOGV("InitDevices", "beginPower");
+
+    if (!findPmu()) {
         return false;
     }
 

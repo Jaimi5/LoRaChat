@@ -186,7 +186,7 @@ void initBluetooth() {
 
 MessageManager& manager = MessageManager::getInstance();
 
-void initManager() {
+void initManager(bool printCommands) {
     manager.init();
     ESP_LOGV(TAG, "Manager initialized");
 
@@ -230,7 +230,9 @@ void initManager() {
     ESP_LOGV(TAG, "OTA service added to manager");
 #endif
 
-    Serial.println(manager.getAvailableCommands());
+    if (printCommands) {
+        Serial.println(manager.getAvailableCommands());
+    }
 }
 
 #pragma endregion
@@ -262,20 +264,48 @@ void setup() {
     // log-mutex contention starve time-critical tasks during reconnect storms.
     esp_log_level_set("*", ESP_LOG_INFO);
 
+    // Book a deep sleep that ended in this boot before anything logs HEALTH
+    loraMeshService.onBoot();
+    const esp_reset_reason_t resetReason = esp_reset_reason();
+#ifdef USE_LORAMESHER_V2
+    // No mesher yet: the address derived from the efuse MAC, as the mesher uses
+    const uint16_t bootNode = loraMeshService.getLocalAddress();
+#else
+    const uint16_t bootNode = 0;
+#endif
+    ESP_LOGI(TAG, "BOOT node=0x%04X reason=%d app_ms=%lu", bootNode, (int)resetReason,
+             (unsigned long)millis());
+
+#if SIM_SLEEP_MODE == 2
+    // A member back from deep sleep must be in its next active slot within
+    // LORA_DEEP_SLEEP_BOOT_MS: start the mesh right after the PMU, and skip the
+    // display and GPS
+    const bool deepSleepWake = resetReason == ESP_RST_DEEPSLEEP;
+#else
+    const bool deepSleepWake = false;
+#endif
+
     ESP_LOGI(TAG, "Build environment name: %s", BUILD_ENV_NAME);
 
     // Initialize Wire
     initWire();
 
-    // Initialize Devices
-    InitDevices::init();
+    if (deepSleepWake) {
+        InitDevices::initPower();
+        // Services are registered before the mesh can deliver packets to them
+        initManager(false);
+        initLoRaMesher();
+    } else {
+        // Initialize Devices
+        InitDevices::init();
 
-    ESP_LOGV(TAG, "Heap before initManager: %d", ESP.getFreeHeap());
+        ESP_LOGV(TAG, "Heap before initManager: %d", ESP.getFreeHeap());
 
-    // Initialize Manager
-    initManager();
+        // Initialize Manager
+        initManager(true);
 
-    ESP_LOGV(TAG, "Heap after initManager: %d", ESP.getFreeHeap());
+        ESP_LOGV(TAG, "Heap after initManager: %d", ESP.getFreeHeap());
+    }
 
 #ifdef WIFI_ENABLED
     // Initialize WiFi
@@ -290,20 +320,26 @@ void setup() {
 #endif
 
 #ifdef DISPLAY_ENABLED
-    // Initialize Display
-    initDisplay();
-    ESP_LOGV(TAG, "Heap after initDisplay: %d", ESP.getFreeHeap());
+    if (!deepSleepWake) {
+        // Initialize Display
+        initDisplay();
+        ESP_LOGV(TAG, "Heap after initDisplay: %d", ESP.getFreeHeap());
+    }
 #endif
 
 #ifdef GPS_ENABLED
-    // Initialize GPS
-    initGPS();
-    ESP_LOGV(TAG, "Heap after initGPS: %d", ESP.getFreeHeap());
+    if (!deepSleepWake) {
+        // Initialize GPS
+        initGPS();
+        ESP_LOGV(TAG, "Heap after initGPS: %d", ESP.getFreeHeap());
+    }
 #endif
 
-    // Initialize LoRaMesh
-    initLoRaMesher();
-    ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
+    if (!deepSleepWake) {
+        // Initialize LoRaMesh
+        initLoRaMesher();
+        ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
+    }
 
 #ifdef WIFI_ENABLED
     // WiFi may have connected before LoRaMesher was initialized, causing

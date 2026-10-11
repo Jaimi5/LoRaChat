@@ -55,6 +55,12 @@ public:
 
     void sendPacketsToServer(size_t packetCount, size_t packetSize, size_t delayMs);
 
+#ifdef LM_HAS_MEMBER_SLEEP
+    // sendPacketsToServer on the persistent clock, resumed across deep sleeps
+    // (seq and schedule in RTC memory); logs APP_TX_LATE when a send runs >2 s late.
+    void sendPacketsOnSchedule(size_t packetCount, size_t packetSize, size_t delayMs);
+#endif
+
 #ifdef USE_LORAMESHER_V2
     // SIM_GROUP == 2: same burst as sendPacketsToServer, sent to SIM_GROUP_ADDR.
     void sendPacketsToGroup(size_t packetCount, size_t packetSize, size_t delayMs);

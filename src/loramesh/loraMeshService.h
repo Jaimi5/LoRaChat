@@ -77,6 +77,24 @@ public:
     // (falling back to fallbackMs before the node has joined / on v1).
     void waitForDataSlots(uint8_t nSlots, uint32_t fallbackMs);
 
+    // Call at the top of setup(): books a deep sleep that ended in this boot
+    // into the sleep counters (no-op without LM_HAS_MEMBER_SLEEP).
+    void onBoot();
+
+    // The node may originate a message: false while joining, after a deep-sleep
+    // resume until a beacon confirms the schedule, and while the TX queue holds
+    // what the node's data slots carry in a superframe (kQueueFull). Always true
+    // without LM_HAS_MEMBER_SLEEP.
+    bool isReadyToSend();
+
+    // Clock that keeps running through light and deep sleep (us since the last
+    // power-on): the RTC timer with LM_HAS_MEMBER_SLEEP, esp_timer otherwise.
+    static uint64_t persistentTimeUs();
+
+    // Called right before a deep sleep (protocol task), so other services can
+    // leave their RTC-memory state consistent. Must be short and non-blocking.
+    void setBeforeDeepSleepHook(void (*hook)()) { beforeDeepSleepHook_ = hook; }
+
 #ifdef USE_LORAMESHER_V2
     std::vector<loramesher::RouteEntry> getRoutingTableEntries();
 
@@ -102,6 +120,11 @@ private:
     // Radio config actually applied at init (version-agnostic). Populated by
     // initLoraMesherService() in both the v1 and v2 branches.
     String radioInfo_ = "SF=? BW=? pow=? maxPkt=?";
+
+    void (*beforeDeepSleepHook_)() = nullptr;
+
+    // One-line config fingerprint (CFG ...), parsed by the testbed.
+    void logBootConfig();
 
 #ifdef USE_LORAMESHER_V2
     std::unique_ptr<loramesher::LoraMesher> mesher_;
@@ -146,6 +169,18 @@ private:
     // Once-a-second housekeeping: HEALTH line, SIM_STOPSTART and SIM_NM_FAILOVER_MS.
     TaskHandle_t diagTask_Handle = nullptr;
     static void diagLoop(void* pvParameters);
+
+    // HEALTH line. The sleep callback passes the role/state cached by diagLoop,
+    // since it runs on the protocol task and must not call back into the mesher.
+    void logHealth(int role, int state);
+    volatile int cachedRole_ = 0;
+    volatile int cachedState_ = 0;
+
+#ifdef LM_HAS_MEMBER_SLEEP
+    loramesher::power::SleepResult onPrepareSleep(const loramesher::power::SleepContext& ctx);
+    void onWakeUp(loramesher::power::PowerState previous);
+    uint32_t lightSleepPlannedMs_ = 0;
+#endif
 #else
     LoraMesher& radio = LoraMesher::getInstance();
 

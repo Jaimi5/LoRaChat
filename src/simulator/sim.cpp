@@ -2,6 +2,9 @@
 
 #include <cstring>
 
+#include "esp_system.h"
+#include "esp_timer.h"
+
 // HELLO_PACKETS_DELAY is defined in the v1 LoRaMesher library; provide a default for v2
 #ifndef HELLO_PACKETS_DELAY
 #define HELLO_PACKETS_DELAY 120
@@ -9,9 +12,56 @@
 
 static const char* SIM_TAG = "Sim";
 
+#ifdef LM_HAS_MEMBER_SLEEP
+// PDR burst progress in RTC memory: a member that deep-sleeps reboots, and
+// resumes the burst with the next seq on the same schedule. Sends are timed on
+// the persistent clock, which keeps running through light and deep sleep (the
+// FreeRTOS tick stands still in light sleep).
+struct SimResumeState {
+    uint32_t magic;
+    uint32_t next_seq;
+    uint32_t sent;
+    uint64_t cold_boot_us;  // persistent clock at the last cold boot
+    uint64_t next_due_us;   // 0 until the burst starts
+};
+static constexpr uint32_t kSimResumeMagic = 0x53494D31;  // "SIM1"
+RTC_DATA_ATTR static SimResumeState s_simResume;
+static portMUX_TYPE s_simResumeMux = portMUX_INITIALIZER_UNLOCKED;
+
+// A send claims its seq inside this lock; taking it before a deep sleep waits
+// for a claim in progress, so the saved state is never half-updated.
+static void simBeforeDeepSleep() {
+    portENTER_CRITICAL(&s_simResumeMux);
+    portEXIT_CRITICAL(&s_simResumeMux);
+}
+
+// vTaskDelay in short steps, rechecking the persistent clock: a light sleep in
+// between does not stretch the wait by the time slept.
+static void waitUntilPersistentUs(uint64_t targetUs) {
+    for (;;) {
+        const uint64_t now = LoRaMeshService::persistentTimeUs();
+        if (now >= targetUs) {
+            return;
+        }
+        const uint64_t remainingMs = (targetUs - now + 999) / 1000;
+        const uint32_t stepMs = remainingMs < 1000 ? (uint32_t)remainingMs : 1000;
+        vTaskDelay(stepMs / portTICK_PERIOD_MS + 1);
+    }
+}
+#endif
+
 void Sim::init() {
 #ifndef USE_LORAMESHER_V2
     service = new SimulatorService();
+#endif
+#ifdef LM_HAS_MEMBER_SLEEP
+    if (esp_reset_reason() != ESP_RST_DEEPSLEEP || s_simResume.magic != kSimResumeMagic) {
+        s_simResume = SimResumeState{};
+        s_simResume.magic = kSimResumeMagic;
+        s_simResume.cold_boot_us =
+            LoRaMeshService::persistentTimeUs() - (uint64_t)esp_timer_get_time();
+    }
+    LoRaMeshService::getInstance().setBeforeDeepSleepHook(simBeforeDeepSleep);
 #endif
     createSimTask();
     start();
@@ -138,15 +188,30 @@ void Sim::simLoop(void* pvParameters) {
         vTaskDelete(NULL);
         return;
     }
+#if SIM_SEND_PATH == 1
+    if (s_simResume.next_seq >= PACKET_COUNT) {
+        ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) burst already finished");
+        vTaskDelete(NULL);
+        return;
+    }
+    // After a deep sleep only the rest of the warm-up since the cold boot remains
+    ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) waiting for mesh to converge");
+    waitUntilPersistentUs(s_simResume.cold_boot_us + (uint64_t)SIM_TESTBED_WARMUP_MS * 1000);
+#else
     ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) waiting for mesh to converge");
     vTaskDelay(SIM_TESTBED_WARMUP_MS / portTICK_PERIOD_MS);
+#endif
     while (!LoRaMeshService::getInstance().hasGateway()) {
         ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) waiting for a gateway");
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) sending %d packets of %d B every %d ms",
              PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+#if SIM_SEND_PATH == 1
+    sim.sendPacketsOnSchedule(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+#else
     sim.sendPacketsToServer(PACKET_COUNT, PACKET_SIZE, PACKET_DELAY);
+#endif
     ESP_LOGI(SIM_TAG, "Simulator (testbed PDR mode) finished burst");
     vTaskDelete(NULL);
     return;
@@ -339,6 +404,51 @@ void Sim::sendPacketsToServer(size_t packetCount, size_t packetSize, size_t dela
 
     vPortFree(simPayloadMessage);
 }
+
+#ifdef LM_HAS_MEMBER_SLEEP
+void Sim::sendPacketsOnSchedule(size_t packetCount, size_t packetSize, size_t delayMs) {
+    auto& lms = LoRaMeshService::getInstance();
+    SimMessage* simPayloadMessage = createSimPayloadMessage(packetSize);
+    if (s_simResume.next_due_us == 0) {
+        s_simResume.next_due_us = LoRaMeshService::persistentTimeUs();
+    }
+    while (s_simResume.next_seq < packetCount) {
+        waitUntilPersistentUs(s_simResume.next_due_us);
+        // Not ready after a deep-sleep resume until a beacon confirms the
+        // schedule, or while the queue is full (backpressure): the send waits,
+        // and shows up as APP_TX_LATE
+        while (!lms.isReadyToSend()) {
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+        }
+
+        // Claim the seq before it is logged and sent: a deep sleep after this
+        // point resumes with the next one, so APP_TX seqs stay unique
+        portENTER_CRITICAL(&s_simResumeMux);
+        const uint32_t seq = s_simResume.next_seq;
+        const uint64_t dueUs = s_simResume.next_due_us;
+        s_simResume.next_seq = seq + 1;
+        s_simResume.next_due_us = dueUs + (uint64_t)delayMs * 1000;
+        portEXIT_CRITICAL(&s_simResumeMux);
+
+        const int64_t lateMs = ((int64_t)LoRaMeshService::persistentTimeUs() - (int64_t)dueUs) / 1000;
+        if (lateMs > 2000) {
+            ESP_LOGI(SIM_TAG, "APP_TX_LATE src=0x%04X seq=%u late_ms=%ld", lms.getLocalAddress(),
+                     (unsigned)seq, (long)lateMs);
+        }
+
+        simPayloadMessage->messageId = seq;
+        ESP_LOGI(SIM_TAG, "radio config: %s", lms.getRadioInfo().c_str());
+        ESP_LOGI(SIM_TAG, "APP_TX src=0x%04X seq=%u size=%u", lms.getLocalAddress(), (unsigned)seq,
+                 (unsigned)packetSize);
+        ESP_LOGI(SIM_TAG, "Simulator sending packet %u", (unsigned)seq);
+        MessageManager::getInstance().sendMessage(messagePort::MqttPort,
+                                                  (DataMessage*)simPayloadMessage);
+        s_simResume.sent++;
+        ESP_LOGI(SIM_TAG, "FREE HEAP: %d", ESP.getFreeHeap());
+    }
+    vPortFree(simPayloadMessage);
+}
+#endif
 
 #ifdef USE_LORAMESHER_V2
 void Sim::sendPacketsToGroup(size_t packetCount, size_t packetSize, size_t delayMs) {

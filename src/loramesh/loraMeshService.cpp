@@ -1,7 +1,38 @@
 #include "loraMeshService.h"
 #include "esp_heap_caps.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+
+#ifdef LM_HAS_MEMBER_SLEEP
+#if CONFIG_IDF_TARGET_ESP32
+#include "esp32/rtc.h"
+#elif CONFIG_IDF_TARGET_ESP32S2
+#include "esp32s2/rtc.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rtc.h"
+#elif CONFIG_IDF_TARGET_ESP32C3
+#include "esp32c3/rtc.h"
+#endif
+#endif
 
 static const char* LMS_TAG = "LoRaMeshService";
+
+#ifdef LM_HAS_MEMBER_SLEEP
+// Sleep counters for the HEALTH line, in RTC memory so they add up across deep
+// sleeps. A deep sleep is booked on the next boot (onBoot), because the library
+// can still call it off after the prepare-sleep callback allowed it.
+struct SleepStats {
+    uint32_t magic;
+    uint32_t light_n;
+    uint32_t light_ms;
+    uint32_t deep_n;
+    uint32_t deep_ms;
+    uint32_t deep_pending;     // the callback allowed a deep sleep
+    uint32_t deep_planned_ms;  // its planned duration
+};
+static constexpr uint32_t kSleepStatsMagic = 0x534C5031;  // "SLP1"
+RTC_DATA_ATTR static SleepStats s_sleepStats;
+#endif
 
 // #define LORA_CS 18    // SPI Chip Select (NSS)
 // #define LORA_RST 23   // Radio Reset pin
@@ -54,11 +85,46 @@ void LoRaMeshService::initLoraMesherService() {
     meshConfig.setMaxNetworkNodes(LORA_MAX_NETWORK_NODES);
     meshConfig.setMaxDataSlots(LORA_MAX_DATA_SLOTS);
 
-    mesher_ = loramesher::LoraMesher::Builder()
-                  .withRadioConfig(radioConfig)
-                  .withPinConfig(pinConfig)
-                  .withLoRaMeshProtocol(meshConfig)
-                  .Build();
+    loramesher::LoraMesher::Builder builder;
+    builder.withRadioConfig(radioConfig).withPinConfig(pinConfig).withLoRaMeshProtocol(meshConfig);
+
+#ifdef LM_HAS_MEMBER_SLEEP
+#if defined(LORA_MANAGER_ID) && (LORA_MANAGER_ID != 0)
+    [[maybe_unused]] const bool pinnedManager = my_address == LORA_MANAGER_ID;
+#else
+    [[maybe_unused]] const bool pinnedManager = false;
+#endif
+    // The Network Manager stays awake: it gets no sleep callbacks (the MCU only
+    // sleeps with one) and no deep-sleep policy (the library rejects it).
+#if SIM_SLEEP_MODE >= 1
+    if (!pinnedManager) {
+        builder
+            .withPrepareSleepCallback([](const loramesher::power::SleepContext& ctx) {
+                return LoRaMeshService::getInstance().onPrepareSleep(ctx);
+            })
+            .withWakeUpCallback([](loramesher::power::PowerState previous) {
+                LoRaMeshService::getInstance().onWakeUp(previous);
+            });
+    }
+#endif
+#if SIM_SLEEP_MODE == 2
+    if (!pinnedManager) {
+        // Sleep-clock drift allowances stay on the library defaults
+        loramesher::power::DeepSleepPolicy policy;
+        policy.enabled = true;
+        policy.min_sleep_ms = LORA_DEEP_SLEEP_MIN_MS;
+        policy.boot_time_ms = LORA_DEEP_SLEEP_BOOT_MS;
+        builder.withStateStore(std::make_shared<loramesher::storage::RtcStateStore>())
+            .withDeepSleep(policy);
+    }
+#endif
+#if SIM_STOPSTART == 2
+    // Kept in RAM across Stop()/Start(), so Start() resumes instead of rejoining
+    builder.withStateStore(std::make_shared<loramesher::storage::MemoryStateStore>());
+#endif
+#endif  // LM_HAS_MEMBER_SLEEP
+
+    mesher_ = builder.Build();
 
     radioInfo_ = "SF=" + String((unsigned)LORA_SPREADING_FACTOR) + " BW=" +
                  String((float)LORA_BANDWIDTH, 1) + " pow=" + String((int)LORA_POWER) +
@@ -86,9 +152,12 @@ void LoRaMeshService::initLoraMesherService() {
 
     heap_caps_check_integrity_all(true);
     auto result = mesher_->Start();
+    ESP_LOGI(LMS_TAG, "BOOT_READY node=0x%04X app_ms=%lu", getLocalAddress(),
+             (unsigned long)millis());
     heap_caps_check_integrity_all(true);
     if (result) {
         ESP_LOGI(LMS_TAG, "LoraMesher v2 initialized");
+        logBootConfig();
         createReceiveTask();
 #if SIM_GROUP != 0
         if (!mesher_->JoinGroup(SIM_GROUP_ADDR)) {
@@ -259,30 +328,97 @@ bool LoRaMeshService::sendGroup(DataMessage* message) {
     return true;
 }
 
+void LoRaMeshService::logHealth(int role, int state) {
+    uint32_t lslN = 0, lslMs = 0, dslN = 0, dslMs = 0;
+#ifdef LM_HAS_MEMBER_SLEEP
+    lslN = s_sleepStats.light_n;
+    lslMs = s_sleepStats.light_ms;
+    dslN = s_sleepStats.deep_n;
+    dslMs = s_sleepStats.deep_ms;
+#endif
+    ESP_LOGI(LMS_TAG,
+             "HEALTH node=0x%04X heap=%u minheap=%u role=%d state=%d lsl_n=%u lsl_ms=%u dsl_n=%u "
+             "dsl_ms=%u boot_reason=%d",
+             getLocalAddress(), (unsigned)esp_get_free_heap_size(),
+             (unsigned)esp_get_minimum_free_heap_size(), role, state, (unsigned)lslN,
+             (unsigned)lslMs, (unsigned)dslN, (unsigned)dslMs, (int)esp_reset_reason());
+}
+
+#ifdef LM_HAS_MEMBER_SLEEP
+loramesher::power::SleepResult LoRaMeshService::onPrepareSleep(
+    const loramesher::power::SleepContext& ctx) {
+    // Runs on the protocol task: no calls back into the mesher, no blocking.
+    // An elected Network Manager (LORA_MANAGER_ID 0) stays awake like a pinned one.
+    if (cachedState_ == 4) {
+        return loramesher::power::SleepResult{false};
+    }
+    if (ctx.requested_state == loramesher::power::PowerState::DEEP_SLEEP) {
+#if SIM_SLEEP_MODE == 2
+        if (beforeDeepSleepHook_) {
+            beforeDeepSleepHook_();
+        }
+        s_sleepStats.deep_pending = 1;
+        s_sleepStats.deep_planned_ms = ctx.sleep_duration_ms;
+        logHealth(cachedRole_, cachedState_);
+        ESP_LOGI(LMS_TAG, "SLEEPCB node=0x%04X type=deep planned_ms=%u", getLocalAddress(),
+                 (unsigned)ctx.sleep_duration_ms);
+        Serial.flush();
+        return loramesher::power::SleepResult{true};
+#else
+        // Light sleep only: the veto makes the library ask again for LIGHT_SLEEP
+        return loramesher::power::SleepResult{false};
+#endif
+    }
+    s_sleepStats.deep_pending = 0;
+    lightSleepPlannedMs_ = ctx.sleep_duration_ms;
+    return loramesher::power::SleepResult{true};
+}
+
+void LoRaMeshService::onWakeUp(loramesher::power::PowerState previous) {
+    if (previous == loramesher::power::PowerState::LIGHT_SLEEP) {
+        s_sleepStats.light_n++;
+        s_sleepStats.light_ms += lightSleepPlannedMs_;
+    }
+}
+#endif
+
 void LoRaMeshService::diagLoop(void*) {
     auto& svc = LoRaMeshService::getInstance();
-    uint32_t lastHealthMs = 0;
+    // HEALTH right after Start() (boot or deep-sleep resume), then every 60 s on
+    // the persistent clock
+    svc.logHealth((int)svc.mesher_->GetNodeRole(),
+                  (int)svc.mesher_->GetNetworkStatus().current_state);
+    uint64_t lastHealthUs = persistentTimeUs();
 #if SIM_STOPSTART
     uint32_t phaseStartMs = millis();
     bool stopped = false;
 #endif
     for (;;) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-        const uint32_t now = millis();
-        const uint16_t local = svc.getLocalAddress();
+        [[maybe_unused]] const uint32_t now = millis();
+        const uint64_t nowUs = persistentTimeUs();
+        [[maybe_unused]] const uint16_t local = svc.getLocalAddress();
 
-        if (now - lastHealthMs >= 60000) {
-            lastHealthMs = now;
+#if SIM_SLEEP_MODE
+        svc.cachedRole_ = (int)svc.mesher_->GetNodeRole();
+        svc.cachedState_ = (int)svc.mesher_->GetNetworkStatus().current_state;
+#endif
+
+        if (nowUs - lastHealthUs >= 60000000ULL) {
+            lastHealthUs = nowUs;
             auto status = svc.mesher_->GetNetworkStatus();
-            ESP_LOGI(LMS_TAG, "HEALTH node=0x%04X heap=%u minheap=%u role=%d state=%d", local,
-                     (unsigned)esp_get_free_heap_size(),
-                     (unsigned)esp_get_minimum_free_heap_size(),
-                     (int)svc.mesher_->GetNodeRole(), (int)status.current_state);
+            svc.logHealth((int)svc.mesher_->GetNodeRole(), (int)status.current_state);
         }
 
 #if SIM_STOPSTART
         if (!stopped && now - phaseStartMs >= SIM_STOPSTART_PERIOD_MS) {
             ESP_LOGI(LMS_TAG, "STOPSTART stop node=0x%04X", local);
+#if SIM_STOPSTART == 2
+            auto saved = svc.mesher_->SaveState();
+            if (!saved) {
+                ESP_LOGW(LMS_TAG, "SaveState failed: %s", saved.GetErrorMessage().c_str());
+            }
+#endif
             svc.mesher_->Stop();
             stopped = true;
             phaseStartMs = now;
@@ -566,6 +702,9 @@ void LoRaMeshService::initLoraMesherService() {
 
     // Start LoRaMesher
     radio.start();
+    ESP_LOGI(LMS_TAG, "BOOT_READY node=0x%04X app_ms=%lu", getLocalAddress(),
+             (unsigned long)millis());
+    logBootConfig();
 
     ESP_LOGV(LMS_TAG, "LoraMesher initialized");
 #endif
@@ -819,4 +958,54 @@ void LoRaMeshService::waitForDataSlots(uint8_t nSlots, uint32_t fallbackMs) {
 // Version-agnostic: returns the radio config recorded at init by either branch.
 String LoRaMeshService::getRadioInfo() {
     return radioInfo_;
+}
+
+#ifndef SIM_PDR_COMPARE
+#define SIM_PDR_COMPARE 0
+#endif
+#ifndef LORA_MANAGER_ID
+#define LORA_MANAGER_ID 0
+#endif
+
+void LoRaMeshService::logBootConfig() {
+    ESP_LOGI(LMS_TAG,
+             "CFG node=0x%04X sf=%u pdr=%u sleep=%u msf=%.2f dds=%u mgr=0x%04X pc=%u pd=%lu ss=%u "
+             "rel=%u grp=%u send=%u",
+             getLocalAddress(), (unsigned)LORA_SPREADING_FACTOR, (unsigned)SIM_PDR_COMPARE,
+             (unsigned)SIM_SLEEP_MODE, (double)LORA_MIN_SLEEP_FRACTION,
+             (unsigned)LORA_DEFAULT_DATA_SLOTS, (unsigned)LORA_MANAGER_ID, (unsigned)PACKET_COUNT,
+             (unsigned long)PACKET_DELAY, (unsigned)SIM_STOPSTART, (unsigned)SIM_RELIABLE,
+             (unsigned)SIM_GROUP, (unsigned)SIM_SEND_PATH);
+}
+
+void LoRaMeshService::onBoot() {
+#ifdef LM_HAS_MEMBER_SLEEP
+    if (esp_reset_reason() != ESP_RST_DEEPSLEEP || s_sleepStats.magic != kSleepStatsMagic) {
+        s_sleepStats = SleepStats{};
+        s_sleepStats.magic = kSleepStatsMagic;
+        return;
+    }
+    if (s_sleepStats.deep_pending) {
+        s_sleepStats.deep_pending = 0;
+        s_sleepStats.deep_n++;
+        s_sleepStats.deep_ms += s_sleepStats.deep_planned_ms;
+    }
+#endif
+}
+
+bool LoRaMeshService::isReadyToSend() {
+#if defined(USE_LORAMESHER_V2) && defined(LM_HAS_MEMBER_SLEEP)
+    return mesher_ && static_cast<bool>(mesher_->IsReadyToSend());
+#else
+    return true;
+#endif
+}
+
+uint64_t LoRaMeshService::persistentTimeUs() {
+#ifdef LM_HAS_MEMBER_SLEEP
+    // The library's own persistent clock: the RTC timer runs through deep sleep
+    return esp_rtc_get_time_us();
+#else
+    return (uint64_t)esp_timer_get_time();
+#endif
 }
