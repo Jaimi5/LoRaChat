@@ -560,12 +560,21 @@ cmd_upgrade() {
     echo -e "${BOLD}Upgrading all gateways (branch: $GIT_BRANCH)...${RST}"
     echo ""
 
+    # UPGRADE_ENVS="env1 env2" limits `pio pkg update` to those envs. Updating every
+    # env re-resolves unpinned git deps of envs nobody builds, and one GitHub reset on
+    # any of them (GW-4 sees these often) failed the whole upgrade.
+    local upd_envs=""
+    local e
+    for e in ${UPGRADE_ENVS:-}; do upd_envs+=" -e $e"; done
+    [[ -n "$upd_envs" ]] && echo "pio pkg update limited to:${upd_envs}"
+    local pkg_update="for i in 1 2 3; do \$PIO_NICE pio pkg update${upd_envs} && break; [ \$i = 3 ] && exit 1; echo \"pkg update attempt \$i failed, retrying in 30s\"; sleep 30; done"
+
     local args=()
     for gw_id in "${ACTIVE_GWS[@]}"; do
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
         # Inline git commands (not gw-upgrade.sh) so it works even on first run
         # before the testbed scripts exist on the gateway
-        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== sync to origin/$GIT_BRANCH (untracked files kept, old HEAD -> backup/pre-sync) ===' && git branch -f backup/pre-sync HEAD && git checkout -f -B $GIT_BRANCH origin/$GIT_BRANCH && git reset --hard origin/$GIT_BRANCH && echo '=== pio pkg update ===' && \$PIO_NICE pio pkg update && echo '=== Upgrade complete ==='")
+        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== sync to origin/$GIT_BRANCH (untracked files kept, old HEAD -> backup/pre-sync) ===' && git branch -f backup/pre-sync HEAD && git checkout -f -B $GIT_BRANCH origin/$GIT_BRANCH && git reset --hard origin/$GIT_BRANCH && echo '=== pio pkg update ===' && { $pkg_update; } && echo '=== Upgrade complete ==='")
     done
 
     if [[ ${#args[@]} -eq 0 ]]; then

@@ -105,6 +105,10 @@ class Campaign:
                 raise SystemExit(f"unknown stage {opt!r}; stages: {self.order}")
         self.envs = dict(self.cfg.get("envs") or {"new": "ttgo-t-beam-v2"})
         self.default_env = self.cfg.get("default_env") or ("new" if "new" in self.envs else next(iter(self.envs)))
+        # deploy.sh upgrade updates packages only for the envs this campaign builds
+        # (inherited by run_batch's upgrade too); see cmd_upgrade.
+        used = {self.stage_env(sc) for sc in self.cfg.get("stages", [])} | set(self.cfg.get("prewarm_envs") or [])
+        os.environ.setdefault("UPGRADE_ENVS", " ".join(sorted(self.envs[k] for k in used if k in self.envs)))
         self.config_h = None   # committed src/config.h text, read at preflight (CFG check)
 
     # ── bookkeeping ──────────────────────────────────────────────────────────
@@ -242,18 +246,25 @@ class Campaign:
             time.sleep(delay)
             delay = min(delay * 2, 300)
         # Upgrade (git reset --hard origin/<branch> + pio pkg update) and verify HEAD.
+        upgraded = False
         for attempt in range(1, gates.dig(self.cfg, "retries.upgrade_attempts", 3) + 1):
             if self.deploy("upgrade", log_name="upgrade.log", timeout=1800) == 0:
+                upgraded = True
                 break
             self.log(f"upgrade failed (attempt {attempt})")
             time.sleep(60)
-        else:
-            return False
         rp = self.testbed_conf["REPO_PATH"]
         if self.deploy("run-remote", f"cd {rp} && test \"$(git rev-parse HEAD)\" = {head}",
                        log_name="verify-head.log", timeout=300) != 0 and not self.args.dry_run:
             self.log(f"FATAL: not every gateway is at {head[:9]}")
             return False
+        if not upgraded:
+            # The git sync precedes `pio pkg update`; with every gateway at HEAD only the
+            # package step failed (a GitHub reset on a gateway). Prewarm builds each env
+            # with per-gateway retries, which installs and verifies what the runs need.
+            self.log(f"WARNING: pkg update failed but every gateway is at {head[:9]}; "
+                     "relying on prewarm to install packages")
+            self.event("upgrade_pkg_failed_head_ok")
         return True
 
     def prewarm(self, env: str) -> bool:
