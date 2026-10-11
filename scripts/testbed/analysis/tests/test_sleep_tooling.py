@@ -435,7 +435,7 @@ def test_plan_gateways_skips_only_unneeded(monkeypatch):
     cell = SimpleNamespace(inactive_devices=("DD58", "14A4", "3428"))
     batch = SimpleNamespace(name="b", cells=[cell])
     assert c._plan_gateways(batch) == ["GW-6"] and c.skip_gws == ["GW-6"]
-    down = {"GW-6", "GW-1"}                     # GW-1's E464 is active: needed, not skipped
-    assert c._plan_gateways(batch) == ["GW-6"]
+    down = {"GW-6", "GW-1"}                     # GW-1's E464 is active: needed -> batch not run
+    assert c._plan_gateways(batch) is None
     down = set()
     assert c._plan_gateways(batch) == [] and c.skip_gws == []

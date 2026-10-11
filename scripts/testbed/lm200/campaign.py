@@ -551,12 +551,13 @@ class Campaign:
                      f"{max((r['cum_h'] for r in rows), default=0)} h")
         return rows
 
-    def _plan_gateways(self, batch) -> list[str]:
+    def _plan_gateways(self, batch, wait: bool = True) -> list[str] | None:
         """Gateways to leave out of this batch attempt. An unreachable gateway is
         skipped when every device on it is inactive in every cell (those boards keep
         their last, radio-off firmware and are exempt from validation). A gateway
-        that a cell needs is waited for (retries.gateway_wait_min); if it stays down
-        the attempt goes ahead and its runs fail validation as before."""
+        that a cell needs is waited for (retries.gateway_wait_min, first attempt only);
+        if it stays down this returns None and the batch is left incomplete without
+        flashing anything (re-run it later with --only-stage)."""
         self.skip_gws = []
         if self.args.dry_run or self.deploy("status", log_name="status.log", timeout=300) == 0:
             return []
@@ -572,14 +573,16 @@ class Campaign:
                     if not dev_gw or any(d not in inactive for d, g in dev_gw.items() if g == gw)]
 
         down = down_now()
-        deadline = time.time() + 60 * gates.dig(self.cfg, "retries.gateway_wait_min", 120)
+        deadline = time.time() + (60 * gates.dig(self.cfg, "retries.gateway_wait_min", 120) if wait else 0)
         while needed(down) and time.time() < deadline:
             self.log(f"gateway(s) {needed(down)} unreachable and needed by {batch.name}; retry in 5 min")
             self.event("gateway_wait", gateways=needed(down), batch=batch.name)
             time.sleep(300)
             down = down_now()
         if needed(down):
-            self.log(f"WARNING: gateway(s) {needed(down)} still unreachable; running {batch.name} anyway")
+            self.log(f"WARNING: gateway(s) {needed(down)} still unreachable; {batch.name} not run")
+            self.event("gateway_down_batch_skipped", gateways=needed(down), batch=batch.name)
+            return None
         skip = [gw for gw in down if gw not in needed(down)]
         if skip:
             devs = sorted(d for d, g in dev_gw.items() if g in skip)
@@ -616,7 +619,9 @@ class Campaign:
         for attempt in range(1, attempts + 1):
             if not pending:
                 break
-            skipped = self._plan_gateways(batch)
+            skipped = self._plan_gateways(batch, wait=(attempt == 1))
+            if skipped is None:
+                break
             before = {p.name for p in broot.iterdir()} if broot.is_dir() else set()
             tmp_yaml = self._batch_yaml_for_run(yaml_path, None if attempt == 1 else pending,
                                                 batch_name=bname if tag else None)
