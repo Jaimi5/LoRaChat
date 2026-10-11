@@ -10,6 +10,11 @@ Headline metrics aggregated:
     formation.network_convergence_at
     capacity.offered_pkt_per_min
     duty_cycle per-node mean current_mA (averaged across nodes per run)
+    energy_model chip / board mean current and energy per bit (MODELLED:
+        radio + ESP32 active/light/deep/boot [+ board floor]; energy_model.py)
+
+Runs listed in runs/EXCLUDED.txt (see analysis/exclusions.py) are skipped and
+reported under "excluded_runs".
 """
 
 from __future__ import annotations
@@ -35,6 +40,8 @@ if __name__ == "__main__":
 from analysis.app_pdr import analyse as analyse_app_pdr
 from analysis.capacity import analyse as analyse_capacity
 from analysis.duty_cycle import analyse as analyse_duty
+from analysis.energy_model import analyse as analyse_energy_model
+from analysis.exclusions import excluded_reason
 from analysis.formation import analyse as analyse_formation
 from analysis.load import analyse as analyse_load
 from analysis.parse_logs import load_measurement_window
@@ -142,6 +149,7 @@ def _per_run_summary(run_dir: Path, source: str = "best") -> dict | None:
     formation = _safe(analyse_formation, run_dir)
     capacity = _safe(analyse_capacity, run_dir)
     duty = _safe(partial(analyse_duty, source=source), run_dir)
+    energy = _safe(partial(analyse_energy_model, source=source), run_dir)
     load = _safe(analyse_load, run_dir)
     app = _safe(analyse_app_pdr, run_dir)
 
@@ -170,6 +178,14 @@ def _per_run_summary(run_dir: Path, source: str = "best") -> dict | None:
     if mean_current is not None and delivered_bytes and meas_window_s:
         energy_per_bit_mJ = (mean_current * VOLTAGE_V * meas_window_s
                              / (delivered_bytes * 8.0))
+    # Same normalisation with the modelled whole-node currents (energy_model.py).
+    modelled = {}
+    for variant in ("chip", "board"):
+        cur = _dig(energy, "mean_current_mA", variant)
+        modelled[variant] = cur
+        modelled[f"{variant}_per_bit_mJ"] = (
+            cur * _dig(energy, "voltage_v") * meas_window_s / (delivered_bytes * 8.0)
+            if cur is not None and delivered_bytes and meas_window_s else None)
 
     return {
         "routing": routing,
@@ -183,6 +199,7 @@ def _per_run_summary(run_dir: Path, source: str = "best") -> dict | None:
         "app_window_s": app_window_s,
         "meas_window_s": meas_window_s,
         "energy_per_bit_mJ": energy_per_bit_mJ,
+        "energy_modelled": modelled,
     }
 
 
@@ -192,12 +209,18 @@ def aggregate(batch_dir: Path, drop_first: int = 0,
     per_cell: dict[str, list[Path]] = defaultdict(list)
     per_cell_reps: dict[str, list[tuple[int, Path]]] = defaultdict(list)
     warmup_by_cell: dict[str, list[str]] = defaultdict(list)
+    excluded: dict[str, str] = {}
 
     for run_dir in sorted(batch_dir.iterdir()):
         if not run_dir.is_dir():
             continue
         cell_rep = _cell_of(run_dir)
         if cell_rep is None:
+            continue
+        why = excluded_reason(run_dir)
+        if why:
+            excluded[run_dir.name] = why
+            print(f"excluded (runs/EXCLUDED.txt): {run_dir.name} — {why}")
             continue
         cell, rep = cell_rep
         if rep == 0:
@@ -280,6 +303,16 @@ def aggregate(batch_dir: Path, drop_first: int = 0,
             # Energy efficiency at equal delivered data (v1-vs-v2 headline pair):
             "energy_per_bit_mJ": _agg(
                 [r.get("energy_per_bit_mJ") for r in included]),
+            # MODELLED whole-node energy (energy_model.py): chip = radio + ESP32
+            # active/light/deep/boot; board = chip + AXP192/GPS/OLED floor.
+            "modelled_chip_current_mA": _agg(
+                [_dig(r, "energy_modelled", "chip") for r in included]),
+            "modelled_board_current_mA": _agg(
+                [_dig(r, "energy_modelled", "board") for r in included]),
+            "modelled_chip_energy_per_bit_mJ": _agg(
+                [_dig(r, "energy_modelled", "chip_per_bit_mJ") for r in included]),
+            "modelled_board_energy_per_bit_mJ": _agg(
+                [_dig(r, "energy_modelled", "board_per_bit_mJ") for r in included]),
             "app_delivered": _agg([r.get("app_delivered") for r in included]),
             "app_sent": _agg([r.get("app_sent") for r in included]),
         }
@@ -323,6 +356,7 @@ def aggregate(batch_dir: Path, drop_first: int = 0,
         "cells": cells,
         "per_run_points": per_run_points,
         "rejected_runs": rejected,
+        "excluded_runs": excluded,
         "warmup_runs": dict(warmup_by_cell),
     }
 

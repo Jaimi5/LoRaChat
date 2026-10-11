@@ -121,9 +121,11 @@ _PATTERNS = {
         r"STOPSTART (stop|start) node=0x([0-9A-Fa-f]+)(?: ok=(\d+))?"),
     "nm_failover": re.compile(
         r"NM_FAILOVER node=0x([0-9A-Fa-f]+) uptime_ms=(\d+)"),
+    # Sleep-capable firmware appends `lsl_n= lsl_ms= dsl_n= dsl_ms= boot_reason=`
+    # (cumulative light/deep sleep counters); the tail is parsed as key=value.
     "health": re.compile(
         r"HEALTH node=0x([0-9A-Fa-f]+) heap=(\d+) minheap=(\d+) "
-        r"role=(-?\d+) state=(-?\d+)"),
+        r"role=(-?\d+) state=(-?\d+)(.*)$"),
     "state_change": re.compile(r"Network service state changed to (\d+)"),
     # Emitted by the June 2026 v2 builds (e.g. formation__lmv2); absent from
     # 134ae25 and 2.0.0. Kept so historical event streams stay unchanged.
@@ -155,11 +157,40 @@ _PATTERNS = {
         r"Created routing table message src: 0x([0-9A-Fa-f]+), dest: 0x([0-9A-Fa-f]+), "
         r"NM: 0x([0-9A-Fa-f]+), table v\.: (\d+), entry count: (\d+), "
         r"caps: 0x([0-9A-Fa-f]+), data_slots: (\d+)(?:, ctrl_idx: (\d+))?"),
+    # ── Member sleep (LoRaChat sleep firmware + LoRaMesher feat/member-sleep) ──
+    # CFG: the effective compile-time config, once per Start(); generic key=value.
+    "cfg": re.compile(r"\bCFG (node=0x[0-9A-Fa-f]+ .*)$"),
+    "boot_ready": re.compile(r"BOOT_READY node=0x([0-9A-Fa-f]+) app_ms=(\d+)"),
+    "boot": re.compile(r"BOOT node=0x([0-9A-Fa-f]+) reason=(-?\d+) app_ms=(\d+)"),
+    "sleepcb": re.compile(r"SLEEPCB node=0x([0-9A-Fa-f]+) type=(\w+) planned_ms=(\d+)"),
+    "app_tx_late": re.compile(r"APP_TX_LATE src=0x([0-9A-Fa-f]+) seq=(\d+) late_ms=(-?\d+)"),
+    "deep_sleep": re.compile(
+        r"Deep sleep for (\d+) ms \(state (\d+) bytes, waking (\d+) ms early\)"),
+    "no_deep_sleep": re.compile(r"No deep sleep: (.+?)\s*$"),
+    "resumed_network": re.compile(
+        r"Resumed network 0x([0-9A-Fa-f]+) after (\d+) ms of deep sleep"),
+    "resumed_membership": re.compile(
+        r"Resumed membership of network 0x([0-9A-Fa-f]+): manager 0x([0-9A-Fa-f]+), "
+        r"control slot (\d+), (\d+) routes"),
+    "resuming_superframe": re.compile(
+        r"Resuming superframe #(\d+) at slot (\d+) \(start (\d+) ms\)"),
+    "schedule_confirmed": re.compile(r"Schedule confirmed by a sync beacon after the resume"),
+    "sleep_clock": re.compile(
+        r"Sleep clock: (-?\d+) ms off after (\d+) ms of sleep, error now (-?\d+) ppm "
+        r"\((\d+) samples\)"),
+    "saved_state": re.compile(
+        r"Saved state: network 0x([0-9A-Fa-f]+), (\w+), (\d+) member slots, seq (\d+)"),
+    # "Cannot resume: <why>" and "Cannot resume the superframe: <why>".
+    "cannot_resume": re.compile(r"Cannot resume( the superframe)?: (.+?)\s*$"),
+    "no_saved_state": re.compile(r"No saved state: cold start"),
+    "resume_state_invalid": re.compile(
+        r"(Saved resume state is invalid|Saved state is invalid|Saved state not applied)"),
     # gw-reset.sh writes this right before a deliberate reset; the `rst:0x`
     # that follows it is expected, not a crash.
     "gw_reset": re.compile(r"--- RESET via gw-reset\.sh"),
     # Crash / reboot markers. `rst:0x` also appears on every normal boot;
-    # iter_log_events tags each with `boot_index` and `expected`.
+    # iter_log_events tags each with `boot_index`, `expected` and, for a
+    # DEEPSLEEP_RESET (rst:0x5) the node announced, `deep_sleep_wake`.
     "crash": re.compile(
         r"(Guru Meditation|Stack canary|stack overflow|abort\(\) was called"
         r"|Backtrace:|rst:0x[0-9A-Fa-f]+)"),
@@ -172,6 +203,11 @@ _CRASH_KIND = {
 }
 
 _SHORT_ID_RE = re.compile(r"monitor-dev-.+?-([0-9A-Fa-f]{4})\.log(?:\.gz)?$")
+
+DEEPSLEEP_RESET_CODE = "0x5"
+DEEP_WAKE_SLACK_S = 10.0   # rst:0x5 later than planned sleep + this is not that sleep's wake
+RESUME_TAG_WINDOW_S = 2.0  # "Resumed membership" follows its state_change within this
+_KV_RE = re.compile(r"(\w+)=(\S+)")
 
 
 @dataclass
@@ -235,10 +271,20 @@ def iter_log_events(path: Path, node: str) -> Iterable[Event]:
 
     `crash` events of kind "reset" (an `rst:0x` boot line) carry
     `boot_index` (0 = first boot in this file) and `expected` (True for the
-    first boot or one preceded by a gw-reset.sh marker); an unexpected reset
-    is a reboot the testbed did not ask for."""
+    first boot, one preceded by a gw-reset.sh marker, or a deep-sleep wake);
+    an unexpected reset is a reboot the testbed did not ask for.
+
+    A DEEPSLEEP_RESET (`rst:0x5`) is a deep-sleep wake when the node logged
+    "Deep sleep for N ms" (or `SLEEPCB ... type=deep planned_ms=N`) at most
+    N ms + DEEP_WAKE_SLACK_S before it: it gets `deep_sleep_wake=True` and
+    `expected=True`. The `state_change` the library logs while restoring a
+    member after such a wake (right before "Resumed membership ...") gets
+    `resume=True`: it is not a join."""
     boots = 0
     gw_reset_pending = False
+    sleep_announced: tuple[float, float] | None = None  # (ts, planned_s)
+    after_deep_wake = False
+    held: list[Event] = []      # a state_change (+ what follows) awaiting a resume line
     with _open_log(path) as fh:
         for line in fh:
             m = _TS_RE.match(line)
@@ -254,13 +300,46 @@ def iter_log_events(path: Path, node: str) -> Iterable[Event]:
                 fields = _extract_fields(kind, mm)
                 if kind == "gw_reset":
                     gw_reset_pending = True
+                elif kind == "deep_sleep":
+                    sleep_announced = (ts, fields["sleep_ms"] / 1000.0)
+                elif kind == "sleepcb" and fields["type"] == "deep":
+                    sleep_announced = (ts, fields["planned_ms"] / 1000.0)
+                elif kind == "no_deep_sleep":
+                    sleep_announced = None   # the callback ran but the sleep was dropped
                 elif kind == "crash" and fields["kind"] == "reset":
+                    wake = (fields["code"].lower() == DEEPSLEEP_RESET_CODE
+                            and sleep_announced is not None
+                            and 0 <= ts - sleep_announced[0]
+                            <= sleep_announced[1] + DEEP_WAKE_SLACK_S)
                     fields["boot_index"] = boots
-                    fields["expected"] = boots == 0 or gw_reset_pending
+                    fields["expected"] = boots == 0 or gw_reset_pending or wake
+                    fields["deep_sleep_wake"] = wake
                     boots += 1
                     gw_reset_pending = False
-                yield Event(ts=ts, node=node, kind=kind, fields=fields)
+                    sleep_announced = None
+                    after_deep_wake = wake
+                ev = Event(ts=ts, node=node, kind=kind, fields=fields)
+                if held:
+                    # held[0] is the state_change; the rest arrived after it.
+                    if kind == "resumed_membership":
+                        held[0].fields["resume"] = True
+                    if (kind == "resumed_membership" or kind in ("state_change", "crash")
+                            or ts - held[0].ts > RESUME_TAG_WINDOW_S):
+                        yield from held
+                        held = []
+                    else:
+                        held.append(ev)
+                        break
+                if after_deep_wake and kind == "state_change":
+                    after_deep_wake = False
+                    held = [ev]
+                    break
+                if kind in ("resumed_network", "cannot_resume", "no_saved_state",
+                            "resume_state_invalid", "joined"):
+                    after_deep_wake = False
+                yield ev
                 break  # one event per line
+    yield from held
 
 
 def _extract_fields(kind: str, m: re.Match) -> dict:
@@ -340,8 +419,50 @@ def _extract_fields(kind: str, m: re.Match) -> dict:
     if kind == "nm_failover":
         return {"addr": g[0].upper(), "uptime_ms": int(g[1])}
     if kind == "health":
-        return {"addr": g[0].upper(), "heap": int(g[1]), "minheap": int(g[2]),
-                "role": int(g[3]), "state": int(g[4])}
+        out = {"addr": g[0].upper(), "heap": int(g[1]), "minheap": int(g[2]),
+               "role": int(g[3]), "state": int(g[4])}
+        for k, v in _KV_RE.findall(g[5] or ""):
+            try:
+                out[k] = int(v)
+            except ValueError:
+                pass
+        return out
+    if kind == "cfg":
+        return {k: v for k, v in _KV_RE.findall(g[0])}
+    if kind == "boot":
+        return {"addr": g[0].upper(), "reason": int(g[1]), "app_ms": int(g[2])}
+    if kind == "boot_ready":
+        return {"addr": g[0].upper(), "app_ms": int(g[1])}
+    if kind == "sleepcb":
+        return {"addr": g[0].upper(), "type": g[1], "planned_ms": int(g[2])}
+    if kind == "app_tx_late":
+        return {"src": g[0].upper(), "seq": int(g[1]), "late_ms": int(g[2])}
+    if kind == "deep_sleep":
+        return {"sleep_ms": int(g[0]), "state_bytes": int(g[1]), "early_ms": int(g[2])}
+    if kind == "no_deep_sleep":
+        return {"reason": g[0]}
+    if kind == "resumed_network":
+        return {"network": g[0].upper(), "slept_ms": int(g[1])}
+    if kind == "resumed_membership":
+        return {"network": g[0].upper(), "manager": g[1].upper(),
+                "control_slot": int(g[2]), "routes": int(g[3])}
+    if kind == "resuming_superframe":
+        return {"superframe": int(g[0]), "slot": int(g[1]), "start_ms": int(g[2])}
+    if kind == "schedule_confirmed":
+        return {}
+    if kind == "sleep_clock":
+        return {"off_ms": int(g[0]), "slept_ms": int(g[1]), "ppm": int(g[2]),
+                "samples": int(g[3])}
+    if kind == "saved_state":
+        return {"network": g[0].upper(), "role": g[1], "member_slots": int(g[2]),
+                "seq": int(g[3])}
+    if kind == "cannot_resume":
+        return {"reason": g[1],
+                "category": "superframe" if g[0] else cannot_resume_category(g[1])}
+    if kind == "no_saved_state":
+        return {}
+    if kind == "resume_state_invalid":
+        return {"what": g[0]}
     if kind == "state_change":
         return {"state": int(g[0])}
     if kind == "route_updated":
@@ -382,6 +503,19 @@ def _extract_fields(kind: str, m: re.Match) -> dict:
     return {}
 
 
+def cannot_resume_category(reason: str) -> str:
+    """Bucket a "Cannot resume: ..." message: the library's fixed reasons by
+    name, anything else (a forwarded error message) as "other"."""
+    r = reason.lower()
+    if "persistent clock restarted" in r:
+        return "clock_restarted"
+    if "more than a superframe" in r:
+        return "overslept"
+    if r.startswith("slept "):
+        return "overslept"
+    return "other"
+
+
 def short_id_from_filename(path: Path) -> str | None:
     m = _SHORT_ID_RE.search(path.name)
     return m.group(1).upper() if m else None
@@ -402,6 +536,40 @@ def load_measurement_window(run_dir: Path) -> tuple[float | None, float | None]:
         elif p.get("name") == "measurement-end" and p.get("start"):
             end = _iso_to_epoch(p["start"])
     return (start, end)
+
+
+# Lifecycle phases that reboot every board: the synchronized reset after an
+# upload, or the reset-only path between repetitions of a cell.
+_RESET_PHASES = ("post-upload-sync-reset", "reset")
+
+
+def load_reset_ts(run_dir: Path) -> float | None:
+    """UTC epoch at which the run's synchronized board reset started (the last
+    reset phase in lifecycle.json), falling back to monitor-start. None when
+    lifecycle.json is missing or has neither."""
+    lc = run_dir / "lifecycle.json"
+    if not lc.is_file():
+        return None
+    try:
+        phases = json.loads(lc.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    reset = monitor = None
+    for p in phases:
+        if not p.get("start"):
+            continue
+        if p.get("name") in _RESET_PHASES:
+            reset = _iso_to_epoch(p["start"])
+        elif p.get("name") == "monitor-start" and monitor is None:
+            monitor = _iso_to_epoch(p["start"])
+    return reset if reset is not None else monitor
+
+
+def load_run_window(run_dir: Path) -> tuple[float | None, float | None]:
+    """(reset, None): from the synchronized reset to the end of the logs, for
+    metrics measured from the cold start (formation) rather than inside the
+    steady-state measurement window."""
+    return (load_reset_ts(run_dir), None)
 
 
 def _iso_to_epoch(iso: str) -> float:

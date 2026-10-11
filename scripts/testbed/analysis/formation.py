@@ -43,7 +43,7 @@ if __name__ == "__main__":
         sys.path.insert(0, _parent)
 
 from analysis.parse_logs import (Event, is_v2_run, load_measurement_window,
-                                 parse_run, v2_runtime_addr)
+                                 load_reset_ts, parse_run, v2_runtime_addr)
 
 
 _JOIN_STATES = {3, 4}  # NORMAL_OPERATION, NETWORK_MANAGER
@@ -56,8 +56,18 @@ def _is_unexpected_reboot(ev: Event) -> bool:
 
 
 def _is_reboot(ev: Event) -> bool:
+    """A reboot after the first boot. A deep-sleep wake is not one: the member
+    resumes its membership (see parse_logs.iter_log_events)."""
     return ev.kind == "crash" and ev.fields.get("kind") == "reset" \
-        and ev.fields.get("boot_index", 0) > 0
+        and ev.fields.get("boot_index", 0) > 0 \
+        and not ev.fields.get("deep_sleep_wake")
+
+
+def _is_join_state(ev: Event) -> bool:
+    """A state_change into NORMAL_OPERATION/NETWORK_MANAGER that is a join, not
+    the library restoring a member after a deep sleep."""
+    return (ev.kind == "state_change" and ev.fields.get("state") in _JOIN_STATES
+            and not ev.fields.get("resume"))
 
 
 def state_timeline(events: Iterable[Event]) -> dict[str, list[tuple[float, int]]]:
@@ -66,7 +76,7 @@ def state_timeline(events: Iterable[Event]) -> dict[str, list[tuple[float, int]]
     since the protocol restarts from scratch."""
     out: dict[str, list[tuple[float, int]]] = defaultdict(list)
     for ev in events:
-        if ev.kind == "state_change":
+        if ev.kind == "state_change" and not ev.fields.get("resume"):
             out[ev.node].append((ev.ts, ev.fields["state"]))
         elif _is_reboot(ev):
             out[ev.node].append((ev.ts, 0))
@@ -191,12 +201,12 @@ def _active_devices(run_dir: Path) -> set[str]:
 
 def _compute_join(events: Iterable[Event]) -> dict[str, float]:
     """First time each node enters NORMAL_OPERATION/NETWORK_MANAGER or logs
-    a successful join."""
+    a successful join ("Resumed network" after a deep sleep is not a join)."""
     out: dict[str, float] = {}
     for ev in events:
         if ev.node in out:
             continue
-        if ev.kind == "state_change" and ev.fields.get("state") in _JOIN_STATES:
+        if _is_join_state(ev):
             out[ev.node] = ev.ts
         elif ev.kind == "joined":
             out[ev.node] = ev.ts
@@ -303,11 +313,29 @@ def _in_window(events: list[Event], window) -> list[Event]:
             and not (end is not None and ev.ts > end)]
 
 
-def analyse(run_dir: Path) -> dict:
+def analyse(run_dir: Path, window: str = "measurement",
+            all_events: list[Event] | None = None) -> dict:
+    """Formation metrics for one run.
+
+    window="measurement" (default) counts joins/routes inside the lifecycle
+    measurement window. window="run" counts them from the synchronized board
+    reset to the end of the logs, so runs with a warmup still see the cold
+    start; it adds `t_reset` and `*_since_reset_s` (seconds after the reset).
+    The `*_at` values stay relative to the first join in either mode."""
     # Parse once without a window, then filter exactly as parse_run would.
-    window = load_measurement_window(run_dir)
-    all_events = parse_run(run_dir, window=(None, None))
-    events = _in_window(all_events, window)
+    t_reset = None
+    if window == "run":
+        t_reset = load_reset_ts(run_dir)
+        meas = load_measurement_window(run_dir)
+        win = (t_reset, None)
+    elif window == "measurement":
+        meas = win = load_measurement_window(run_dir)
+    else:
+        raise ValueError(f"window must be 'measurement' or 'run', not {window!r}")
+    if all_events is None:
+        all_events = parse_run(run_dir, window=(None, None))
+    events = _in_window(all_events, win)
+    window = win
     expected = _active_devices(run_dir)
 
     joined = _compute_join(events)
@@ -329,11 +357,30 @@ def analyse(run_dir: Path) -> dict:
     flaps, rejoins = _compute_flaps(all_events, window)
     retries = _compute_join_retries(all_events, window[1])
 
+    def since_reset(ts: float | None) -> float | None:
+        if ts is None or t_reset is None:
+            return None
+        return ts - t_reset
+
+    extra = {}
+    if t_reset is not None:
+        extra = {
+            "window": "run",
+            "t_reset": t_reset,
+            "measurement_window": {"start": meas[0], "end": meas[1]},
+            "first_join_since_reset_s": since_reset(t0),
+            "joined_since_reset_s": {n: since_reset(ts) for n, ts in sorted(joined.items())},
+            "network_convergence_since_reset_s": since_reset(convergence_at),
+            "all_joined_since_reset_s": (since_reset(max(joined.values()))
+                                         if expected and expected <= set(joined) else None),
+        }
     return {
+        **extra,
         "expected_peers": sorted(expected),
         "joined_at": {n: rel(ts) for n, ts in sorted(joined.items())},
         "rt_complete_at": {n: rel(ts) for n, ts in sorted(rt_complete.items())},
         "network_convergence_at": rel(convergence_at),
+        "network_convergence_ts": convergence_at,
         "rt_churn_per_min_mean": _compute_churn(events, None, None),
         "n_active_devices": len(expected),
         "n_nodes_joined": len(joined),
@@ -361,8 +408,10 @@ def main() -> int:
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--out", type=Path, default=None,
                     help="output JSON path (default: <run_dir>/formation.json)")
+    ap.add_argument("--window", choices=("measurement", "run"), default="measurement",
+                    help="'run' = from the synchronized reset to the end of the logs")
     args = ap.parse_args()
-    result = analyse(args.run_dir)
+    result = analyse(args.run_dir, window=args.window)
     out = args.out or (args.run_dir / "formation.json")
     out.write_text(json.dumps(result, indent=2, sort_keys=True))
     print(f"wrote {out}")

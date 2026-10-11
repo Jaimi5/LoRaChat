@@ -3,7 +3,8 @@
 Computes, from one run directory, the per-feature numbers the lm200 gates
 check: reliable delivery (APP_ACK/APP_FAIL), group delivery (GROUP_*),
 Stop/Start rejoin, NM failover, node health (heap, hangs), crashes, the LDRO
-self-check, data-slot grants, and join backoff. Every section degrades to
+self-check, data-slot grants, join backoff and member sleep
+(analysis/sleep_metrics.py). Every section degrades to
 zeros/None when its events are absent, so it is safe on any v1/v2 run.
 
 All sections use the FULL log stream (warmup and cooldown included): these are
@@ -17,7 +18,8 @@ Importable:
     compute_all(run_dir) -> dict      # every section below
     reliable_stats(events), group_stats(events, members), stopstart_stats(...),
     nm_failover_stats(...), health_stats(...), crash_stats(...),
-    data_slot_stats(events), join_stats(events), diag_counts(events)
+    data_slot_stats(events), join_stats(events), diag_counts(events),
+    sleep_metrics.sleep_stats(events, ...)
 """
 
 from __future__ import annotations
@@ -35,11 +37,15 @@ if __name__ == "__main__":
 
 from analysis.formation import _active_devices, nm_overlap, nm_timeline
 from analysis.parse_logs import Event, load_measurement_window, parse_run
+from analysis.sleep_metrics import hex4, sleep_stats
 
 _JOIN_STATES = {3, 4}
 _NM_STATE = 4
 RTT_OUTLIER_MS = 10 * 60 * 1000      # an RTT above 10 min is a garbled echo_ts
-HANG_GAP_S = 180.0                   # HEALTH silence before log end => suspected hang
+HANG_GAP_S = 180.0                   # silence before log end => suspected hang
+# Lines that prove a node is alive. A "Deep sleep for N ms" line keeps it alive
+# for N ms more: a member asleep at the end of the logs is not hung.
+LIVENESS_KINDS = ("health", "deep_sleep", "resumed_network", "boot", "boot_ready")
 
 
 def _pct(values: list[float], q: float) -> float | None:
@@ -58,7 +64,8 @@ def _joined_after(events: list[Event], node: str, t: float,
     for ev in events:
         if ev.ts <= t or ev.node != node:
             continue
-        if ev.kind == "state_change" and ev.fields["state"] in states:
+        if ev.kind == "state_change" and ev.fields["state"] in states \
+                and not ev.fields.get("resume"):
             return ev.ts, ev.fields["state"]
         if ev.kind == "joined" and states == _JOIN_STATES:
             return ev.ts, None
@@ -203,6 +210,12 @@ def stopstart_stats(events: list[Event], superframe_s: float | None = None) -> d
     rejoins = [c["rejoin_s"] for c in cycles if c["rejoin_s"] is not None]
     sfs = [c["rejoin_superframes"] for c in cycles
            if c["rejoin_superframes"] is not None]
+    # Warm restart (sim_stopstart=2: SaveState() before Stop()): per node, the
+    # "Saved state" lines and the restores that fell back to a cold start.
+    warm: dict[str, Counter] = defaultdict(Counter)
+    for x in events:
+        if x.kind in ("saved_state", "resume_state_invalid", "no_saved_state"):
+            warm[x.node][x.kind] += 1
     return {
         "present": True,
         "n_cycles": len(cycles),
@@ -213,6 +226,7 @@ def stopstart_stats(events: list[Event], superframe_s: float | None = None) -> d
         "rejoin_superframes_max": max(sfs) if sfs else None,
         "seq_reset_cycles": sum(1 for c in cycles if c["seq_continues"] is False),
         "ctrl_slot_reuse": sum(1 for e in events if e.kind == "ctrl_slot_reuse"),
+        "warm_restart": {n: dict(c) for n, c in sorted(warm.items())},
         "cycles": cycles,
     }
 
@@ -257,14 +271,29 @@ def nm_failover_stats(events: list[Event], window=(None, None)) -> dict:
 
 # ── Health / hangs ───────────────────────────────────────────────────────────
 
+def last_alive(events: list[Event]) -> dict[str, float]:
+    """Per node, the last moment it was provably alive (LIVENESS_KINDS; a deep
+    sleep counts until its planned wake)."""
+    out: dict[str, float] = {}
+    for e in events:
+        if e.kind not in LIVENESS_KINDS:
+            continue
+        t = e.ts + (e.fields["sleep_ms"] / 1000.0 if e.kind == "deep_sleep" else 0.0)
+        if t > out.get(e.node, float("-inf")):
+            out[e.node] = t
+    return out
+
+
 def health_stats(events: list[Event], log_end: float | None = None) -> dict:
     """Min free heap per node, heap trend (bytes/hour, least squares), and
-    nodes whose HEALTH lines stop >HANG_GAP_S before the end of the logs."""
+    nodes (with HEALTH lines) whose liveness lines (HEALTH, BOOT, deep sleep,
+    resume) stop >HANG_GAP_S before the end of the logs."""
     hs = [e for e in events if e.kind == "health"]
     if not hs:
         return {"present": False}
     if log_end is None:
         log_end = max(e.ts for e in events)
+    alive = last_alive(events)
     by_node: dict[str, list[Event]] = defaultdict(list)
     for e in hs:
         by_node[e.node].append(e)
@@ -279,7 +308,7 @@ def health_stats(events: list[Event], log_end: float | None = None) -> dict:
             den = sum((x - mx) ** 2 for x in xs)
             slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / den if den else None
         gap = log_end - lst[-1].ts
-        if gap > HANG_GAP_S:
+        if log_end - max(alive.get(node, lst[-1].ts), lst[-1].ts) > HANG_GAP_S:
             hung.append(node)
         per_node[node] = {
             "n": len(lst),
@@ -303,22 +332,27 @@ def health_stats(events: list[Event], log_end: float | None = None) -> dict:
 # ── Crashes ──────────────────────────────────────────────────────────────────
 
 def crash_stats(events: list[Event]) -> dict:
-    """Unexpected reboots (an `rst:0x` not preceded by gw-reset and not the
-    first boot) and panic markers, per node, over the whole run."""
+    """Unexpected reboots (an `rst:0x` not preceded by gw-reset, not the first
+    boot, and not the wake from a deep sleep the node announced) and panic
+    markers, per node, over the whole run."""
     panics: dict[str, Counter] = defaultdict(Counter)
     resets: dict[str, int] = defaultdict(int)
+    wakes: dict[str, int] = defaultdict(int)
     for e in events:
         if e.kind != "crash":
             continue
         k = e.fields["kind"]
         if k == "reset":
-            if not e.fields.get("expected", True):
+            if e.fields.get("deep_sleep_wake"):
+                wakes[e.node] += 1
+            elif not e.fields.get("expected", True):
                 resets[e.node] += 1
         else:
             panics[e.node][k] += 1
     return {
         "unexpected_resets_total": sum(resets.values()),
         "unexpected_resets": dict(sorted(resets.items())),
+        "deep_sleep_wakes_total": sum(wakes.values()),
         "panic_markers_total": sum(sum(c.values()) for c in panics.values()),
         "panic_markers": {n: dict(c) for n, c in sorted(panics.items())},
         "nodes_affected": sorted(set(resets) | set(panics)),
@@ -412,6 +446,19 @@ def _group_members(run_dir: Path) -> set[str] | None:
     return members if found else None
 
 
+def _sleep_members(run_dir: Path) -> set[str] | None:
+    """Active devices other than the configured Network Manager: the nodes the
+    library lets deep-sleep. None when config.yaml is missing."""
+    import yaml
+    p = run_dir / "config.yaml"
+    if not p.is_file():
+        return None
+    cfg = yaml.safe_load(p.read_text()) or {}
+    mgr = hex4((cfg.get("defaults") or {}).get("lora_manager_id"))
+    active = _active_devices(run_dir)
+    return {n for n in active if n != mgr} if active else None
+
+
 def _superframe_s(run_dir: Path) -> float | None:
     try:
         from analysis.superframe import extract
@@ -443,6 +490,8 @@ def compute_all(run_dir: Path, events: list[Event] | None = None) -> dict:
         "data_slots": data_slot_stats(events),
         "join": join_stats(events),
         "diag": diag_counts(events),
+        "sleep": sleep_stats(events, superframe_s=sf_s,
+                             members=_sleep_members(run_dir)),
     }
 
 

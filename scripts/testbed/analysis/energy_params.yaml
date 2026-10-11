@@ -1,0 +1,45 @@
+# Per-state currents for analysis/energy_model.py. Every output built from these
+# numbers is MODELLED, not measured: datasheet-typical values (or explicit
+# assumptions) times the time each node spent in each state according to its logs.
+# Radio currents are NOT here: they come from analysis/radio_power.py (one table
+# for every energy figure in this repo). Change a value -> change its source note.
+#
+# Board: LilyGO T-Beam v1.x (ESP32-D0WDQ6 @ 240 MHz, SX1276, AXP192 PMU,
+# u-blox GPS on AXP192 LDO3, SSD1306 OLED on DCDC1), 3.3 V rail.
+
+voltage_v: 3.3
+
+mcu:
+  # [ESP32-DS] Espressif "ESP32 Series Datasheet" v4.x, Table "Power Consumption by
+  # Power Modes". Modem-sleep (Wi-Fi/BT off, CPU running), 240 MHz dual core:
+  # 30-68 mA; 80 MHz: 20-31 mA. The sim/load firmware runs at the Arduino default
+  # 240 MHz with Wi-Fi off; 50 mA is the middle of that range (assumption within it).
+  active_mA: 50.0
+  active_range_mA: [30.0, 68.0]
+  # [ESP32-DS] Light-sleep: 0.8 mA.
+  light_mA: 0.8
+  # [ESP32-DS] Deep-sleep, RTC timer + RTC memory powered: 10 uA (the resume state
+  # is kept in RTC memory). ULP co-processor on would be 150 uA.
+  deep_mA: 0.010
+  # Boot after a deep-sleep wake (ROM + bootloader + app start to BOOT_READY): CPU
+  # running and SPI flash active. Assumed equal to active_mA (no datasheet figure).
+  boot_mA: 50.0
+  # Used when a run has no rst:0x5 -> BOOT_READY pair to measure the boot time from.
+  boot_ms_default: 400
+
+board:
+  # Board floor, drawn in every MCU state (it is what limits board-level deep sleep).
+  # AXP192 PMU own quiescent current with DCDC1/DCDC3/LDO2/LDO3 enabled. The X-Powers
+  # AXP192 datasheet gives no single figure for this configuration: ASSUMED, measure.
+  axp192_quiescent_mA: 0.1
+  # u-blox GPS on LDO3, which initDevices.cpp enables on AXP192 boards. [NEO-6M]
+  # u-blox NEO-6 data sheet (GPS.G6-HW-09005): ~37 mA continuous tracking, max
+  # performance mode. Set gps_on: false if the firmware powers LDO3 down.
+  gps_mA: 37.0
+  gps_on: true
+  # SSD1306 128x64 OLED on DCDC1. [SSD1306] Solomon Systech datasheet: sleep-mode
+  # current <10 uA; display on draws several mA depending on lit pixels. ASSUMED
+  # mostly-dark display: 1 mA.
+  oled_mA: 1.0
+  # Other always-on parts (CP2104 USB-UART, LEDs, regulator losses): ASSUMED 0.
+  other_mA: 0.0

@@ -201,3 +201,30 @@ python3 analysis/audit_app_pdr.py --v1 runs/sim_size_compare_v1 \
 > packet MTU, no app fragmentation) and SF9_s40 v2 is a harness capture-window artifact —
 > only SF9_s80 and SF12_s40 are valid. A clean interleaved re-run with `linkstats` capture
 > is the fix.
+
+## Member sleep, modelled energy, run exclusion (sleep campaign)
+
+- `sleep_metrics.py <run_dir>`: per member deep sleeps, time asleep, resume success
+  ("Resumed network" / deep sleeps), "Cannot resume" by reason, cold starts after a wake,
+  sleep-clock error (|ms off|, residual and learned ppm), boot (rst:0x5 → BOOT_READY),
+  time-to-ready (rst:0x5 → "Schedule confirmed ..."), joins by members after a resume,
+  light sleep from the HEALTH `lsl_n`/`lsl_ms` counters, APP_TX_LATE. Also the `sleep`
+  section of `lm200_metrics.py`.
+- `parse_logs.py` treats a DEEPSLEEP_RESET (`rst:0x5`) as an expected deep-sleep wake when
+  the node logged "Deep sleep for N ms" (or `SLEEPCB ... type=deep`) at most N ms + 10 s
+  before it, and tags the state change the library logs while restoring a member
+  (`resume=True`): neither counts as a reboot, a join, a flap or a rejoin.
+- `formation.py --window run`: formation from the synchronized reset to the end of the logs
+  (adds `*_since_reset_s`); the gates store it as `formation.from_reset`.
+- `energy_model.py <run_dir>`: **modelled** whole-node energy, radio (as `duty_cycle.py`)
+  plus ESP32 active / light / deep / boot, with a "chip" and a "board" (AXP192 + GPS + OLED
+  floor) variant. Currents and their sources: `energy_params.yaml`. `multirun.py` reports
+  `modelled_{chip,board}_current_mA` and `modelled_{chip,board}_energy_per_bit_mJ`.
+- `runs/EXCLUDED.txt` (not versioned; runs/ is ignored): one run dir name per line, `#`
+  comments; listed runs are skipped by `multirun.py`, `lm200/gates.py` and `lm200/report.py`,
+  which say so. Example:
+  ```
+  # <run dir name>  # reason
+  lm200ab_13node-20261008-210609-SF12_d308000-r02  # host suspended: 538-min window
+  ```
+- Tests: `python3 -m pytest scripts/testbed/analysis/tests -q` (synthetic logs).
