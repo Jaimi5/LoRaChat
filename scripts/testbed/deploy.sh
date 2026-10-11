@@ -133,6 +133,19 @@ else
     ACTIVE_GWS=("${!GW_SSH[@]}")
 fi
 
+# SKIP_GWS="GW-6 ..." (environment) leaves gateways out of every command. The
+# campaign sets it for a batch when a gateway is unreachable and all its devices
+# are inactive in that batch, so they keep their last (radio-off) firmware.
+if [[ -n "${SKIP_GWS:-}" ]]; then
+    declare -a _kept=()
+    for agw in "${ACTIVE_GWS[@]}"; do
+        [[ " ${SKIP_GWS//,/ } " == *" $agw "* ]] && continue
+        _kept+=("$agw")
+    done
+    echo "Skipping gateway(s) (SKIP_GWS): ${SKIP_GWS}" >&2
+    ACTIVE_GWS=("${_kept[@]}")
+fi
+
 # Sort gateway list for consistent output
 IFS=$'\n' ACTIVE_GWS=($(sort <<<"${ACTIVE_GWS[*]}")); unset IFS
 
@@ -770,9 +783,11 @@ cmd_run_remote() {
     fi
 
     run_parallel "remote" "${args[@]}"
+    local rc=$?
 
     echo ""
     echo -e "Logs: ${LOCAL_LOG_DIR}/${SESSION}/"
+    return $rc
 }
 
 cmd_sync_time() {
@@ -890,6 +905,7 @@ cmd_list_device_map() {
         dev_id="${entry%%:*}"
         gw_id="${entry##*:}"
         short_id="${dev_id##*-}"
+        [[ " ${ACTIVE_GWS[*]} " == *" $gw_id "* ]] || continue   # -g / SKIP_GWS
         if [[ -n "${by_gw[$gw_id]+x}" ]]; then
             by_gw[$gw_id]="${by_gw[$gw_id]},\"${short_id}\""
         else

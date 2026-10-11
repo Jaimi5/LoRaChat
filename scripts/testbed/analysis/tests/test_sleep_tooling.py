@@ -404,3 +404,38 @@ def test_sleep_clock_line_with_kind(line, kind):
     assert m, line
     f = _extract_fields("sleep_clock", m)
     assert f["sleep_kind"] == kind and f["slept_ms"] > 0 and f["samples"] >= 1
+
+
+def test_run_config_drops_skipped_inactive_devices(tmp_path):
+    import yaml
+    from lm200 import gates
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump({
+        "defaults": {"lora_spreading_factor": 9},
+        "devices": {"E464": {"node_active": 1}, "3428": {"node_active": 0}, "DD58": {"node_active": 1}}}))
+    assert gates.run_config(tmp_path)["devices"] == ["3428", "DD58", "E464"]
+    # 3428 (inactive) and DD58 (active!) sit on skipped gateways: only 3428 may drop out.
+    (tmp_path / "skipped_devices.json").write_text(json.dumps({"gateways": ["GW-6", "GW-5"],
+                                                               "devices": ["3428", "DD58"]}))
+    cfg = gates.run_config(tmp_path)
+    assert cfg["devices"] == ["DD58", "E464"] and cfg["skipped"] == ["3428"]
+
+
+def test_plan_gateways_skips_only_unneeded(monkeypatch):
+    from types import SimpleNamespace
+    from lm200 import campaign as cm
+    c = cm.Campaign.__new__(cm.Campaign)
+    c.args = SimpleNamespace(dry_run=False)
+    c.cfg = {"retries": {"gateway_wait_min": 0}}
+    c.testbed_conf = {"gateways": ["GW-1", "GW-5", "GW-6"],
+                      "device_gw": {"E464": "GW-1", "DD58": "GW-5", "3428": "GW-6"}}
+    c.log = lambda *a, **k: None
+    c.event = lambda *a, **k: None
+    down = {"GW-6"}
+    c.deploy = lambda *a, **k: 1 if ("-g" not in a and down) or (len(a) > 2 and a[2] in down) else 0
+    cell = SimpleNamespace(inactive_devices=("DD58", "14A4", "3428"))
+    batch = SimpleNamespace(name="b", cells=[cell])
+    assert c._plan_gateways(batch) == ["GW-6"] and c.skip_gws == ["GW-6"]
+    down = {"GW-6", "GW-1"}                     # GW-1's E464 is active: needed, not skipped
+    assert c._plan_gateways(batch) == ["GW-6"]
+    down = set()
+    assert c._plan_gateways(batch) == [] and c.skip_gws == []

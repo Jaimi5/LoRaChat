@@ -190,12 +190,24 @@ def run_config(run_dir: Path) -> dict:
     devices = {str(k).upper(): (v or {}) for k, v in (raw.get("devices") or {}).items()}
     active = {k for k, v in devices.items()
               if str(v.get("node_active", 1)).lower() not in ("0", "false")}
+    # Inactive boards on a gateway the campaign skipped (unreachable) were neither
+    # flashed nor logged; they are not part of the run. Active ones stay, so the
+    # run fails validation.
+    skipped = set()
+    sk = run_dir / "skipped_devices.json"
+    if sk.is_file():
+        try:
+            skipped = {str(d).upper() for d in json.loads(sk.read_text()).get("devices", [])} - active
+        except Exception:
+            skipped = set()
+        devices = {k: v for k, v in devices.items() if k not in skipped}
 
     def per_dev(key, default=0):
         return {k: v.get(key, defaults.get(key, default)) for k, v in devices.items()}
 
     return {
         "devices": sorted(devices),
+        "skipped": sorted(skipped),
         "active": sorted(active),
         "sinks": sorted(k for k in active if str(devices[k].get("wifi_ssid", "nowifi")) != "nowifi"),
         "sf": defaults.get("lora_spreading_factor"),

@@ -110,6 +110,7 @@ class Campaign:
         used = {self.stage_env(sc) for sc in self.cfg.get("stages", [])} | set(self.cfg.get("prewarm_envs") or [])
         os.environ.setdefault("UPGRADE_ENVS", " ".join(sorted(self.envs[k] for k in used if k in self.envs)))
         self.config_h = None   # committed src/config.h text, read at preflight (CFG check)
+        self.skip_gws: list[str] = []   # unreachable gateways left out of the current batch
 
     # ── bookkeeping ──────────────────────────────────────────────────────────
     def _load_state(self) -> dict:
@@ -147,6 +148,14 @@ class Campaign:
             if m:
                 gws = sorted(set(re.findall(r"\[(GW-\d+)\]", m.group(1))))
         out["gateways"] = gws
+        # DEVICES=( "C6E104-E464:GW-1" ... ) -> {"E464": "GW-1", ...}
+        dev_gw = {}
+        if conf.is_file():
+            m = re.search(r"^DEVICES=\((.*?)\n\)", conf.read_text(), re.S | re.M)
+            if m:
+                for dev, gw in re.findall(r'"([A-Za-z0-9_-]+):(GW-\d+)"', m.group(1)):
+                    dev_gw[dev.rsplit("-", 1)[-1].upper()] = gw
+        out["device_gw"] = dev_gw
         return out
 
     def sh(self, cmd: list[str], log_name: str | None = None, env: dict | None = None,
@@ -160,6 +169,8 @@ class Campaign:
         logdir.mkdir(exist_ok=True)
         lp = logdir / (log_name or f"cmd-{stamp()}.log")
         e = dict(os.environ, **(env or {}))
+        if self.skip_gws:
+            e["SKIP_GWS"] = " ".join(self.skip_gws)
         with open(lp, "a") as fh:
             fh.write(f"\n===== {now()} $ {' '.join(cmd)}\n")
             fh.flush()
@@ -540,6 +551,44 @@ class Campaign:
                      f"{max((r['cum_h'] for r in rows), default=0)} h")
         return rows
 
+    def _plan_gateways(self, batch) -> list[str]:
+        """Gateways to leave out of this batch attempt. An unreachable gateway is
+        skipped when every device on it is inactive in every cell (those boards keep
+        their last, radio-off firmware and are exempt from validation). A gateway
+        that a cell needs is waited for (retries.gateway_wait_min); if it stays down
+        the attempt goes ahead and its runs fail validation as before."""
+        self.skip_gws = []
+        if self.args.dry_run or self.deploy("status", log_name="status.log", timeout=300) == 0:
+            return []
+        dev_gw = self.testbed_conf.get("device_gw") or {}
+        inactive = set.intersection(*[{str(d).upper() for d in c.inactive_devices} for c in batch.cells])
+
+        def down_now() -> list[str]:
+            return [gw for gw in self.testbed_conf["gateways"]
+                    if self.deploy("status", "-g", gw, log_name="status.log", timeout=300) != 0]
+
+        def needed(gws) -> list[str]:
+            return [gw for gw in gws
+                    if not dev_gw or any(d not in inactive for d, g in dev_gw.items() if g == gw)]
+
+        down = down_now()
+        deadline = time.time() + 60 * gates.dig(self.cfg, "retries.gateway_wait_min", 120)
+        while needed(down) and time.time() < deadline:
+            self.log(f"gateway(s) {needed(down)} unreachable and needed by {batch.name}; retry in 5 min")
+            self.event("gateway_wait", gateways=needed(down), batch=batch.name)
+            time.sleep(300)
+            down = down_now()
+        if needed(down):
+            self.log(f"WARNING: gateway(s) {needed(down)} still unreachable; running {batch.name} anyway")
+        skip = [gw for gw in down if gw not in needed(down)]
+        if skip:
+            devs = sorted(d for d, g in dev_gw.items() if g in skip)
+            self.log(f"WARNING: skipping unreachable gateway(s) {skip} for {batch.name}: "
+                     f"their devices {devs} are inactive in every cell")
+            self.event("gateway_skipped", gateways=skip, devices=devs, batch=batch.name)
+        self.skip_gws = skip
+        return skip
+
     def run_batch(self, yaml_rel: str, extra: list[str], env_name: str | None = None,
                   tag: str | None = None, sha: str | None = None) -> list[Path]:
         """Run one batch YAML with validation + per-cell retries. Returns valid run dirs.
@@ -567,6 +616,7 @@ class Campaign:
         for attempt in range(1, attempts + 1):
             if not pending:
                 break
+            skipped = self._plan_gateways(batch)
             before = {p.name for p in broot.iterdir()} if broot.is_dir() else set()
             tmp_yaml = self._batch_yaml_for_run(yaml_path, None if attempt == 1 else pending,
                                                 batch_name=bname if tag else None)
@@ -595,6 +645,12 @@ class Campaign:
                 for p in new:
                     self.log(f"  dry-run rendered {p.relative_to(TESTBED)}")
                 return new
+            if skipped:
+                dev_gw = self.testbed_conf.get("device_gw") or {}
+                for p in new:
+                    (p / "skipped_devices.json").write_text(json.dumps(
+                        {"gateways": skipped,
+                         "devices": sorted(d for d, g in dev_gw.items() if g in skipped)}, indent=2))
             retry = set()
             for p in new:
                 c = gates.cell_of(p)
@@ -641,6 +697,7 @@ class Campaign:
                                 {"run": str(dst), "why": "cell re-run (incomplete reps)", "ts": now()})
         self.probe_radiolib(env_name or gates.dig(self.cfg, "envs.new", "ttgo-t-beam-v2"),
                             f"after-{bname}-{stamp()}")
+        self.skip_gws = []
         for cid in pending:
             self.state["incomplete"].append({"batch": bname, "cell": cid, "ts": now()})
             self.log(f"  INCOMPLETE: {bname}/{cid} after {attempts} attempt(s)")
