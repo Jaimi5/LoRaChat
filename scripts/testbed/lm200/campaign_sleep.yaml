@@ -148,6 +148,26 @@ stages:
     gates: [g1, {gate: ab, with_stages: [S10b]}]
     batches:
       - {yaml: batches/lm200s_13node_SF12.yaml, extra: [--runs, "2"]}
+  # Overnight additions (2026-10-12/13, deadline 08:00Z): firm up the single-run results.
+  # Not optional, because the 23 h budget is spent; selected explicitly with --only-stage.
+  - name: N1
+    title: FIX reliable SF9, 3 data slots, 2 repeat runs (n=3 with S12)
+    env: fix
+    gates: [{gate: g2, required: [reliable_SF9_dds3]}]
+    batches:
+      - {yaml: batches/lm200s_reliable_dds3.yaml, extra: [--runs, "2"]}
+  - name: N2
+    title: FIX group messaging (O3, not budget-gated)
+    env: fix
+    gates: [{gate: g2, required: [group]}]
+    batches:
+      - {yaml: batches/lm200s_group.yaml}
+  - name: N3
+    title: SLP NM failover, pinned manager (O1, not budget-gated)
+    env: sleep
+    gates: [{gate: g2, required: [nm_failover_SF9]}]
+    batches:
+      - {yaml: batches/lm200s_nm_failover.yaml}
   # Optional tail: only if the budget still allows.
   - name: O1
     title: SLP NM failover, pinned manager
