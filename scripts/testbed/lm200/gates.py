@@ -244,6 +244,7 @@ _RE_HEAP = re.compile(r"FREE HEAP:\s*(\d+)")
 _RE_LIBSHA = re.compile(r"LoRaMesher @ (\S+)")
 _RE_RADIOLIB = re.compile(r"RadioLib @ (\S+)")
 _RE_RST = re.compile(r"rst:0x([0-9A-Fa-f]+)")
+RESUME_CONFIRM_S = 60.0   # an unannounced rst:0x5 must be followed by "Resumed network" within this
 _RE_DEEP = re.compile(r"Deep sleep for (\d+) ms|SLEEPCB node=0x[0-9A-Fa-f]+ type=deep planned_ms=(\d+)")
 _RE_OK = re.compile(r"^OK: (\S+)")
 _RE_FAILED = re.compile(r"^FAILED: (\S+)")
@@ -272,8 +273,13 @@ def scan_device_logs(run_dir: Path) -> dict:
         d = {"lines": 0, "boots": 0, "expected_reboots": 0, "unexpected_reboots": 0,
              "crashes": [], "toa_mismatch": 0, "build_env": None, "app_version": None,
              "join_slots": [], "stack_min_free": {}, "heap_min": None,
-             "nm_failover": 0, "last_ts": None, "first_ts": None, "deep_sleep_wakes": 0}
+             "nm_failover": 0, "last_ts": None, "first_ts": None, "deep_sleep_wakes": 0,
+             "deep_sleep_wakes_unannounced": 0}
         last_failover_ts = None
+        # An rst:0x5 with no "Deep sleep for" line before it waits here for the
+        # firmware's own "Resumed network ... of deep sleep" line: that proves a
+        # planned deep sleep whose announcement was lost from the serial log.
+        pending_wake_ts = None
         sleep_announced = None   # (ts, planned_s) of the last announced deep sleep
         try:
             with _open(p) as fh:
@@ -284,8 +290,18 @@ def scan_device_logs(run_dir: Path) -> dict:
                         d["last_ts"] = t
                         if d["first_ts"] is None:
                             d["first_ts"] = t
+                        if pending_wake_ts is not None and t - pending_wake_ts > RESUME_CONFIRM_S:
+                            d["unexpected_reboots"] += 1
+                            pending_wake_ts = None
+                    if pending_wake_ts is not None and "Resumed network" in line and "of deep sleep" in line:
+                        d["deep_sleep_wakes"] += 1
+                        d["deep_sleep_wakes_unannounced"] += 1
+                        pending_wake_ts = None
                     if "rst:0x" in line:
                         d["boots"] += 1
+                        if pending_wake_ts is not None:
+                            d["unexpected_reboots"] += 1
+                            pending_wake_ts = None
                         m = _RE_RST.search(line)
                         # A DEEPSLEEP_RESET the node announced ("Deep sleep for N ms" /
                         # SLEEPCB type=deep) within N ms + slack is its planned wake.
@@ -295,6 +311,9 @@ def scan_device_logs(run_dir: Path) -> dict:
                         sleep_announced = None
                         if wake:
                             d["deep_sleep_wakes"] += 1
+                        elif (m is not None and m.group(1).lower() == "5" and d["boots"] > 1
+                              and t is not None and "--- RESET via gw-reset.sh" not in line):
+                            pending_wake_ts = t
                         elif d["boots"] > 1:
                             if last_failover_ts is not None and t is not None and t - last_failover_ts < 60:
                                 d["expected_reboots"] += 1
@@ -340,6 +359,8 @@ def scan_device_logs(run_dir: Path) -> dict:
                         d["heap_min"] = v if d["heap_min"] is None else min(d["heap_min"], v)
         except (OSError, EOFError) as e:
             d["read_error"] = str(e)
+        if pending_wake_ts is not None:
+            d["unexpected_reboots"] += 1
         out[node] = d
     return out
 
@@ -637,6 +658,10 @@ def check_health(s: dict, expected_env: str | None = None,
         wakes = sum(d.get("deep_sleep_wakes", 0) for d in scan.values())
         if wakes:
             det = (det + "; " if det else "") + f"{wakes} deep-sleep wake(s) (rst:0x5 after 'Deep sleep for')"
+            lost = sum(d.get("deep_sleep_wakes_unannounced", 0) for d in scan.values())
+            if lost:
+                det += (f", {lost} of them with the 'Deep sleep for' line lost from the serial log"
+                        " (confirmed by 'Resumed network ... of deep sleep')")
         out.append(chk("reboots", PASS, value=0, detail=det, run=run))
     if not allow_failover_reboots and any(d["nm_failover"] for d in scan.values()):
         out.append(chk("nm_failover_flag", FAIL, detail="NM_FAILOVER fired outside the failover cell",
@@ -1652,8 +1677,12 @@ def _deep_checks(s: dict, sl: dict, th: dict, run: str) -> list[dict]:
                                             f"{sl.get('join_attempts_after_resume')}" if rj else
                    f"join attempts after a resume {sl.get('join_attempts_after_resume')}"))
     if sl.get("n_unannounced_deepsleep_resets"):
-        out.append(chk("sleep:deep:unannounced_wakes", GREY, value=sl["n_unannounced_deepsleep_resets"], run=run,
-                       detail="rst:0x5 without a matching 'Deep sleep for' line (counted as unexpected reboots)"))
+        n_un = sl["n_unannounced_deepsleep_resets"]
+        n_ok = sl.get("n_unannounced_confirmed_by_resume", 0)
+        out.append(chk("sleep:deep:unannounced_wakes", PASS if n_ok == n_un else GREY, value=n_un, run=run,
+                       detail=f"rst:0x5 without a matching 'Deep sleep for' line; {n_ok} confirmed as planned "
+                              f"deep sleeps by 'Resumed network ... of deep sleep' (log line lost), "
+                              f"{n_un - n_ok} counted as unexpected reboots"))
     return out
 
 

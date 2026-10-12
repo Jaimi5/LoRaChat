@@ -108,6 +108,40 @@ def test_late_rst5_is_not_a_wake(tmp_path):
     assert not r.fields["deep_sleep_wake"] and not r.fields["expected"]
 
 
+
+def lost_announcement_log() -> list[tuple[float, str]]:
+    """C270 in lm200s_sleep__slp r02 (2026-10-12): the 'Deep sleep for' line was cut off
+    ("[INFO] [") when the chip slept, then rst:0x5 and the firmware's own resume line."""
+    return [(0.0, "rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)"),
+            (40.0, lib(M, "Network service state changed to 3")),
+            (100.0, "[INFO] [ets Jun  8 2016 00:22:57"),
+            (100.0, "rst:0x5 (DEEPSLEEP_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)"),
+            (103.2, lib(M, "Network service state changed to 3")),
+            (103.2, lib(M, "Resumed membership of network 0x006C: manager 0x006C, control slot 3, 12 routes")),
+            (103.3, lib(M, "Resumed network 0x006C after 29751 ms of deep sleep")),
+            # unannounced and never resumed: still an unexpected reboot
+            (200.0, "rst:0x5 (DEEPSLEEP_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)"),
+            (205.0, lib(M, "Network service state changed to 1"))]
+
+
+def test_unannounced_rst5_confirmed_by_resume(tmp_path):
+    ev = parse_run(make_run(tmp_path, {"CB34": lost_announcement_log()}), window=(None, None))
+    resets = [e for e in ev if e.kind == "crash" and e.fields["kind"] == "reset"]
+    assert [r.fields["deep_sleep_wake"] for r in resets] == [False, True, False]
+    assert [r.fields["expected"] for r in resets] == [True, True, False]
+    assert [bool(r.fields.get("wake_unannounced")) for r in resets] == [False, True, False]
+    sc3 = [e for e in ev if e.kind == "state_change" and e.fields["state"] == 3]
+    assert [bool(e.fields.get("resume")) for e in sc3] == [False, True]     # not a join
+    assert [e.ts for e in ev] == sorted(e.ts for e in ev)                    # order kept
+
+
+def test_gates_scan_unannounced_wake_confirmed(tmp_path):
+    import gates
+    d = gates.scan_device_logs(make_run(tmp_path, {"CB34": lost_announcement_log()}))["CB34"]
+    assert d["deep_sleep_wakes"] == 1 and d["deep_sleep_wakes_unannounced"] == 1
+    assert d["unexpected_reboots"] == 1
+
+
 # ── sleep_metrics / lm200_metrics ────────────────────────────────────────────
 
 def test_sleep_stats(tmp_path):

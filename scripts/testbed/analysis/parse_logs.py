@@ -267,7 +267,41 @@ def _open_log(path: Path):
     return path.open("r", errors="replace")
 
 
+RESUME_CONFIRM_S = 60.0   # an unannounced rst:0x5 must be followed by "Resumed network" within this
+
+
 def iter_log_events(path: Path, node: str) -> Iterable[Event]:
+    """Yield Events extracted from one device's monitor log file.
+
+    An rst:0x5 the node did not announce is still a deep-sleep wake when the
+    firmware logs "Resumed network ... of deep sleep" within RESUME_CONFIRM_S
+    after it (no other reset in between): the announcement was lost from the
+    serial log. Such a reset gets `deep_sleep_wake=True`, `expected=True` and
+    `wake_unannounced=True`."""
+    held: list[Event] = []
+    for ev in _iter_log_events_raw(path, node):
+        is_reset = ev.kind == "crash" and ev.fields.get("kind") == "reset"
+        if held and (is_reset or ev.ts - held[0].ts > RESUME_CONFIRM_S):
+            yield from held
+            held = []
+        if held:
+            if ev.kind == "resumed_network":
+                held[0].fields.update(deep_sleep_wake=True, expected=True, wake_unannounced=True)
+                yield from held
+                held = []
+                yield ev
+            else:
+                held.append(ev)
+            continue
+        if (is_reset and not ev.fields.get("deep_sleep_wake") and not ev.fields.get("expected")
+                and str(ev.fields.get("code", "")).lower() == DEEPSLEEP_RESET_CODE):
+            held = [ev]
+            continue
+        yield ev
+    yield from held
+
+
+def _iter_log_events_raw(path: Path, node: str) -> Iterable[Event]:
     """Yield Events extracted from one device's monitor log file.
 
     `crash` events of kind "reset" (an `rst:0x` boot line) carry
@@ -318,7 +352,10 @@ def iter_log_events(path: Path, node: str) -> Iterable[Event]:
                     boots += 1
                     gw_reset_pending = False
                     sleep_announced = None
-                    after_deep_wake = wake
+                    # Any rst:0x5 may restore a member (an unannounced wake is
+                    # confirmed later by iter_log_events); the state_change is only
+                    # tagged `resume` if "Resumed membership" follows it.
+                    after_deep_wake = wake or fields["code"].lower() == DEEPSLEEP_RESET_CODE
                 ev = Event(ts=ts, node=node, kind=kind, fields=fields)
                 if held:
                     # held[0] is the state_change; the rest arrived after it.

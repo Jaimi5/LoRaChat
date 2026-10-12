@@ -163,8 +163,8 @@ def sleep_stats(events: list[Event], superframe_s: float | None = None,
     intervals = deep_sleep_intervals(events)
     sleeps = [it for n, lst in intervals.items() for it in lst]
     wakes = [e for e in events if _is_wake(e)]
-    unannounced = [e for e in events if _is_reset(e) and not e.fields.get("deep_sleep_wake")
-                   and str(e.fields.get("code", "")).lower() == "0x5"]
+    unannounced = [e for e in events if _is_reset(e) and str(e.fields.get("code", "")).lower() == "0x5"
+                   and (e.fields.get("wake_unannounced") or not e.fields.get("deep_sleep_wake"))]
     resumed = [e for e in events if e.kind == "resumed_network"]
     cannot = [e for e in events if e.kind == "cannot_resume"]
 
@@ -268,6 +268,7 @@ def sleep_stats(events: list[Event], superframe_s: float | None = None,
         "asleep_frac_member_mean": (sum(member_frac) / len(member_frac)) if member_frac else None,
         "n_wakes": len(wakes),
         "n_unannounced_deepsleep_resets": len(unannounced),
+        "n_unannounced_confirmed_by_resume": sum(1 for e in unannounced if e.fields.get("wake_unannounced")),
         "n_resumed": len(resumed),
         "resume_success": (len(resumed) / n_sleeps) if n_sleeps else None,
         "n_cannot_resume": len(cannot),
