@@ -8,8 +8,11 @@
 # load is light (9 packets, one per 4 min per node) so members are idle most of the time.
 # sim_send_path 1: the sim sends with sendPacketsOnSchedule (APP_TX_LATE when a send
 # misses its slot); every other lm200s cell uses the classic path (0).
-# LORA_DEEP_SLEEP_MIN_MS / LORA_DEEP_SLEEP_BOOT_MS stay at the firmware defaults
-# (src/config.h, restored before every board).
+# LORA_DEEP_SLEEP_BOOT_MS stays at the firmware default (4200, src/config.h, calibrated in
+# the AP8 smoke). lora_deep_sleep_min_ms is lowered to 20000: the library deep-sleeps only
+# when sleep window - (boot + guard + clock allowance) >= min_sleep_ms. The ~33.1 s SLEEP run
+# leaves ~28.6 s after the 4200 ms boot budget, under the 30000 default, so the first
+# attempt (2026-10-12) fell back to light sleep on 11/12 members.
 batch: lm200s_sleep
 description: Member sleep deep (sim_sleep_mode 2), SF9, min sleep fraction 0.5
 base: ../lm200/experiments/lm200_base.yaml
@@ -31,6 +34,7 @@ cells:
       lora_min_sleep_fraction: 0.5
       lora_manager_id: '0x006C'
       sim_sleep_mode: 2
+      lora_deep_sleep_min_ms: 20000   # see header
       sim_send_path: 1   # 1 = sendPacketsOnSchedule (sleep cells)
       sim_pdr_compare: 1
       one_sender: 0
