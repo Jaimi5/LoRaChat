@@ -132,6 +132,22 @@ stages:
     batches:
       - {yaml: batches/lm200s_reliable_dds2.yaml}
       - {yaml: batches/lm200s_reliable_dds3.yaml}
+  # SF12 repeats (added 2026-10-12): ab-S11 FAILed on SF12 convergence with one run per
+  # arm (slp 1639 s vs fix 1354 s, +2.3 superframes); joins at SF12 are serialised with
+  # 20+ retries, so one run cannot separate that from noise. Two more runs per arm land in
+  # the same batch dirs, so the gates pool all three.
+  - name: S10b
+    title: SLP 13-node SF12, 2 repeat runs
+    env: sleep
+    gates: [g1]
+    batches:
+      - {yaml: batches/lm200s_13node_SF12.yaml, extra: [--runs, "2"]}
+  - name: S11b
+    title: FIX 13-node SF12, 2 repeat runs (+ ab over all SF9 and SF12 runs)
+    env: fix
+    gates: [g1, {gate: ab, with_stages: [S10b]}]
+    batches:
+      - {yaml: batches/lm200s_13node_SF12.yaml, extra: [--runs, "2"]}
   # Optional tail: only if the budget still allows.
   - name: O1
     title: SLP NM failover, pinned manager
