@@ -59,7 +59,7 @@ from analysis.parse_logs import DEEP_WAKE_SLACK_S, is_v2_run, parse_run  # noqa:
 
 PASS, GREY, INCOMPLETE, FAIL = "PASS", "GREY", "INCOMPLETE", "FAIL"
 _RANK = {PASS: 0, GREY: 1, INCOMPLETE: 2, FAIL: 3}
-SUMMARY_VERSION = 8  # bump to invalidate cached run summaries
+SUMMARY_VERSION = 9  # bump to invalidate cached run summaries
 
 # ── small helpers ─────────────────────────────────────────────────────────────
 
