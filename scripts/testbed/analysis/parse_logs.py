@@ -195,6 +195,12 @@ _PATTERNS = {
     "crash": re.compile(
         r"(Guru Meditation|Stack canary|stack overflow|abort\(\) was called"
         r"|Backtrace:|rst:0x[0-9A-Fa-f]+)"),
+    # The library prints its current state inside other lines ("*** RECEIVED
+    # MESSAGE ... (my state: 3, ...", "PROCESSING JOIN_REQUEST ... (state: 3, ...").
+    # Evidence of a join when the "state changed to 3" line itself was lost from
+    # the serial log (e.g. in the uncaptured gap between gw-reset.sh and the
+    # monitor). Only changes of the reported state are emitted.
+    "state_seen": re.compile(r"\((?:my )?state: (\d+)[,)]"),
 }
 
 _CRASH_KIND = {
@@ -319,6 +325,7 @@ def _iter_log_events_raw(path: Path, node: str) -> Iterable[Event]:
     gw_reset_pending = False
     sleep_announced: tuple[float, float] | None = None  # (ts, planned_s)
     after_deep_wake = False
+    last_seen_state: int | None = None   # state_seen is emitted on change only
     held: list[Event] = []      # a state_change (+ what follows) awaiting a resume line
     with _open_log(path) as fh:
         for line in fh:
@@ -333,6 +340,12 @@ def _iter_log_events_raw(path: Path, node: str) -> Iterable[Event]:
                 if not mm:
                     continue
                 fields = _extract_fields(kind, mm)
+                if kind == "state_seen":
+                    if fields["state"] == last_seen_state:
+                        break
+                    last_seen_state = fields["state"]
+                elif kind in ("state_change", "crash"):
+                    last_seen_state = None
                 if kind == "gw_reset":
                     gw_reset_pending = True
                 elif kind == "deep_sleep":
@@ -502,6 +515,8 @@ def _extract_fields(kind: str, m: re.Match) -> dict:
     if kind == "resume_state_invalid":
         return {"what": g[0]}
     if kind == "state_change":
+        return {"state": int(g[0])}
+    if kind == "state_seen":
         return {"state": int(g[0])}
     if kind == "route_updated":
         return {"dest": g[0].upper(), "via": g[1].upper(), "hops": int(g[2])}

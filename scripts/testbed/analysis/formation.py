@@ -210,6 +210,10 @@ def _compute_join(events: Iterable[Event]) -> dict[str, float]:
             out[ev.node] = ev.ts
         elif ev.kind == "joined":
             out[ev.node] = ev.ts
+        elif ev.kind == "state_seen" and ev.fields.get("state") in _JOIN_STATES:
+            # The state-change line was lost (serial capture gap after the
+            # reset); the first line reporting a joined state stands in for it.
+            out[ev.node] = ev.ts
     return out
 
 

@@ -142,6 +142,23 @@ def test_gates_scan_unannounced_wake_confirmed(tmp_path):
     assert d["unexpected_reboots"] == 1
 
 
+
+def test_join_from_state_evidence_when_state_line_lost(tmp_path):
+    """S8 2026-10-12: the 'state changed to 3' line fell into the uncaptured gap
+    between gw-reset.sh and the monitor; later lines still report state 3."""
+    lines = [(0.0, "rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)"),
+             (2.0, lib(M, "Network service state changed to 1")),
+             (65.0, lib(M, "*** PROCESSING JOIN_REQUEST from 0x34DC (state: 3, network_manager: 0x006C) ***")),
+             (66.0, lib(M, "*** RECEIVED MESSAGE: type 0x46 from 0x006C to 0xFFFF (my state: 3, timestamp: 1) ***")),
+             (70.0, lib(M, "*** RECEIVED MESSAGE: type 0x46 from 0x006C to 0xFFFF (my state: 3, timestamp: 2) ***"))]
+    run = make_run(tmp_path, {"CB34": lines})
+    ev = parse_run(run, window=(None, None))
+    t0 = min(e.ts for e in ev)
+    seen = [e for e in ev if e.kind == "state_seen"]
+    assert [(e.ts - t0, e.fields["state"]) for e in seen] == [(65.0, 3)]    # emitted on change only
+    assert {n: t - t0 for n, t in formation._compute_join(ev).items()} == {"CB34": 65.0}
+
+
 # ── sleep_metrics / lm200_metrics ────────────────────────────────────────────
 
 def test_sleep_stats(tmp_path):
