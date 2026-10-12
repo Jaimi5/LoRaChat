@@ -285,7 +285,9 @@ class Campaign:
         gws = self.testbed_conf["gateways"] or [None]
         tries = gates.dig(self.cfg, "retries.prewarm_attempts", 3)
         tries_wipe = gates.dig(self.cfg, "retries.prewarm_after_wipe_attempts", 2)
-        build = f"cd {rp} && $PIO_NICE pio run -e {env}"
+        # ${PIO_JOBS:+-j $PIO_JOBS}: honour the per-gateway job limit like gw-upload.sh.
+        # Without it pio uses every core; 4 jobs hung the 906 MB GW-6 on 2026-10-11.
+        build = f"cd {rp} && $PIO_NICE pio run ${{PIO_JOBS:+-j $PIO_JOBS}} -e {env}"
         failed = []
         # First a parallel attempt on all gateways, then per-gateway retries.
         session = f"lm200-prewarm-{env}-{stamp()}"
