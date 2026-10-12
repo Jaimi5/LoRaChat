@@ -156,6 +156,18 @@ stages:
     gates: [{gate: g2, required: [reliable_SF9_dds3]}]
     batches:
       - {yaml: batches/lm200s_reliable_dds3.yaml, extra: [--runs, "2"]}
+  - name: S10c
+    title: SLP 13-node SF12, 1 more run (n=4 per arm with S10/S10b)
+    env: sleep
+    gates: [g1]
+    batches:
+      - {yaml: batches/lm200s_13node_SF12.yaml, extra: [--runs, "1"]}
+  - name: S11c
+    title: FIX 13-node SF12, 1 more run (+ ab over all runs)
+    env: fix
+    gates: [g1, {gate: ab, with_stages: [S10c]}]
+    batches:
+      - {yaml: batches/lm200s_13node_SF12.yaml, extra: [--runs, "1"]}
   - name: N2
     title: FIX group messaging (O3, not budget-gated)
     env: fix
