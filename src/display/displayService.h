@@ -8,6 +8,8 @@
 #include <SPI.h>
 #include <Wire.h>
 
+#include "esp_timer.h"
+
 #include "message/messageService.h"
 
 #include "message/messageManager.h"
@@ -39,6 +41,9 @@ public:
 
     /** Turns the display on for DISPLAY_AWAKE_MS; it then goes to sleep. */
     void wake();
+
+    /** @return true while the display is on. */
+    bool isAwake() const { return initialized && esp_timer_get_time() < sleepAtUs; }
 
     String displayOn(uint16_t dst);
 

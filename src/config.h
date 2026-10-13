@@ -84,7 +84,14 @@
 // Max message bytes handed to LoRaMesher: packet size minus the 10-byte LoRaMesher DATA
 // overhead (6-byte BaseHeader + 4-byte DataHeader).
 #define MAX_MSG_SIZE 245
+// Minimum share of the superframe the network sleeps; the network manager's stored
+// /sleep.fraction overrides it.
 #define LORA_MIN_SLEEP_FRACTION 0
+// Sensors in deep-sleep mode (/sleep.set deep): shortest run of SLEEP slots worth a deep
+// sleep (a reboot), and the time from the wake-up to the mesh running again. A T-Beam resumes
+// about 1.0 s after the reset with INFO logs (bench, 2026-10-13); 1500 ms leaves 50 % margin.
+#define LORA_DEEP_SLEEP_MIN_MS 30000
+#define LORA_DEEP_SLEEP_BOOT_MS 1500
 // Data slots each node requests at join. More slots raise per-node throughput at the cost of
 // a longer superframe; the sum across nodes is capped by LORA_MAX_DATA_SLOTS.
 #define LORA_DEFAULT_DATA_SLOTS 1

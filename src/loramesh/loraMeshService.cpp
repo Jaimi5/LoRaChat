@@ -1,10 +1,88 @@
 #include "loraMeshService.h"
 
+#include "driver/gpio.h"
+#include "esp_attr.h"
+#include "esp_system.h"
+#include "soc/rtc_cntl_reg.h"
+
 static const char* LMS_TAG = "LoRaMeshService";
 
+// Sleeps since power-on, in RTC memory so deep sleeps add up. A deep sleep is booked on the
+// next boot: the library can still call it off after the callback allowed it.
+struct SleepStats {
+    uint32_t magic;
+    uint32_t lightCount;
+    uint32_t lightMs;
+    uint32_t deepCount;
+    uint32_t deepMs;
+    uint32_t deepPending;
+    uint32_t deepPlannedMs;
+};
+static constexpr uint32_t SLEEP_STATS_MAGIC = 0x534C5031;  // "SLP1"
+RTC_DATA_ATTR static SleepStats sleepStats;
 
-void LoRaMeshService::initLoraMesherService(bool networkManager) {
+void LoRaMeshService::releaseDeepSleepPadHold() {
+    // The digital pads latched at the deep sleep stay held after the wake-up until released.
+    gpio_deep_sleep_hold_dis();
+    SET_PERI_REG_MASK(RTC_CNTL_DIG_ISO_REG, RTC_CNTL_CLR_DG_PAD_AUTOHOLD);
+}
+
+void LoRaMeshService::countDeepSleepWake() {
+    if (sleepStats.magic != SLEEP_STATS_MAGIC) {
+        sleepStats = SleepStats{};
+        sleepStats.magic = SLEEP_STATS_MAGIC;
+    }
+    if (esp_reset_reason() == ESP_RST_DEEPSLEEP && sleepStats.deepPending) {
+        sleepStats.deepCount++;
+        sleepStats.deepMs += sleepStats.deepPlannedMs;
+    }
+    sleepStats.deepPending = 0;
+}
+
+std::string LoRaMeshService::sleepReport() const {
+    char text[96];
+    snprintf(text, sizeof(text), "light %u x %u s, deep %u x %u s since power-on",
+             (unsigned)sleepStats.lightCount, (unsigned)(sleepStats.lightMs / 1000),
+             (unsigned)sleepStats.deepCount, (unsigned)(sleepStats.deepMs / 1000));
+    return text;
+}
+
+loramesher::power::SleepResult LoRaMeshService::onPrepareSleep(
+    const loramesher::power::SleepContext& context) {
+    bool deep = context.requested_state == loramesher::power::PowerState::DEEP_SLEEP;
+    SleepBlockers blockers = sleepBlockers_ ? sleepBlockers_() : SleepBlockers{};
+    SleepDecision decision = decideSleep(sleepMode_, deep, blockers);
+    // Logged on change only: each log line blocks the mesh task on the UART.
+    if (decision != lastSleepDecision_ && decision != SleepDecision::NO_DEEP_SLEEP) {
+        ESP_LOGI(LMS_TAG, "MCU sleep: %s", sleepDecisionName(decision));
+        lastSleepDecision_ = decision;
+    }
+    if (decision != SleepDecision::ALLOW) return loramesher::power::SleepResult{false};
+    if (deep) {
+        // The radio's reset and chip-select lines keep their levels through the deep sleep, so
+        // the radio stays asleep. The hold only acts in deep sleep, so a cancelled one is harmless.
+        gpio_deep_sleep_hold_en();
+        sleepStats.deepPending = 1;
+        sleepStats.deepPlannedMs = context.sleep_duration_ms;
+        Serial.flush();
+    } else {
+        lightSleepPlannedMs_ = context.sleep_duration_ms;
+    }
+    return loramesher::power::SleepResult{true};
+}
+
+void LoRaMeshService::onWakeUp(loramesher::power::PowerState previous) {
+    if (previous != loramesher::power::PowerState::LIGHT_SLEEP) return;
+    sleepStats.lightCount++;
+    sleepStats.lightMs += lightSleepPlannedMs_;
+}
+
+
+void LoRaMeshService::initLoraMesherService(bool networkManager, SleepMode sleepMode,
+                                            int sleepFractionPercent) {
 #ifdef LORA_ENABLED
+    countDeepSleepWake();
+
     loramesher::PinConfig pinConfig(LORA_CS, LORA_RST, LORA_IRQ, LORA_IO1, LORA_SCK, LORA_MISO,
                                     LORA_MOSI);
 
@@ -20,19 +98,42 @@ void LoRaMeshService::initLoraMesherService(bool networkManager) {
 
     meshConfig.setTargetDutyCycle(LORA_DUTY_CYCLE);
     meshConfig.setMaxPacketSize(LORA_MAX_PACKET_SIZE);
-    meshConfig.setMinSleepFraction(LORA_MIN_SLEEP_FRACTION);
+    meshConfig.setMinSleepFraction(sleepFractionPercent >= 0 ? sleepFractionPercent / 100.0f
+                                                             : LORA_MIN_SLEEP_FRACTION);
     meshConfig.setDefaultDataSlots(LORA_DEFAULT_DATA_SLOTS);
     meshConfig.setMaxNetworkNodes(LORA_MAX_NETWORK_NODES);
     meshConfig.setMaxDataSlots(LORA_MAX_DATA_SLOTS);
 
-    mesher_ = loramesher::LoraMesher::Builder()
-                  .withRadioConfig(radioConfig)
-                  .withPinConfig(pinConfig)
-                  .withLoRaMeshProtocol(meshConfig)
-                  .Build();
+    loramesher::LoraMesher::Builder builder;
+    builder.withRadioConfig(radioConfig).withPinConfig(pinConfig).withLoRaMeshProtocol(meshConfig);
 
-    ESP_LOGI(LMS_TAG, "Radio SF=%u BW=%.1f pow=%d maxPkt=%u", (unsigned)LORA_SPREADING_FACTOR,
-             (float)LORA_BANDWIDTH, (int)LORA_POWER, (unsigned)LORA_MAX_PACKET_SIZE);
+    // The MCU only sleeps with a prepare-sleep callback; the network manager never sleeps.
+    sleepMode_ = networkManager ? SleepMode::NONE : sleepMode;
+    if (sleepMode_ != SleepMode::NONE) {
+        builder
+            .withPrepareSleepCallback([](const loramesher::power::SleepContext& context) {
+                return LoRaMeshService::getInstance().onPrepareSleep(context);
+            })
+            .withWakeUpCallback([](loramesher::power::PowerState previous) {
+                LoRaMeshService::getInstance().onWakeUp(previous);
+            });
+    }
+    if (sleepMode_ == SleepMode::DEEP) {
+        // RTC memory keeps the mesh state through deep sleep, so the node resumes its slots
+        loramesher::power::DeepSleepPolicy policy;
+        policy.enabled = true;
+        policy.min_sleep_ms = LORA_DEEP_SLEEP_MIN_MS;
+        policy.boot_time_ms = LORA_DEEP_SLEEP_BOOT_MS;
+        builder.withStateStore(std::make_shared<loramesher::storage::RtcStateStore>())
+            .withDeepSleep(policy);
+    }
+    mesher_ = builder.Build();
+
+    ESP_LOGI(LMS_TAG, "Radio SF=%u BW=%.1f pow=%d maxPkt=%u, MCU sleep %s, sleep fraction %d %%",
+             (unsigned)LORA_SPREADING_FACTOR, (float)LORA_BANDWIDTH, (int)LORA_POWER,
+             (unsigned)LORA_MAX_PACKET_SIZE, sleepModeName(sleepMode_),
+             sleepFractionPercent >= 0 ? sleepFractionPercent
+                                       : (int)(LORA_MIN_SLEEP_FRACTION * 100));
 
     loraReceiveQueue_ = xQueueCreate(10, sizeof(LoRaQueueMessage*));
 

@@ -95,9 +95,9 @@ void InitDevices::onPowerKeyShortPress(std::function<void()> handler) {
 #endif
 }
 
-void InitDevices::init() {
+void InitDevices::init(bool deepSleepWake) {
 #if defined(T_BEAM)
-    initTBeam();
+    initTBeam(deepSleepWake);
 #endif
 }
 
@@ -192,14 +192,14 @@ std::string InitDevices::identify(uint32_t seconds) {
     return "Blinking for " + std::to_string(seconds) + " s";
 }
 
-void InitDevices::initTBeam() {
+void InitDevices::initTBeam(bool deepSleepWake) {
     // After reset the pin's pull-down lights the LED; drive it off.
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LED_OFF);
-    beginPower();
+    beginPower(deepSleepWake);
 }
 
-bool InitDevices::beginPower() {
+bool InitDevices::beginPower(bool deepSleepWake) {
 #ifdef HAS_PMU
     ESP_LOGV(ID_TAG, "beginPower");
 
@@ -262,7 +262,7 @@ bool InitDevices::beginPower() {
         PMU->enableIRQ(XPOWERS_AXP2101_PKEY_SHORT_IRQ | XPOWERS_AXP2101_BAT_INSERT_IRQ |
                        XPOWERS_AXP2101_BAT_REMOVE_IRQ);
     }
-    restartCharger();
+    if (!deepSleepWake) restartCharger();
     applyChargeLed();
     PMU->clearIrqStatus();
     startPmuIrqTask();

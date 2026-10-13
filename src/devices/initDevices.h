@@ -15,7 +15,11 @@ struct PowerState {
 
 class InitDevices {
 public:
-    static void init();
+    /**
+     * @brief Powers the board's rails through the PMU.
+     * @param deepSleepWake the node woke from deep sleep: the charger keeps running as it was.
+     */
+    static void init(bool deepSleepWake);
 
     /**
      * @brief Sets the function called when the PMU power button is pressed briefly.
@@ -44,7 +48,7 @@ public:
     static std::string identify(uint32_t seconds);
 
 private:
-    static void initTBeam();
-    static bool beginPower();
+    static void initTBeam(bool deepSleepWake);
+    static bool beginPower(bool deepSleepWake);
     static void startPmuIrqTask();
 };

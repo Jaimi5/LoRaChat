@@ -51,8 +51,12 @@ public:
      *        MaintWindow::decideBootWindow() allows it.
      * @param gateway the node is a gateway (it keeps its own WiFi).
      * @param pendingVerify the running image is still being verified.
+     * @param deepSleepWake the node woke from deep sleep (no boot window then).
      */
-    void startBootWindow(bool gateway, bool pendingVerify);
+    void startBootWindow(bool gateway, bool pendingVerify, bool deepSleepWake);
+
+    /** @return true while a window (boot, pull or access point) is open. */
+    bool isBusy() const { return busy_; }
 
     /** Opens or extends a pull window of @p durationS seconds. @return the reply. */
     std::string openPullWindow(uint32_t durationS) { return open(Kind::PULL, durationS); }
@@ -114,6 +118,7 @@ private:
     uint32_t clockSavedAt_ = 0;
     bool gateway_ = false;
     bool pendingVerify_ = false;
+    bool deepSleepWake_ = false;
     char ssid_[33] = {};
     char password_[65] = {};
     esp_netif_t* netif_ = nullptr;

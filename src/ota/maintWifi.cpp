@@ -77,9 +77,10 @@ void MaintenanceWifi::begin() {
     }
 }
 
-void MaintenanceWifi::startBootWindow(bool gateway, bool pendingVerify) {
+void MaintenanceWifi::startBootWindow(bool gateway, bool pendingVerify, bool deepSleepWake) {
     gateway_ = gateway;
     pendingVerify_ = pendingVerify;
+    deepSleepWake_ = deepSleepWake;
     if (wifiEvents == nullptr) wifiEvents = xEventGroupCreate();
 
     WindowKind planned;
@@ -98,7 +99,8 @@ void MaintenanceWifi::startBootWindow(bool gateway, bool pendingVerify) {
     }
 
     // Credentials are only known once the WiFi driver is up; the window task checks them.
-    BootWindowDecision decision = MaintWindow::decideBootWindow(gateway, pendingVerify, true);
+    BootWindowDecision decision =
+        MaintWindow::decideBootWindow(gateway, pendingVerify, true, deepSleepWake);
     if (decision != BootWindowDecision::OPEN) {
         ESP_LOGI(MW_TAG, "Boot window skipped (reason %u)", static_cast<unsigned>(decision));
         return;
@@ -375,7 +377,8 @@ void MaintenanceWifi::runStationWindow() {
     bool hasCredentials = initWifi(false) && loadCredentials();
     if (kind_ == Kind::BOOT) {
         BootWindowDecision decision =
-            MaintWindow::decideBootWindow(gateway_, pendingVerify_, hasCredentials);
+            MaintWindow::decideBootWindow(gateway_, pendingVerify_, hasCredentials,
+                                          deepSleepWake_);
         if (decision != BootWindowDecision::OPEN) {
             ESP_LOGI(MW_TAG, "Boot window skipped (reason %u)", static_cast<unsigned>(decision));
             return;

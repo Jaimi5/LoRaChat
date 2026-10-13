@@ -110,6 +110,9 @@ Every command has a permission: **Open** commands run from any channel, **Signed
 | `/power` | Open | Power chip, supply, battery and charger state (with the AXP2101 registers) |
 | `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10) to find the board |
 | `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
+| `/sleep` | Open | Sleep mode and sleep fraction (stored or default) and the light and deep sleeps since power-on |
+| `/sleep.set none\|light\|deep` | Signed | Stores how a sensor's MCU sleeps through the SLEEP slots and restarts the node. Refused while a new image is being verified |
+| `/sleep.fraction <0-90>` | Signed | Stores the minimum share of the superframe the network sleeps (used by the network manager, i.e. the gateway) and restarts the node |
 | `/key` | Open | Whether a deployment key is stored, and its fingerprint (compare with `ap_pass.py show`) |
 | `/key.set <64 hex digits>` | local | Stores the deployment key (created with `scripts/ota_tools/ap_pass.py keygen`) |
 | `/maint.open <seconds>` | Signed | Sensor nodes: joins the WiFi network and checks the OTA server, up to 7200 s. On a gateway: checks the OTA server right away over its WiFi (MQTT stops while it installs) |
@@ -125,6 +128,8 @@ Every command has a permission: **Open** commands run from any channel, **Signed
 | `/displayOn`, `/displayOff`, `/displayBlink`, `/displayClear`, `/displayLogo`, `/displayText` | Open | Display. `/displayText <addr> <text>` sent to another node takes up to 100 characters at SF9 (one LoRa packet); longer text is refused |
 
 One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there); longer replies end in `~`.
+
+Sensor nodes can let the ESP32 sleep while the mesh has nothing for them (`/sleep.set`, default `none`; the radio always sleeps in the SLEEP slots). `light` puts the MCU into light sleep through each run of SLEEP slots. `deep` deep-sleeps through runs long enough for a reboot (`LORA_DEEP_SLEEP_MIN_MS` plus `LORA_DEEP_SLEEP_BOOT_MS` in `src/config.h`) and light-sleeps through shorter ones; the node keeps its mesh state in RTC memory and resumes its slots after the wake-up, without the display, the charger restart or the WiFi boot window, and the wake-up does not count as a boot. Long sleep runs need a gateway with a higher `/sleep.fraction`. A node stays awake while its display is on, during a maintenance window and while a new image is being verified; the gateway never sleeps. The display stays off after a deep-sleep wake-up. The sleep support comes from LoRaMesher `feat/member-sleep` (86a4072, which contains `release/2.0.0`).
 
 Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network, check the OTA server for a newer signed image and install it, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
 

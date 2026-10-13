@@ -14,6 +14,11 @@
 
 #include "loraMeshCommandService.h"
 
+#include "sleepMode.h"
+
+#include <functional>
+#include <string>
+
 
 class LoRaMeshService : public MessageService {
 public:
@@ -28,8 +33,31 @@ public:
         }
     }
 
-    /** Starts the mesh; @p networkManager makes this node the LoRaMesher network manager. */
-    void initLoraMesherService(bool networkManager);
+    /**
+     * @brief Starts the mesh.
+     * @param networkManager this node is the LoRaMesher network manager (it never sleeps).
+     * @param sleepMode how the MCU of a sensor sleeps through the SLEEP slots.
+     * @param sleepFractionPercent minimum share of the superframe the network sleeps (used by the
+     *        network manager), or -1 for LORA_MIN_SLEEP_FRACTION.
+     */
+    void initLoraMesherService(bool networkManager, SleepMode sleepMode, int sleepFractionPercent);
+
+    /**
+     * @brief Sets what is asked, on the mesh task, whenever the mesh offers the MCU a sleep.
+     *        It must only read state, never block. Call before initLoraMesherService().
+     */
+    void setSleepBlockers(std::function<SleepBlockers()> blockers) {
+        sleepBlockers_ = std::move(blockers);
+    }
+
+    /** @return the light and deep sleeps (count and planned time) since power-on. */
+    std::string sleepReport() const;
+
+    /**
+     * @brief Releases the pin levels held through a deep sleep. Call first in setup(): until
+     *        then the serial port, I2C and the radio pins stay frozen.
+     */
+    static void releaseDeepSleepPadHold();
 
     uint16_t getLocalAddress();
 
@@ -74,6 +102,18 @@ public:
 
 private:
     bool running_ = false;
+
+    SleepMode sleepMode_ = SleepMode::NONE;
+    std::function<SleepBlockers()> sleepBlockers_;
+    SleepDecision lastSleepDecision_ = SleepDecision::ALLOW;
+    uint32_t lightSleepPlannedMs_ = 0;
+
+    /** Books a deep sleep that ended in this boot into the sleep counters. */
+    static void countDeepSleepWake();
+
+
+    loramesher::power::SleepResult onPrepareSleep(const loramesher::power::SleepContext& context);
+    void onWakeUp(loramesher::power::PowerState previous);
 
     std::unique_ptr<loramesher::LoraMesher> mesher_;
 

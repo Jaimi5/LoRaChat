@@ -14,10 +14,13 @@ USB "POWER ONLY" ──▶ a second PC port (for the WiFi tests)
 T-Beam USB ──▶ PC only through a VBUS-cut cable
 ```
 
-The header `5V` pin is the USB 5 V input of the power chip (AXP), so the whole board is measured: the AXP and its converters, the ESP32, the radio (LDO2/ALDO2) and the OLED. This is the **input path**, the way a solar node runs in daytime and a mains gateway always runs. It differs from running on the battery in three ways:
-- the radio's linear regulator drops from 5 V;
-- the USB-serial chip is powered too;
-- the firmware sees external power (`/power` shows `vbus=yes`), so OTA has no battery limit.
+The whole board is measured from the header `5V` pin: the AXP and its converters, the ESP32, the radio (LDO2/ALDO2) and the OLED.
+
+On the T-Beam v1.1 (AXP192, COM3) the AXP reports **no VBUS and a battery of about 4.5 V** with the PPK2 at 5.0 V on that pin (report of 2026-10-13: `vbus:false`, `batt_mv:4504`). The pin therefore reaches the battery input, probably through a diode, so these runs measure the battery path at about 4.5 V, including the diode's loss. Two consequences:
+- the OTA battery rule applies (4.5 V is above its 3.6 V limit);
+- a cell must never be fitted while the pin is fed, because it would be charged to 4.5 V.
+
+The v1.2 (AXP2101) has not been checked yet: read `/power` on it first.
 
 For **battery life**, run E3-BAT once per board revision:
 - PPK2 VOUT goes to the 18650 holder `+` tab and GND to `−`, at 3.8 V. Use soldered wires or a dummy cell.
@@ -31,7 +34,7 @@ Never feed the header `3V3` pin. It is the AXP's DCDC1 output:
 
 Rules:
 - 5.0 V is the PPK2 maximum. Use short, thick wires (under 20 cm): the AXP limits its input near 4.4 V, and WiFi peaks of 300–400 mA cause a voltage drop along the wire.
-- Remove the 18650 cell for 5V-pin runs, or the AXP charges it and the trace shows the charging current.
+- Remove the 18650 cell for 5V-pin runs: on the v1.1 the pin feeds the battery input (above), so a fitted cell would be overcharged.
 - Never plug in a normal USB cable while the PPK2 powers the board: it ties the PC's 5 V onto the PPK2 output.
 - **VBUS-cut cable:** check it with a multimeter (no continuity on VBUS). It keeps serial and flashing working; the USB-serial chip's current is then part of the reading.
 - The PPK2 measures in the positive line, so the shared ground through the PC does not matter.
@@ -63,6 +66,7 @@ python scripts\energy\ppk2_bench.py --test E3 --board COM3 --seconds 900 ^
 ```
 
 - `--power-cycle S` switches the board off for S seconds and starts recording before switching it on, so boot and the 60 s boot window are in the trace.
+- The PPK2 switches its output off when the program ends, so every run starts with a power-on. `--warmup S` powers the board S seconds before recording starts: use 180–240 s for steady-state tests, so the node has joined and the display is off.
 - `--at` and `--every` send lines to the gateway console. Signed lines (e.g. `/maint.open`) come from `scripts/ota_tools/lmcmd.py sign`.
 - Output goes to `release/bench/energy/<date>_<board>_<test>_<voltage>/`:
   - `trace.csv`: 1 ms mean and max bins;
@@ -104,6 +108,14 @@ Setup: the sensor under test on the PPK2; the gateway on its own USB as mesh man
 | E6 | Commands | `--every "30:@<node> /version"` | 10 min | charge per request/reply |
 | E7 | Maintenance window | signed `@<node> /maint.open 120` | 3 min | cost of a WiFi window |
 | E1 | Off | hold PWR 4 s (holder, 3.8 V) | 5 min | drain while switched off |
+
+## Comparisons
+
+`scripts/energy/ppk2_compare.py release/bench/energy/campaign.json` reads the reports listed in the campaign file (group, label, report path) and writes per group a figure with the average power, the battery life and the superframe profiles, plus `summary.md` with the saving against the first row of each group.
+
+## Sleep modes
+
+Sensors sleep as set by `/sleep.set none|light|deep` (signed, so send it through the gateway: `@<node> /sleep.set light #<sig>` from `lmcmd.py sign`). Deep sleep needs runs of SLEEP slots longer than `LORA_DEEP_SLEEP_MIN_MS` + `LORA_DEEP_SLEEP_BOOT_MS` (34.2 s), which needs a gateway with `/sleep.fraction` of about 85 % at 4 nodes. `/sleep` shows the light and deep sleeps since power-on.
 
 ## Results
 

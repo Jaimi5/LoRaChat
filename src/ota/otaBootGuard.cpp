@@ -165,8 +165,11 @@ void OtaBootGuard::countBoot() {
     nvs_handle_t handle;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
     nvs_get_u32(handle, NVS_KEY_BOOTS, &bootCount_);
-    bootCount_++;
-    if (nvs_set_u32(handle, NVS_KEY_BOOTS, bootCount_) == ESP_OK) nvs_commit(handle);
+    // A deep-sleep wake-up continues the same boot (and spares the flash a write per wake).
+    if (esp_reset_reason() != ESP_RST_DEEPSLEEP) {
+        bootCount_++;
+        if (nvs_set_u32(handle, NVS_KEY_BOOTS, bootCount_) == ESP_OK) nvs_commit(handle);
+    }
     nvs_close(handle);
 }
 

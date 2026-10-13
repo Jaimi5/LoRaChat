@@ -74,9 +74,11 @@ void initWiFi() {
 #pragma region LoRaMesher
 
 LoRaMeshService& loraMeshService = LoRaMeshService::getInstance();
+NodeService& nodeService = NodeService::getInstance();
 
 void initLoRaMesher(bool networkManager) {
-    loraMeshService.initLoraMesherService(networkManager);
+    loraMeshService.initLoraMesherService(networkManager, nodeService.sleepMode(),
+                                          nodeService.sleepFractionPercent());
 }
 
 #pragma endregion
@@ -96,7 +98,6 @@ void initMQTT() {
 #pragma region Manager
 
 MessageManager& manager = MessageManager::getInstance();
-NodeService& nodeService = NodeService::getInstance();
 
 void initManager(bool gateway) {
     manager.init();
@@ -161,6 +162,8 @@ extern "C" bool verifyRollbackLater() {
 OtaBootGuard& bootGuard = OtaBootGuard::getInstance();
 
 void setup() {
+    LoRaMeshService::releaseDeepSleepPadHold();
+
     // Initialize Serial Monitor
     Serial.begin(115200);
 
@@ -168,6 +171,10 @@ void setup() {
     esp_log_level_set("*", ESP_LOG_INFO);
 
     bootGuard.begin();
+
+    // A sensor in deep-sleep mode reboots at every wake-up and resumes its mesh slots: it skips
+    // the display, the charger restart and the WiFi boot window.
+    bool deepSleepWake = esp_reset_reason() == ESP_RST_DEEPSLEEP;
 
     ESP_LOGI(TAG, "Build environment name: %s", BUILD_ENV_NAME);
 
@@ -178,7 +185,7 @@ void setup() {
 #ifdef DISPLAY_ENABLED
     InitDevices::onPowerKeyShortPress([] { displayService.wake(); });
 #endif
-    InitDevices::init();
+    InitDevices::init(deepSleepWake);
     bootGuard.reportCheck(SelfTestCheck::PMU, InitDevices::pmuResponds());
 
     // The role decides which services run: a gateway runs WiFi, MQTT and the mesh manager
@@ -197,11 +204,21 @@ void setup() {
 
 #ifdef DISPLAY_ENABLED
     // Initialize Display
-    initDisplay();
+    if (!deepSleepWake) initDisplay();
     ESP_LOGV(TAG, "Heap after initDisplay: %d", ESP.getFreeHeap());
 #endif
 
     // Initialize LoRaMesh
+    loraMeshService.setSleepBlockers([gateway] {
+        SleepBlockers blockers;
+        blockers.gateway = gateway;
+        blockers.pendingVerify = bootGuard.isPendingVerify();
+        blockers.maintenanceWindow = MaintenanceWifi::getInstance().isBusy();
+#ifdef DISPLAY_ENABLED
+        blockers.displayAwake = displayService.isAwake();
+#endif
+        return blockers;
+    });
     initLoRaMesher(gateway);
     ESP_LOGV(TAG, "Heap after initLoRaMesher: %d", ESP.getFreeHeap());
     bootGuard.reportCheck(SelfTestCheck::RADIO, loraMeshService.isRunning());
@@ -225,7 +242,8 @@ void setup() {
 
     MaintenanceWifi::getInstance().begin();
     MaintenanceWifi::getInstance().onConnected(OtaWifiPull::run);
-    MaintenanceWifi::getInstance().startBootWindow(gateway, bootGuard.isPendingVerify());
+    MaintenanceWifi::getInstance().startBootWindow(gateway, bootGuard.isPendingVerify(),
+                                                   deepSleepWake);
 
     bootGuard.reportSetupDone();
 

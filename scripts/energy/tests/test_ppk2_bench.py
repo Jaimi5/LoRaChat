@@ -110,3 +110,13 @@ def test_capture_drives_the_ppk2_and_writes_a_readable_trace(tmp_path):
     assert result["duration_s"] == pytest.approx(1.0)
     assert result["avg_ma"] == pytest.approx(90.0)
     assert np.nanmax(trace.max_ua) == pytest.approx(140_000.0)
+
+
+def test_warmup_powers_the_board_before_the_recording_starts(tmp_path):
+    clock = FakeClock()
+    ppk2 = FakePpk2(clock)
+    slept = []
+    pb.capture(ppk2, tmp_path, seconds=0.1, voltage=5.0, warmup_s=120.0, clock=clock,
+               sleep=slept.append)
+    assert ppk2.calls == ["modifiers", "source", "voltage 5000", "power ON", "start", "stop"]
+    assert slept == [120.0]

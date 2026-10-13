@@ -8,6 +8,7 @@ enum class BootWindowDecision : uint8_t {
     SKIP_GATEWAY = 1,
     SKIP_PENDING_VERIFY = 2,
     SKIP_NO_CREDENTIALS = 3,
+    SKIP_DEEP_SLEEP_WAKE = 4,
 };
 
 /** Rules of the maintenance WiFi window. */
@@ -20,7 +21,8 @@ public:
      * @param gateway the node is a gateway, which keeps its own WiFi.
      * @param pendingVerify the running image is still being verified by the boot guard.
      * @param hasCredentials a maintenance hotspot is configured.
+     * @param deepSleepWake the boot is a wake-up from deep sleep, not a power-on or restart.
      */
     static BootWindowDecision decideBootWindow(bool gateway, bool pendingVerify,
-                                               bool hasCredentials);
+                                               bool hasCredentials, bool deepSleepWake);
 };

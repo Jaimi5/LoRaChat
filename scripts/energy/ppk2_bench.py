@@ -7,7 +7,9 @@
 
 The PPK2 runs as source meter at --voltage. With --power-cycle S the board is switched off for
 S seconds first and the recording starts before it is switched on again, so boot and the boot
-window are in the trace. --at T:LINE sends LINE to the gateway console once at T seconds,
+window are in the trace. The PPK2 switches its output off when the program ends, so every run
+starts with a boot; --warmup S powers the board S seconds before the recording starts (steady
+state tests). --at T:LINE sends LINE to the gateway console once at T seconds,
 --every P:LINE every P seconds (signed lines come from lmcmd.py sign). Everything shares one PC
 clock: log lines are written as "<unix time>\\t<line>", and trace.csv and meta.json hold the unix
 time of the first sample ("epoch"), so line time - epoch is the position in the trace.
@@ -168,7 +170,8 @@ class SerialLog:
 
 
 def capture(ppk2, folder: Path, seconds: float, voltage: float, power_cycle_s: float = 0.0,
-            schedule: Optional[Schedule] = None, gateway=None, raw: bool = False,
+            warmup_s: float = 0.0, schedule: Optional[Schedule] = None, gateway=None,
+            raw: bool = False,
             clock: Callable[[], float] = time.time,
             sleep: Callable[[float], None] = time.sleep) -> dict:
     """Records @p seconds of current from @p ppk2 into @p folder. @return the metadata."""
@@ -182,9 +185,15 @@ def capture(ppk2, folder: Path, seconds: float, voltage: float, power_cycle_s: f
     binner = Binner()
     raw_out = open(folder / "raw.f32", "wb") if raw else None
     samples = 0
-    ppk2.start_measuring()
-    epoch = clock()
-    ppk2.toggle_DUT_power("ON")
+    if warmup_s > 0:
+        ppk2.toggle_DUT_power("ON")
+        sleep(warmup_s)
+        ppk2.start_measuring()
+        epoch = clock()
+    else:
+        ppk2.start_measuring()
+        epoch = clock()
+        ppk2.toggle_DUT_power("ON")
     try:
         while samples < seconds * SAMPLE_RATE:
             if schedule is not None and gateway is not None:
@@ -214,7 +223,8 @@ def capture(ppk2, folder: Path, seconds: float, voltage: float, power_cycle_s: f
         for index, (mean, peak) in enumerate(zip(binner.mean, binner.max)):
             out.write(f"{index * BIN_SAMPLES / SAMPLE_RATE:.6f},{mean:.1f},{peak:.1f}\n")
     meta = {"epoch": epoch, "seconds": seconds, "samples": samples, "voltage": voltage,
-            "power_cycle_s": power_cycle_s, "wall_clock_s": clock() - epoch}
+            "power_cycle_s": power_cycle_s, "warmup_s": warmup_s,
+            "wall_clock_s": clock() - epoch}
     (folder / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
     return meta
 
@@ -238,6 +248,8 @@ def main(argv=None) -> int:
     parser.add_argument("--voltage", type=float, default=5.0)
     parser.add_argument("--power-cycle", type=float, default=0.0,
                         help="switch the board off for this many seconds first")
+    parser.add_argument("--warmup", type=float, default=0.0,
+                        help="power the board this many seconds before recording")
     parser.add_argument("--node-port", help="measured node's serial (VBUS-cut cable)")
     parser.add_argument("--gateway-port", help="gateway console for --at/--every lines")
     parser.add_argument("--at", action="append", default=[], metavar="SECONDS:LINE")
@@ -262,8 +274,8 @@ def main(argv=None) -> int:
 
     print(f"Recording {args.seconds:.0f} s into {folder}")
     try:
-        meta = capture(ppk2, folder, args.seconds, args.voltage, args.power_cycle, schedule,
-                       gateway, args.raw)
+        meta = capture(ppk2, folder, args.seconds, args.voltage, args.power_cycle, args.warmup,
+                       schedule, gateway, args.raw)
     finally:
         for log in logs:
             log.close()
@@ -272,7 +284,7 @@ def main(argv=None) -> int:
                  "note": args.note})
     (folder / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
     print(f"Done: {meta['samples']} samples in {meta['wall_clock_s']:.1f} s; "
-          f"python3 scripts/energy/ppk2_report.py {folder.name}")
+          f"python3 scripts/energy/ppk2_report.py release/bench/energy/{folder.name}")
     return 0
 
 
