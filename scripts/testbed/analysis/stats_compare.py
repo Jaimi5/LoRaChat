@@ -388,6 +388,49 @@ def reliable_slots():
         unit="ms")
 
 
+SINK_ROWS: list[dict] = []
+
+
+def reliable_sink_load():
+    """Per reliable run: messages received by the busiest sink vs the ACKs it
+    dropped ("Failed to queue ACK") and the sends still in flight at the end."""
+    import gzip
+    for cell, slots in (("reliable_SF9_dds2", 2), ("reliable_SF9_dds3", 3)):
+        for r in runs("lm200s_reliable__fix", cell):
+            rx: dict[str, int] = defaultdict(int)
+            for e in events(r):
+                if e.kind == "app_rx":
+                    rx[e.node] += 1
+            drops = 0
+            for f in (r / "logs").glob("monitor-dev-*.log.gz"):
+                with gzip.open(f, "rt", errors="replace") as fh:
+                    drops += sum(1 for line in fh if "Failed to queue ACK" in line)
+            rel = reliable(r)
+            sink, load = max(rx.items(), key=lambda kv: kv[1]) if rx else (None, 0)
+            SINK_ROWS.append({"run": r.name, "slots": slots, "sink": sink, "sink_load": load,
+                              "ack_drops": drops,
+                              "in_flight": rel.get("n_unresolved", 0) / max(rel.get("n_tx", 1), 1)})
+
+
+def sink_markdown() -> str:
+    if not SINK_ROWS:
+        return ""
+    out = ["", "## Reliable: busiest-sink load vs ACK drops (all dds2/dds3 runs)", "",
+           "| Run | Data slots | Busiest sink | Messages to it | ACK drops | In flight at end |",
+           "|---|---|---|---|---|---|"]
+    for r in SINK_ROWS:
+        out.append(f"| {r['run'][-24:]} | {r['slots']} | {r['sink']} | {r['sink_load']} | {r['ack_drops']} | "
+                   f"{r['in_flight']:.0%} |")
+    if len(SINK_ROWS) >= 4:
+        load = [r["sink_load"] / r["slots"] for r in SINK_ROWS]
+        rho_d = stats.spearmanr([r["sink_load"] for r in SINK_ROWS], [r["ack_drops"] for r in SINK_ROWS])
+        rho_f = stats.spearmanr(load, [r["in_flight"] for r in SINK_ROWS])
+        out += ["", f"Spearman: sink load vs ACK drops ρ = {rho_d.statistic:.2f} (p = {rho_d.pvalue:.3f}); "
+                    f"sink load per data slot vs in-flight fraction ρ = {rho_f.statistic:.2f} (p = {rho_f.pvalue:.3f}), "
+                    f"n = {len(SINK_ROWS)} runs."]
+    return "\n".join(out) + "\n"
+
+
 # ── output ───────────────────────────────────────────────────────────────────
 
 def _paired_verdict(p: dict) -> str:
@@ -440,10 +483,11 @@ def main() -> int:
     formation_ab()
     sleep_cells()
     reliable_slots()
+    reliable_sink_load()
     args.out_md.parent.mkdir(parents=True, exist_ok=True)
-    args.out_md.write_text(to_markdown())
-    args.out_json.write_text(json.dumps(ROWS, indent=1, default=lambda o: list(o) if isinstance(o, tuple) else str(o)))
-    print(to_markdown())
+    args.out_md.write_text(to_markdown() + sink_markdown())
+    args.out_json.write_text(json.dumps({"rows": ROWS, "reliable_sink_load": SINK_ROWS}, indent=1, default=lambda o: list(o) if isinstance(o, tuple) else str(o)))
+    print(to_markdown() + sink_markdown())
     return 0
 
 
