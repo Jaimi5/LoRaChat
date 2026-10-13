@@ -128,6 +128,10 @@ One LoRa packet carries the command frame, so a signed line has room for about 8
 
 Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network, check the OTA server for a newer signed image and install it, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
 
+## Energy measurements
+
+[docs/energy_ppk2.md](docs/energy_ppk2.md) describes the energy bench with a Nordic PPK2: the wiring on the T-Beam header (5V pin, or the battery holder for battery life), the tests, `scripts/energy/ppk2_bench.py` for recording (current plus serial logs on one clock) and `scripts/energy/ppk2_report.py` for the analysis (charge, power, bursts, superframe profile, battery life).
+
 ## MQTT messages
 
 Messages travel as JSON on two topics:
@@ -201,6 +205,8 @@ LoRaChat stands on the work of many open-source projects. Thank you to their aut
 | [pytest](https://github.com/pytest-dev/pytest) | pytest-dev | MIT | Host tool tests |
 | [pySerial](https://github.com/pyserial/pyserial) | Chris Liechti | BSD-3-Clause | Serial access from host scripts |
 | [esptool](https://github.com/espressif/esptool) | Espressif | GPL-2.0+ | Flashing and reading flash (run as a tool, not distributed with the firmware) |
+| [ppk2-api](https://github.com/IRNAS/ppk2-api-python) | IRNAS | GPL-2.0 | PPK2 control in `ppk2_bench.py` (host tool, not distributed with the firmware) |
+| [NumPy](https://numpy.org), [pandas](https://pandas.pydata.org), [Matplotlib](https://matplotlib.org) | their communities | BSD-3-Clause, BSD-3-Clause, Matplotlib (PSF-based) | Trace analysis in `ppk2_report.py` |
 
 The LGPL components are linked into the firmware. LoRaChat is MIT licensed and its full source is published, so you can rebuild and relink the firmware with modified versions of those libraries.
 
