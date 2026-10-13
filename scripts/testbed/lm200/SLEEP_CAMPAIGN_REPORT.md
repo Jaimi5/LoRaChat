@@ -132,6 +132,26 @@ Same schedule in all three cells: SF9, min sleep fraction 0.5 (superframe about 
 - **Deep sleep's energy cost.** Each wake costs about 3.5 s of boot plus the early-wake margin at full MCU current, so at about 33 s windows deep sleep is *worse* than light sleep. About 1.7 s of the boot is the VERBOSE ESP-IDF startup log (`CONFIG_LOG_DEFAULT_LEVEL=5`, ≈20 KB at 115200 baud). Break-even with the model's currents: about 280 s windows today, about 90 s with a 1.2 s boot.
 - **Board floor:** the T-Beam's GPS (37 mA) dominates the total. These energy figures are **modelled**, not measured.
 
+### When deep sleep beats light sleep (`analysis/sleep_breakeven.py`)
+
+- **Break-even run length:** W* = [(i_A − i_D)(budget + guard) − (i_A − i_L)·guard] / ((i_L − i_D)(1 − ppm)), about i_A × boot budget ÷ (i_L − i_D). The node wakes a full boot budget early and stays awake after booting, so the **budget** counts, not the actual boot.
+  - **Today:** 4.2 s budget → **267 s**.
+  - **1.2 s budget:** **76 s**.
+  - **If light sleep really draws 2 mA instead of the datasheet's 0.8 mA:** about 110 s at today's budget.
+- **The model matches the campaign.** The light cell plus the model's extra cost per wake predicts the deep cells' ESP32 current at 26.98 / 26.95 mA. The energy model on the logs gives 26.58 / 27.12 mA (+1.5 % / −0.6 %).
+- **Superframe cap.** The beacon carries the slot count in one byte, so the superframe has at most 255 slots. The longest possible SLEEP run is therefore about 145 s at SF7, 200 s at SF9, 390 s at SF11 and 700 s at SF12 (13 nodes, 2 data slots). **With today's boot budget, deep sleep can never beat light sleep at SF7–SF9.**
+- **Configurations (13 nodes, modelled):**
+
+| Configuration | SLEEP run | Winner | ESP32 mean current, deep vs light |
+|---|---|---|---|
+| Campaign sleep cells (SF9, sleep fraction 0.5, duty 10 %) | 30 s | light | +12 % |
+| Library defaults (sleep fraction 0.3, duty 1 %, 2 slots), SF9 | 158 s | light | +4 % |
+| Library defaults, SF11 | 389 s (cap) | deep | −2 % |
+| Library defaults, SF12 | 693 s (cap) | deep | −4 % |
+
+- **Even where deep sleep wins, the saving on the T-Beam is a few percent of the ESP32's current,** and about half that once the board floor (GPS) is included.
+- **Interactive version** with sliders for boot time and currents, and a spreading-factor × duty-cycle grid: run `sleep_breakeven.py --png` for the static figure; the interactive page was shared separately.
+
 ---
 
 ## 7. Formation at SF7 (16 nodes)
@@ -252,7 +272,7 @@ The gateway disks are 10–50 % used. None is near full.
 5. **Stack sizes:** fine after #131 (worst free 1200–2536 B).
 
 **Application / firmware build**
-6. **Lower the ESP-IDF log level on deep-sleep builds.** VERBOSE costs about 1.7 s per wake; at INFO or WARN, boot should drop to about 1.5 s. Then lower `LORA_DEEP_SLEEP_BOOT_MS` and re-measure.
+6. **Lower the ESP-IDF log level on deep-sleep builds, and set the boot budget to the real boot.** VERBOSE costs about 1.7 s per wake; at INFO or WARN, boot should drop to about 1.5 s. Then lower `LORA_DEEP_SLEEP_BOOT_MS` and re-measure.
 7. **GPS off on the T-Beam when not needed.** At about 37 mA it dwarfs every sleep saving on this board.
 8. **Measure energy.** All energy figures here are modelled. 15 minutes on a USB power meter per mode would calibrate `energy_params.yaml`.
 
