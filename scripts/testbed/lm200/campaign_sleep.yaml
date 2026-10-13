@@ -180,6 +180,12 @@ stages:
     gates: [{gate: g2, required: [nm_failover_SF9]}]
     batches:
       - {yaml: batches/lm200s_nm_failover.yaml}
+  - name: N2b
+    title: FIX group messaging, repeat (N2 lost all group packets to a slot-table desync)
+    env: fix
+    gates: [{gate: g2, required: [group]}]
+    batches:
+      - {yaml: batches/lm200s_group.yaml, extra: [--runs, "1"]}
   # Optional tail: only if the budget still allows.
   - name: O1
     title: SLP NM failover, pinned manager
