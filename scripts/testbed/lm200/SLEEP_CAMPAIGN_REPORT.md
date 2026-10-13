@@ -30,10 +30,10 @@ The automated verdict says **NO-GO, 3 blockers**. Two are the group cell (`g2-N2
 | 5 | **Reliable unicast: the sink drops ACKs when its TX queue is full** | Library improvement | Data 100 % delivered; ACK loss follows the busiest sink's load (Spearman ρ = 0.94, p = 0.005). Up to 48 % of sends still in flight at window end, even with 3 data slots when one sink takes 95 % of the traffic (§8) |
 | 6 | Formation at SF7: main cluster always joins; remote cluster does not | Known link limit | 36/36 member joins; 3428/14A4/DD58 fail at SF7 as in July (§7) |
 | 7 | Testbed: ~50 s of serial log lost after every reset | Measurement artefact | Join times < 60 s after reset unreliable; analysis fixed, pipeline fix proposed (§11) |
-| 8 | **Group messaging, 0 % received in 1 of 2 runs (FIX): the sender's data slot desynced when the superframe grew** | Library bug candidate (intermittent) | The sender kept a stale slot after a 34 → 37 slot growth; the network dropped its RX entry (§9). Passed in lm200-eval (13 nodes, 98.75 %) |
+| 8 | **Group messaging, 0 % received in 1 of 2 runs (FIX): the network stopped listening to the sender's data slot** | Library bug candidate (intermittent), release arm | The manager marked its strong direct link to the sender as one-way, routed it via a relay and dropped its RX entry (§9, corrected 2026-10-13). Passed in lm200-eval (13 nodes, 98.75 %) |
 
 **Recommendation:**
-- **Release 2.0.0 with the Stop/Start fix (FIX), after triaging the data-slot desync (#8).** It occurred on FIX in 1 of 2 group runs. At minimum, file it as a known issue with the N2 logs; whether it blocks the release is the maintainers' call.
+- **Release 2.0.0 with the Stop/Start fix (FIX), after triaging the group-slot loss (#8).** It occurred on FIX in 1 of 2 group runs. At minimum, file it as a known issue with the N2 logs; whether it blocks the release is the maintainers' call.
 - **Member-sleep is functionally ready** (light and deep) and matches FIX wherever it was measured. Two follow-ups come before it is the default: the deep-sleep energy break-even (§6) and more SF12 repeats (§4).
 - **Reliable ACK handling (§8)** is a library issue in both arms.
 
@@ -177,13 +177,16 @@ Same schedule in all three cells: SF9, min sleep fraction 0.5 (superframe about 
 
 **Group messaging, N2 (FIX, 16 nodes, one sender 7B6C, 20 messages): FAIL, 0 % received.** No crashes, reboots or stack/heap problems.
 - **The sender transmitted every message** (`PKT_TX dst=0xFF00 type=0x14` ×20), and every other node heard 7B6C's beacons and routing messages. No node received a single group frame, not even at the radio level.
-- **Cause: a data-slot desync.** As nodes joined, the superframe grew twice (34 → 37 slots at 06:49:51, 37 → 40 at 06:52:46), and every node shifted its data slot by one each time (C270: 20 → 21 → 22).
-  - 7B6C missed the first shift: it stayed on 20, then moved to 21.
-  - From 06:49:51 every other node, including the manager, dropped 7B6C's RX entry. Slot 21 then belonged to C270.
-  - So for the whole burst 7B6C transmitted in a slot nobody listened to it in.
+- **Correction (2026-10-13, after re-reading the logs):** the first version of this report said 7B6C missed a slot shift. It did not. 7B6C and C270 shifted together at both growths: data slots 19/20 → 20/21 → 21/22, control slots 6/7 → 7/8 → 8/9. Their control indices are adjacent, not duplicated.
+- **What the logs show** (manager 006C, times CEST):
+  - From 06:47, neighbours' advertised quality for 7B6C flaps between ~137 and 0 (`Remote link quality from … for us: 0`), although they hear each other well.
+  - 06:52:23: 006C reroutes 7B6C via 1484 at 3 hops (`uni=1 remote_q=0`), while still receiving 7B6C directly at RSSI −44 dBm, SNR 11. From then on it logs `Ignoring … routes from 0x7B6C: not an active direct neighbour`.
+  - That 3-hop route raises max_hops to 3. At 06:52:46 the superframe grows 37 → 40 and the new slot table has no RX entry for 7B6C (data slots go only to direct neighbours). The growth is a consequence, not the cause.
+  - The group burst (06:56:54–07:10:47) falls entirely in that period, so 7B6C transmitted in a slot nobody listened to.
+- **Open question:** why neighbours advertise quality 0 for a strong direct link. Candidates: a partial routing-table update that omits a node being read as quality 0, or the link-stats expected/received bookkeeping.
 - **The same test passed in lm200-eval** (764b893, 2026-10-09, same sender, 98.75 %). That run had 13 nodes; here the remote cluster joins during warmup, so the superframe grows.
-- **Why it matters beyond group messaging:** a member that keeps transmitting on a stale slot is invisible to the network until it re-syncs.
-- **Repeat, N2b: 93.3 % received** (threshold 0.9), 0 duplicates, group ACK completeness 6.7 % (informational, as in lm200-eval). Members got 20/20, except 1484, 2A9C, 2AD4, DD3C and E464 (17/20). So the desync is **intermittent: 1 of 2 runs**. It is worth a library issue with the N2 logs (`runs/lm200s_features__fix/*-042549-group_SF9-r01`, nodes 7B6C, C270 and 006C between 06:49 and 07:05).
+- **Why it matters beyond group messaging:** a member with a good direct link can be marked one-way and lose its data slot everywhere, silently, while it keeps transmitting.
+- **Repeat, N2b: 93.3 % received** (threshold 0.9), 0 duplicates, group ACK completeness 6.7 % (informational, as in lm200-eval). Members got 20/20, except 1484, 2A9C, 2AD4, DD3C and E464 (17/20). So the fault is **intermittent: 1 of 2 runs**. It is worth a library issue with the N2 logs (`runs/lm200s_features__fix/*-042549-group_SF9-r01`, nodes 7B6C, C270, 006C and 1484 between 06:45 and 07:05; excerpt bundle `runs/lm200s_features__fix/N2_excerpt_0645-0705.tar.gz`).
 
 **NM failover with a pinned manager, N3 (SLP): PASS.**
 - The manager 006C was restarted 3 times. It was back as manager 3/3, worst 2.7 s, with one manager throughout.
@@ -242,10 +245,10 @@ The gateway disks are 10–50 % used. None is near full.
    - give ACKs priority in the TX queue, or reserve room for them (today they are dropped when the queue is full);
    - let a sink request data slots according to its ACK load;
    - document that a sink needs about (messages it receives per superframe) TX slots; a uniform `lora_default_data_slots` can't cover a sink that takes most of the traffic (N1 r02: 3 slots, 48 % in flight).
-4. **Data-slot desync on superframe growth (N2).** Investigate how a member applies a slot shift when the manager grows the superframe:
-   - in N2 one member missed a shift and kept transmitting in a slot the network had reassigned;
-   - add a member-side check that its own TX slot matches the latest sync beacon or slot table;
-   - add a regression test that grows the superframe while a member is idle.
+4. **Group-slot loss (N2): direct link misclassified as one-way.** Find why neighbours advertise remote quality 0 for a strong direct link, which makes the manager drop the node's data-slot RX entry:
+   - check how a partial or paginated routing-table update sets remote quality for nodes it doesn't list;
+   - never drop the RX entry of a node that is still received directly and regularly;
+   - add a native regression test: a node with a good bidirectional link must keep its data slot while the superframe grows and members join.
 5. **Stack sizes:** fine after #131 (worst free 1200–2536 B).
 
 **Application / firmware build**
