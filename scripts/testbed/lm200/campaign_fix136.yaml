@@ -1,10 +1,10 @@
-# LoRaMesher PR #136 (fix/routing-slice-airtime @ 1f535fe) hardware round — local only.
+# LoRaMesher PR #136 (fix/routing-slice-airtime @ 1f535fe) hardware round (report: lm200/FIX136_REPORT.md).
 #
 #   python3 scripts/testbed/lm200/campaign.py --config scripts/testbed/lm200/campaign_fix136.yaml \
 #       --only-stage preflight prewarm F1 F2 F3 F4
 #
 # platformio.ini [base_v2] pins 1f535fe; the uploads must show LoRaMesher @ 1f535fe (lib_sha.fix).
-# Batch dirs are tagged __fix136; the REF_* stages are never run, they only point the ab
+# Batch dirs are tagged __fix136; the REF13 stage is never run, it only points the ab
 # gate at the sleep campaign's FIX runs (runs/<batch>__fix, ab9449a).
 #
 # Original header follows.

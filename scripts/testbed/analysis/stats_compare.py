@@ -263,35 +263,36 @@ def add_paired(section: str, metric: str, a_label: str, b_label: str, pr: dict, 
 
 # ── comparisons ──────────────────────────────────────────────────────────────
 
-def ab_13node(cell: str, label: str, superframe_s: float):
-    fix, slp = runs("lm200s_13node__fix", cell), runs("lm200s_13node__slp", cell)
+def ab_13node(cell: str, label: str, superframe_s: float, b_tag: str = "slp", a_name: str = "FIX",
+              b_name: str = "SLP"):
+    fix, slp = runs("lm200s_13node__fix", cell), runs(f"lm200s_13node__{b_tag}", cell)
     if not fix or not slp:
         return
-    sec = f"FIX vs SLP, 13 nodes {label}"
+    sec = f"{a_name} vs {b_name}, 13 nodes {label}"
     pf = [app_summary(r)["totals"]["pdr_delivered_intended"] for r in fix]
     ps = [app_summary(r)["totals"]["pdr_delivered_intended"] for r in slp]
-    add(sec, "fair PDR", "per run", "FIX", "SLP", welch(pf, ps), tost(pf, ps, 0.02),
+    add(sec, "fair PDR", "per run", a_name, b_name, welch(pf, ps), tost(pf, ps, 0.02),
         note="TOST margin = ab gate pdr_drop 0.02")
     cf = [formation_from_reset(r).get("network_convergence_since_reset_s") for r in fix]
     cs = [formation_from_reset(r).get("network_convergence_since_reset_s") for r in slp]
-    add(sec, "convergence from reset", "per run", "FIX", "SLP", welch(cf, cs),
+    add(sec, "convergence from reset", "per run", a_name, b_name, welch(cf, cs),
         tost(cf, cs, superframe_s), unit="s",
         note=f"TOST margin = 1 superframe ({superframe_s:.1f} s, ab gate conv_superframes)")
     jf = [main_cluster_last_join(r) for r in fix]
     js = [main_cluster_last_join(r) for r in slp]
-    add(sec, "last member join", "per run", "FIX", "SLP", welch(jf, js), unit="s")
+    add(sec, "last member join", "per run", a_name, b_name, welch(jf, js), unit="s")
     rf = [formation_from_reset(r).get("join_retries_total") for r in fix]
     rs = [formation_from_reset(r).get("join_retries_total") for r in slp]
-    add(sec, "join retries", "per run", "FIX", "SLP", welch(rf, rs))
+    add(sec, "join retries", "per run", a_name, b_name, welch(rf, rs))
     lf = [_p95(app_latencies_ms(r)) for r in fix]
     ls = [_p95(app_latencies_ms(r)) for r in slp]
-    add(sec, "app latency p95", "per run", "FIX", "SLP", welch(lf, ls), unit="ms")
+    add(sec, "app latency p95", "per run", a_name, b_name, welch(lf, ls), unit="ms")
     mf = [x for r in fix for x in app_latencies_ms(r)]
     ms = [x for r in slp for x in app_latencies_ms(r)]
-    add(sec, "app latency", "per message (clustered)", "FIX", "SLP", welch(mf, ms), unit="ms")
+    add(sec, "app latency", "per message (clustered)", a_name, b_name, welch(mf, ms), unit="ms")
     nf = _mean_by_node([per_node_pdr(r) for r in fix])
     ns = _mean_by_node([per_node_pdr(r) for r in slp])
-    add_paired(sec, "PDR per sender", "FIX", "SLP", paired(nf, ns, 0.02), note="TOST margin 0.02")
+    add_paired(sec, "PDR per sender", a_name, b_name, paired(nf, ns, 0.02), note="TOST margin 0.02")
 
 
 def _p95(v: list[float]) -> float | None:
@@ -476,7 +477,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out-md", type=Path, default=RUNS / "lm200_sleep_campaign" / "report" / "stats.md")
     ap.add_argument("--out-json", type=Path, default=RUNS / "lm200_sleep_campaign" / "report" / "stats.json")
+    ap.add_argument("--fix136", action="store_true",
+                    help="LoRaMesher PR #136 round: campaign FIX (ab9449a) vs __fix136 (1f535fe)")
     args = ap.parse_args()
+    if args.fix136:
+        return main_fix136(args)
     ab_13node("SF9_d63000", "SF9", 35.15)
     ab_13node("SF12_d308000", "SF12", 122.1)
     stopstart()
@@ -488,6 +493,47 @@ def main() -> int:
     args.out_md.write_text(to_markdown() + sink_markdown())
     args.out_json.write_text(json.dumps({"rows": ROWS, "reliable_sink_load": SINK_ROWS}, indent=1, default=lambda o: list(o) if isinstance(o, tuple) else str(o)))
     print(to_markdown() + sink_markdown())
+    return 0
+
+
+def group_runs():
+    """Group delivery per run: campaign FIX (N2, N2b) vs FIX-136."""
+    def ratios(batch):
+        out = []
+        for r in runs(batch, "group_SF9"):
+            g = lm200_metrics.group_stats(events(r), lm200_metrics._group_members(r))
+            out.append(g.get("delivery_ratio_mean"))
+        return out
+    a, b = ratios("lm200s_features__fix"), ratios("lm200s_features__fix136")
+    if a and b:
+        add("FIX vs FIX-136, group SF9", "group received ratio", "per run", "FIX", "FIX-136",
+            welch(a, b), note="gate: >= 0.90 in every run")
+
+
+def reliable_fix136():
+    a = runs("lm200s_reliable__fix", "reliable_SF9_dds3")
+    b = runs("lm200s_reliable__fix136", "reliable_SF9_dds3")
+    if not a or not b:
+        return
+    for key, label in (("ack_ratio", "ACK ratio"), ("n_unresolved", "unresolved (in flight) at end")):
+        va = [reliable(r).get(key) for r in a]
+        vb = [reliable(r).get(key) for r in b]
+        add("FIX vs FIX-136, reliable SF9 dds3", label, "per run", "FIX", "FIX-136", welch(va, vb),
+            note="informational, not a gate")
+
+
+def main_fix136(args) -> int:
+    out_md = RUNS / "lm200_fix136" / "report" / "stats.md"
+    out_json = out_md.with_suffix(".json")
+    group_runs()
+    ab_13node("SF9_d63000", "SF9", 35.15, b_tag="fix136", a_name="FIX", b_name="FIX-136")
+    ab_13node("SF12_d308000", "SF12", 122.1, b_tag="fix136", a_name="FIX", b_name="FIX-136")
+    reliable_fix136()
+    out_md.parent.mkdir(parents=True, exist_ok=True)
+    md = to_markdown()
+    out_md.write_text(md)
+    out_json.write_text(json.dumps({"rows": ROWS}, indent=1, default=str))
+    print(md)
     return 0
 
 
