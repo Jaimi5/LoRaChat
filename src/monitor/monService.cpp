@@ -128,8 +128,9 @@ void MonService::sendingLoopOneMessage(void* parameter) {
 #ifdef MON_REPORT_ALL_ROUTES
                 if (route.is_valid) {
 #else
-                // if (route.is_valid && route.destination == route.next_hop) {
-                if (route.destination == route.next_hop) {
+                // Must match the fill loop's filter below: counting a stale direct route
+                // leaves the last message unfilled, so it is never sent and leaks.
+                if (route.is_valid && route.destination == route.next_hop) {
 #endif
                     ++routeCount;
                 }
