@@ -14,8 +14,9 @@ and reports, per node and per (gateway-local) day:
   - sync-beacon coverage: superframes (manager's own beacon TX) in which the node
     received at least one sync beacon (PKT_RX type 0x46, direct or forwarded),
   - long-link RSSI/SNR (006C<->3428 by default) and its beacon/routing-table RX,
-  - monitor messages: `Sending DATA` TX per node, `DATA reached final destination`
-    per source at the uplink,
+  - monitor messages: `Sending DATA` per node and destination against `DATA reached
+    final destination` at that destination (LoRaChat sends to the closest gateway, so
+    every node that receives DATA is an uplink; there can be several),
   - HEALTH heap trend (least-squares slope, bytes/day) and minheap, STACK min free
     per task, WARNING/ERROR line templates.
 The day a line belongs to is taken from its gateway timestamp, never from the
@@ -58,8 +59,8 @@ RE_HEALTH = re.compile(r"HEALTH node=0x[0-9A-Fa-f]+ heap=(\d+) minheap=(\d+) rol
 RE_BOOT = re.compile(r"BOOT node=0x[0-9A-Fa-f]+ reason=(-?\d+)")
 RE_RST = re.compile(r"rst:0x([0-9A-Fa-f]+)")
 RE_STACK = re.compile(r"STACK\[([^\]]+)\] total=(\d+) free=(\d+)")
-RE_SEND = re.compile(r"Sending DATA to 0x([0-9A-Fa-f]+) via")
-RE_DELIV = re.compile(r"DATA reached final destination: src=0x([0-9A-Fa-f]+), dest=0x([0-9A-Fa-f]+)")
+RE_SEND = re.compile(r"Sending DATA to 0x([0-9A-Fa-f]+) via 0x[0-9A-Fa-f]+ \(ttl=\d+, seq=(\d+)\)")
+RE_DELIV = re.compile(r"DATA reached final destination: src=0x([0-9A-Fa-f]+), dest=0x([0-9A-Fa-f]+), seq=(\d+)")
 RE_CFG = re.compile(r"\bCFG (node=0x[0-9A-Fa-f]+ .*)$")
 RE_LIBLVL = re.compile(r"\[(WARNING|ERROR)\]\s*(?:\[0x[0-9A-Fa-f]+\]\s*)?(.*)$")
 RE_ESPLVL = re.compile(r"^([WE]) \(\d+\) ([^:]+):\s?(.*)$")
@@ -85,6 +86,7 @@ TYPE_ROUTE_TABLE = 0x32
 BEACON_SKEW_S = 2.0       # tolerance for gateway clock skew when binning beacons
 DAY_S = 86400
 MIN_HEAP_FIT_DAYS = 0.5   # no heap slope from a shorter HEALTH span
+IN_FLIGHT_S = 1200        # sends this close to the end of the data may still be in flight
 UPLOAD_BOOT_GRACE_S = 120  # a boot this close to a node's first line is the upload's
 BOOT_LINE_WINDOW_S = 30    # the app's BOOT line follows the ROM rst line within this
 
@@ -121,7 +123,7 @@ class _Day:
                  "boot_reasons", "crash_markers", "joins", "join_attempts", "join_timeouts",
                  "fault_recoveries", "nm_elections", "state_s", "joined_s", "health_n",
                  "health_joined", "heap_min", "heap_last", "minheap_last", "stack_min",
-                 "beacon_rx", "mon_tx", "mon_tx_uplink", "delivered_from", "ll_rssi", "ll_snr",
+                 "beacon_rx", "mon_tx", "mon_tx_to", "delivered_from", "ll_rssi", "ll_snr",
                  "ll_beacons", "ll_rtables", "ll_rx", "warn", "pkt_tx")
 
     def __init__(self):
@@ -145,7 +147,7 @@ class _Day:
         self.stack_min: dict[str, int] = {}
         self.beacon_rx = 0
         self.mon_tx = 0
-        self.mon_tx_uplink = 0
+        self.mon_tx_to = Counter()
         self.delivered_from = Counter()
         self.ll_rssi: list[float] = []
         self.ll_snr: list[float] = []
@@ -172,11 +174,12 @@ def parse_node(args) -> dict:
     label, paths, ctx, gap_s = args
     me = v2_runtime_addr(label)
     manager = ctx["manager"]
-    uplink = ctx["uplink"]
     ll_peer = ctx["longlink"].get(me)
     days: dict[str, _Day] = defaultdict(_Day)
     beacon_rx_t: list[float] = []
     ll_beacon_t: list[float] = []
+    sends: list[tuple[float, str, int]] = []   # (t, dest, seq)
+    received: list[tuple[str, int]] = []       # (src, seq) that reached this node
     manager_tx_t: list[float] = []
     heap_fit = [0, 0.0, 0.0, 0.0, 0.0]  # n, sum t, sum h, sum t^2, sum t*h (t in days)
     t_ref = None
@@ -289,14 +292,17 @@ def parse_node(args) -> dict:
                 if "Sending DATA to" in msg:
                     m = RE_SEND.search(msg)
                     if m:
+                        dest = m.group(1).upper()[-4:].zfill(4)
                         d.mon_tx += 1
-                        if m.group(1).upper()[-4:].zfill(4) == uplink:
-                            d.mon_tx_uplink += 1
+                        d.mon_tx_to[dest] += 1
+                        sends.append((t, dest, int(m.group(2))))
                     continue
                 if "DATA reached final destination" in msg:
                     m = RE_DELIV.search(msg)
                     if m:
-                        d.delivered_from[m.group(1).upper()[-4:].zfill(4)] += 1
+                        src = m.group(1).upper()[-4:].zfill(4)
+                        d.delivered_from[src] += 1
+                        received.append((src, int(m.group(3))))
                     continue
                 if "rst:0x" in msg:
                     m = RE_RST.search(msg)
@@ -380,7 +386,7 @@ def parse_node(args) -> dict:
             "health_n": d.health_n, "health_joined": d.health_joined,
             "heap_min": d.heap_min, "heap_last": d.heap_last, "minheap_last": d.minheap_last,
             "stack_min": d.stack_min, "beacon_rx": d.beacon_rx, "pkt_tx": d.pkt_tx,
-            "mon_tx": d.mon_tx, "mon_tx_uplink": d.mon_tx_uplink,
+            "mon_tx": d.mon_tx, "mon_tx_to": dict(d.mon_tx_to),
             "delivered_from": dict(d.delivered_from),
             "ll_rx": d.ll_rx, "ll_beacons": d.ll_beacons, "ll_rtables": d.ll_rtables,
             "ll_rssi_med": _q(d.ll_rssi, 0.5), "ll_rssi_p10": _q(d.ll_rssi, 0.1),
@@ -389,7 +395,8 @@ def parse_node(args) -> dict:
         }
     return {"label": label, "addr": me, "files": [p.name for p in paths], "cfg": cfg,
             "heap_slope_b_per_day": slope,
-            "days": out_days, "_beacon_rx_t": beacon_rx_t, "_ll_beacon_t": ll_beacon_t, "_manager_tx_t": manager_tx_t}
+            "days": out_days, "_beacon_rx_t": beacon_rx_t, "_ll_beacon_t": ll_beacon_t,
+            "_sends": sends, "_received": received, "_manager_tx_t": manager_tx_t}
 
 
 def _q(xs: list[float], q: float):
@@ -406,22 +413,28 @@ def beacon_coverage(nodes: dict, manager_label: str) -> None:
     if len(tx) < 2:
         return
     period = statistics.median(b - a for a, b in zip(tx, tx[1:]))
-    expected = Counter(_day(t) for t in tx)
-    def covered_per_day(times: list[float]) -> Counter:
+    expected = Counter(_day(t) for t in tx)  # the manager's own days
+    def superframes_hit(times: list[float]) -> set[int]:
         hit: set[int] = set()
         for t in times:
             i = bisect.bisect_right(tx, t + BEACON_SKEW_S) - 1
             if i >= 0 and t - tx[i] < period:
                 hit.add(i)
-        return Counter(_day(tx[i]) for i in hit)
+        return hit
 
     for label, nd in nodes.items():
         if label == manager_label:
             continue
-        covered = covered_per_day(nd["_beacon_rx_t"])
-        ll_covered = covered_per_day(nd["_ll_beacon_t"])
+        hit = superframes_hit(nd["_beacon_rx_t"])
+        ll_hit = superframes_hit(nd["_ll_beacon_t"])
         for day, dd in nd["days"].items():
-            exp = expected.get(day, 0)
+            # only superframes while this node was logging (it may be uploaded late)
+            lo = bisect.bisect_left(tx, dd["first"] - BEACON_SKEW_S) if dd["first"] else 0
+            hi = bisect.bisect_right(tx, dd["last"]) if dd["last"] else 0
+            span = range(lo, hi)
+            exp = len(span)
+            covered = Counter(_day(tx[i]) for i in hit if lo <= i < hi) if exp else Counter()
+            ll_covered = (Counter(_day(tx[i]) for i in ll_hit if lo <= i < hi) if exp else Counter())
             dd["superframes"] = exp
             dd["beacon_cov"] = round(covered.get(day, 0) / exp, 4) if exp else None
             # superframes in which the long-link peer's own beacon was heard directly
@@ -442,11 +455,11 @@ def summarize(nodes: dict, ctx: dict, gap_s: float) -> dict:
                     default=None)
     all_last = max((dd["last"] for nd in nodes.values() for dd in nd["days"].values() if dd["last"]),
                    default=None)
-    uplink_label = next((l for l in labels if v2_runtime_addr(l) == ctx["uplink"]), None)
-    delivered_total: Counter = Counter()
-    if uplink_label:
-        for dd in nodes[uplink_label]["days"].values():
-            delivered_total.update(dd["delivered_from"])
+    # dest -> {(src, seq)} that reached it; every logged node that received DATA is an uplink
+    arrived: dict[str, set] = {nd["addr"]: set(nd["_received"]) for nd in nodes.values()}
+    logged = set(arrived)
+    uplinks = sorted(a for a, got in arrived.items() if got)
+    cutoff = (all_last - IN_FLIGHT_S) if all_last else None
 
     rows = {}
     for label, nd in nodes.items():
@@ -463,7 +476,15 @@ def summarize(nodes: dict, ctx: dict, gap_s: float) -> dict:
         cov = sum((dd.get("beacon_cov") or 0) * (dd.get("superframes") or 0) for dd in days.values()
                   if dd.get("beacon_cov") is not None)
         heap_days = [dd for dd in days.values() if dd["heap_min"] is not None]
-        mon_tx_up = int(_sum(nd, "mon_tx_uplink"))
+        sent_to: Counter = Counter()
+        for dd in days.values():
+            sent_to.update(dd["mon_tx_to"])
+        # Only destinations whose log we have can confirm delivery, and sends in the last
+        # IN_FLIGHT_S may still be on their way; a send counts once its seq shows up there.
+        judged = [(dest, seq) for t, dest, seq in nd["_sends"]
+                  if dest in logged and cutoff is not None and t <= cutoff]
+        mon_tx_gw = len(judged)
+        mon_deliv = sum((nd["addr"], seq) in arrived[dest] for dest, seq in judged)
         rows[label] = {
             "cluster": "remote" if label in ctx["remote"] else "main",
             "addr": nd["addr"],
@@ -494,10 +515,10 @@ def summarize(nodes: dict, ctx: dict, gap_s: float) -> dict:
             "stack_min": stack_min,
             "stack_min_free": min(stack_min.values()) if stack_min else None,
             "mon_tx": int(_sum(nd, "mon_tx")),
-            "mon_tx_uplink": mon_tx_up,
-            "mon_delivered": delivered_total.get(nd["addr"], 0) if uplink_label else None,
-            "mon_delivery_pct": (round(100 * delivered_total.get(nd["addr"], 0) / mon_tx_up, 1)
-                                 if uplink_label and mon_tx_up else None),
+            "mon_tx_to": dict(sent_to),
+            "mon_tx_gw": mon_tx_gw,
+            "mon_delivered": mon_deliv,
+            "mon_delivery_pct": round(100 * mon_deliv / mon_tx_gw, 1) if mon_tx_gw else None,
             "warn_lines": int(sum(sum(dd["warn"].values()) for dd in days.values())),
             "cfg": nd["cfg"],
         }
@@ -536,8 +557,7 @@ def summarize(nodes: dict, ctx: dict, gap_s: float) -> dict:
         "data_from": _iso(all_first), "data_up_to": _iso(all_last),
         "days": sorted({d for nd in nodes.values() for d in nd["days"]}),
         "gap_threshold_s": gap_s,
-        "manager": ctx["manager"], "uplink": ctx["uplink"],
-        "uplink_logged": uplink_label is not None,
+        "manager": ctx["manager"], "uplinks": uplinks, "in_flight_s": IN_FLIGHT_S,
         "superframe_s": mgr.get("superframe_s"),
         "checks": checks,
         "nodes": rows,
@@ -551,7 +571,7 @@ def summarize(nodes: dict, ctx: dict, gap_s: float) -> dict:
 def _day_row(dd: dict) -> dict:
     keep = ("lines", "gaps", "gap_s", "mon_restarts", "boots", "crash_boots", "boot_reasons",
             "crash_markers", "joins", "join_timeouts", "fault_recoveries", "nm_elections",
-            "heap_min", "minheap_last", "beacon_cov", "superframes", "mon_tx", "mon_tx_uplink",
+            "heap_min", "minheap_last", "beacon_cov", "superframes", "mon_tx",
             "stack_min")
     row = {k: dd.get(k) for k in keep}
     row["joined_pct"] = round(100 * dd["joined_s"] / dd["state_s"], 2) if dd["state_s"] else None
@@ -640,7 +660,7 @@ def build(log_dir: Path, ctx: dict, gap_s: float, jobs: int) -> dict:
 
 def print_text(rep: dict) -> None:
     print(f"Soak report  {rep['data_from']} -> {rep['data_up_to']}  ({len(rep['days'])} day(s), "
-          f"superframe {rep['superframe_s']} s, uplink {'logged' if rep['uplink_logged'] else 'NOT logged'})")
+          f"superframe {rep['superframe_s']} s, uplinks {', '.join(rep['uplinks']) or 'none logged'})")
     print()
     for c in rep["checks"]:
         print(f"  [{c['status']:>5}] {c['check']}: {c['value']}  {c['detail']}")
@@ -679,7 +699,6 @@ def main() -> int:
     ap.add_argument("log_dir", type=Path)
     ap.add_argument("--json", type=Path, help="write the full report as JSON")
     ap.add_argument("--manager", default="006C")
-    ap.add_argument("--uplink", default="77A4", help="node with the MQTT uplink (config label)")
     ap.add_argument("--remote", default="3428,DD58,14A4", help="remote-cluster node labels")
     ap.add_argument("--longlink", default="006C:3428", help="A:B labels of the long link")
     ap.add_argument("--gap-s", type=float, default=600.0, help="log silence counted as a monitor gap")
@@ -689,7 +708,6 @@ def main() -> int:
 
     la, lb = (v2_runtime_addr(x) for x in a.longlink.split(":"))
     ctx = {"manager": v2_runtime_addr(a.manager), "manager_label": a.manager.upper(),
-           "uplink": v2_runtime_addr(a.uplink),
            "remote": {x.strip().upper() for x in a.remote.split(",") if x.strip()},
            "longlink": {la: lb, lb: la}}
     rep = build(a.log_dir, ctx, a.gap_s, a.jobs)

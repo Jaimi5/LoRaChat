@@ -135,7 +135,7 @@ def node_table(rep):
             gated = cluster == "main"
             jcls = cls_pct(r["joined_pct"], 99, 95) if gated else "na"
             bcls = cls_pct(r["beacon_cov_pct"], 95, 80) if gated else "na"
-            role = " NM" if k == rep["manager"] else " MQTT" if k == rep["uplink"] else ""
+            role = " NM" if r["addr"] == rep["manager"] else " MQTT" if r["addr"] in rep["uplinks"] else ""
             rows.append(
                 f'<tr class="{"sep" if first and cluster == "remote" else ""}">'
                 f"<td>{esc(k)}<span class='note'>{esc(role)}</span></td><td class='cl'>{cluster}</td>"
@@ -147,7 +147,7 @@ def node_table(rep):
                 f"<td class='{bcls}'>{fmt(r['beacon_cov_pct'], 1)}</td>"
                 f"<td>{fmt(r['heap_last_day_min'])}</td><td>{fmt(r['heap_slope_b_per_day'])}</td>"
                 f"<td>{fmt(r['stack_min_free'])}</td>"
-                f"<td>{r['mon_tx_uplink']}</td><td>{fmt(r['mon_delivery_pct'], 1)}</td>"
+                f"<td>{r['mon_tx_gw']}</td><td>{fmt(r['mon_delivery_pct'], 1)}</td>"
                 f"<td>{r['gaps']}</td></tr>")
             first = False
     head = ("<tr><th>Node</th><th>Cluster</th><th>Re&shy;boots</th><th>Crash</th><th>Fault<br>recov.</th>"
@@ -282,8 +282,8 @@ def render(rep, base):
 <section>
   <h2>Against the old library</h2>
   <p class="lede">The same deployment (same nodes, SF10, 006C as manager, monitor every 900 s) ran for a week
-  on {esc(BASE_LIB)}. Its logs were taken at DEBUG and miss the uplink node and four others, so delivery and
-  heap figures exist only for this run.</p>
+  on {esc(BASE_LIB)}. Its logs were taken at DEBUG and cover 12 of the 16 nodes, none of them an MQTT uplink, and
+  that firmware had no HEALTH line, so delivery and heap figures exist only for this run.</p>
   {baseline_table(rep, base)}
 </section>"""
     return f"""<title>{TITLE}</title>
@@ -296,13 +296,13 @@ def render(rep, base):
   <span class="eyebrow">Testbed soak · Campus Nord UPC · 16 nodes</span>
   <h1>{TITLE}</h1>
   <p class="lede">The default LoRaChat firmware runs on {esc(LIB)} for {PLANNED_DAYS} days at SF10. Nodes send
-  their routing tables to the MQTT uplink every 15 minutes. This page is rebuilt from the gateway logs, one finished
+  their routing tables to the closest MQTT uplink every 15 minutes. This page is rebuilt from the gateway logs, one finished
   day at a time.</p>
   <div class="facts">
     <span>Data <b>{esc(rep['data_from'])}</b> → <b>{esc(rep['data_up_to'])}</b> (gateway time)</span>
     <span>Day <b>{ndays}</b> of {PLANNED_DAYS}</span>
     <span>Manager <b>0x{esc(rep['manager'])}</b></span>
-    <span>Uplink <b>0x{esc(rep['uplink'])}</b></span>
+    <span>Uplinks <b>{esc(', '.join('0x' + u for u in rep['uplinks']) or 'none yet')}</b></span>
     <span>Superframe <b>{fmt(rep.get('superframe_s'))} s</b></span>
   </div>
   <div class="progress" style="--n:{PLANNED_DAYS}" aria-label="Day {ndays} of {PLANNED_DAYS}">{bars}</div>
@@ -323,8 +323,8 @@ def render(rep, base):
   <div class="panel">{node_table(rep)}</div>
   <p class="note">Reboots exclude the boot from the firmware upload. Joined % is the share of logged time in the
   normal-operation or manager state. Beacon coverage is the share of superframes, counted from the manager's own
-  sync beacons, in which a node heard at least one beacon, direct or forwarded. Delivery compares the monitor
-  messages a node sent to the uplink with those that reached it. Log gaps are stretches of more than
+  sync beacons while the node was logging, in which it heard at least one beacon, direct or forwarded. Delivery
+  compares the monitor messages a node sent to an uplink with those that reached that uplink. Log gaps are stretches of more than
   {int(rep['gap_threshold_s'] // 60)} minutes with no serial output, which points at the gateway or USB rather than
   the node.</p>
 </section>

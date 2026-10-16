@@ -1,7 +1,12 @@
 # Plan: 7-day SF10 soak of the default LoRaChat firmware on LoRaMesher 2.0.0
 
 ## Resume here in a new session (status 2026-10-16)
-- **Status (2026-10-16): steps 1-3 implemented and pushed; deploy (step 2) next.**
+- **Status (2026-10-16 ~18:00): RUNNING.** `deploy.sh all -n soak_200_sf10` finished 17:19 (7/7 gateways, 16/16 nodes on 2.0.0+sha.41f9b68, cron on all). Smoke check passed. Page (private): https://claude.ai/artifact/23S5SdY7JR4M63sS46uX9J. Day 7 ends ~2026-10-23 17:20.
+  - Smoke (17:54): 0 reboots and 0 fault recoveries; main ≥99.7 % joined and ≥99.2 % beacon coverage; 3428 joined and heard 95.9 % of 006C superframes (SNR med −1.8 / −8.2 dB); 14A4/DD58 joined once 3428 was up.
+  - **Three MQTT uplinks** (77A4, E464, DF10 have WiFi); nodes send to the closest. Delivery is matched by (src, dest, seq), and sends in the last 20 min are excluded as in flight.
+  - PC-independence tests passed: pio kill restarts in ~45 s (pio start is slow under nice/ionice); saved PATH resolves pio under a bare env; rotate on a scratch copy on GW-7. A pattern without `^` also matches the loop's `bash -c` line and kills the whole monitor, so anchor any pkill at the python path.
+  - CFG is printed before the monitor attaches after upload; SF10 is confirmed from the 16 pushed change-config scripts. The exception decoder loads `.pio/build/ttgo-t-beam/` (wrong env ELF), which predates this work.
+- **Implementation (steps 1-3):**
   - Firmware: 41f9b68 pinned, `LORAMESHER_LOG_LEVEL=1` on `ttgo-t-beam-v2`, monService count fixed. Builds: RAM 41.3 KB, flash 1.33 MB (v3 was 46.4 KB / 1.51 MB).
   - `gw-monitor.sh`: `setsid` + `while true` loop per monitor, `launch`/`persist`/`resume`/`rotate`. **`gw-upload.sh` starts the monitors on `deploy.sh all`**, not `gw-monitor.sh start`, so it now calls `launch`/`persist` too. `persist` saves PATH and PIO_NICE, which cron lacks, and installs the tagged crontab lines.
   - `deploy.sh logs-days [--snapshot]` fetches only missing day files. `soak_update.sh` runs fetch, then `analysis/soak_report.py`, then `analysis/soak_page.py`. Outputs go to `scripts/testbed/logs_testbed/soak_200_sf10_report/`.
