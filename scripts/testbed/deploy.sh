@@ -12,6 +12,9 @@
 #   monitor       Start serial monitors on all devices
 #   stop-monitor  Stop all running monitors
 #   logs          Collect log files from gateways to local machine
+#   logs-days     Collect only the missing daily files (*-YYYYMMDD.log.gz) of a running
+#                 session, cut by gw-monitor.sh rotate; --snapshot adds a gzipped copy
+#                 of each live log (replaces the previous snapshot)
 #   reset         Stop monitors and hard-reset all selected devices via DTR/RTS
 #   all           Run stop-monitor + upgrade + push-config + upload+monitor in sequence
 #
@@ -23,6 +26,7 @@
 #   -x YAML       Experiment YAML (default: experiments/current.yaml if it exists)
 #   --skip-compile  Skip compilation, only upload
 #   --skip-config   Skip the push-config step (use whatever's on the gateway)
+#   --snapshot      logs-days: also fetch a snapshot of the live logs
 #   -c FILE       Path to testbed.conf (default: same dir as this script)
 #   -h            Show this help
 
@@ -68,7 +72,7 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        status|upgrade|upload|monitor|stop-monitor|logs|clean|sync-time|all|push-config|reset|list-device-map)
+        status|upgrade|upload|monitor|stop-monitor|logs|logs-days|clean|sync-time|all|push-config|reset|list-device-map)
             COMMAND="$1" ;;
         upload-monitor)
             COMMAND="upload"; OPT_MONITOR="1" ;;
@@ -82,6 +86,7 @@ while [[ $# -gt 0 ]]; do
         --skip-compile) OPT_SKIP_COMPILE="--skip-compile" ;;
         --skip-config)  OPT_SKIP_CONFIG="1" ;;
         --monitor) OPT_MONITOR="1" ;;
+        --snapshot) OPT_SNAPSHOT="1" ;;
         -c) CONFIG_FILE="$2"; shift ;;
         -h|--help) usage 0 ;;
         *)
@@ -723,6 +728,59 @@ cmd_clean() {
     fi
 }
 
+# Incremental collect for a long-running session: fetch only the day files that
+# gw-monitor.sh rotate cut and that are not here yet, so a PC that was off for
+# days catches up in one call. --snapshot also gzips each live log on the gateway
+# and fetches it under the live name + .gz (soak_report.py reads it after the
+# day files and skips lines it already has).
+cmd_logs_days() {
+    echo -e "${BOLD}Collecting daily logs for session: $SESSION${RST}"
+    echo ""
+
+    local local_dir="$LOCAL_LOG_DIR/$SESSION"
+    local remote_dir="$REPO_PATH/logs/$SESSION"
+    mkdir -p "$local_dir"
+
+    local -A pids=()
+    local -a gw_order=()
+    for gw_id in "${ACTIVE_GWS[@]}"; do
+        [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
+        gw_order+=("$gw_id")
+        (
+            listing=$(ssh_gw "$gw_id" "cd '$remote_dir' 2>/dev/null && ls -1 monitor-dev-*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].log.gz 2>/dev/null" 2>/dev/null) || true
+            fetched=0 failed=0
+            for f in $listing; do
+                [[ -s "$local_dir/$f" ]] && continue
+                if scp_gw "$gw_id" "${GW_SSH[$gw_id]}:$remote_dir/$f" "$local_dir/$f.part" >/dev/null 2>&1; then
+                    mv -f "$local_dir/$f.part" "$local_dir/$f" && fetched=$((fetched + 1))
+                else
+                    rm -f "$local_dir/$f.part"; failed=$((failed + 1))
+                fi
+            done
+            snap=""
+            if [[ -n "${OPT_SNAPSHOT:-}" ]]; then
+                ssh_gw "$gw_id" "mkdir -p '$remote_dir/.snap' && rm -f '$remote_dir'/.snap/*.gz && for f in '$remote_dir'/monitor-dev-*.log; do [ -f \"\$f\" ] || continue; case \"\$f\" in *-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].log) continue;; esac; gzip -c \"\$f\" > '$remote_dir'/.snap/\$(basename \"\$f\").gz; done" >/dev/null 2>&1
+                if scp_gw "$gw_id" "${GW_SSH[$gw_id]}:$remote_dir/.snap/*.gz" "$local_dir/" >/dev/null 2>&1; then
+                    snap=", live snapshot"
+                else
+                    snap=", snapshot FAILED"
+                fi
+            fi
+            log_gw "$gw_id" "$fetched new day file(s)$( [[ $failed -gt 0 ]] && echo ", $failed FAILED")$snap"
+            [[ $failed -eq 0 ]]
+        ) &
+        pids[$gw_id]=$!
+    done
+
+    local rc=0
+    for gw_id in "${gw_order[@]}"; do
+        wait "${pids[$gw_id]}" || rc=1
+    done
+    echo ""
+    echo "Logs in: $local_dir"
+    return $rc
+}
+
 cmd_logs() {
     echo -e "${BOLD}Collecting logs for session: $SESSION${RST}"
     echo ""
@@ -976,6 +1034,7 @@ case "$COMMAND" in
     monitor)      cmd_monitor ;;
     stop-monitor) cmd_stop_monitor ;;
     logs)         cmd_logs ;;
+    logs-days)    cmd_logs_days ;;
     clean)        cmd_clean ;;
     sync-time)    cmd_sync_time ;;
     run-remote)   cmd_run_remote ;;

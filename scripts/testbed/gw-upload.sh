@@ -47,6 +47,7 @@ fi
 TOTAL=0
 SUCCEEDED=0
 FAILED_DEVICES=""
+MONITORED=()
 
 for device_spec in "$@"; do
     DEVICE_ID="${device_spec%%:*}"
@@ -118,15 +119,9 @@ for device_spec in "$@"; do
 
     # Step 3: Start monitor immediately after successful upload
     if [[ -n "$MONITOR_SESSION" && -z "$(echo "$FAILED_DEVICES" | grep "$DEVICE_ID")" ]]; then
-        LOGFILE="$LOG_DIR/monitor-dev-${MONITOR_SESSION}-${SHORT_ID}.log"
-        echo "--- Starting monitor: $PORT -> $LOGFILE ---"
-        nohup bash -c "
-            $PIO_NICE script -qfc 'pio device monitor --port $PORT --filter esp32_exception_decoder' /dev/null 2>&1 | \
-            while IFS= read -r line; do
-                echo \"[\$(date \"+%Y-%m-%d %H:%M:%S.%3N\")] \$line\"
-            done >> \"$LOGFILE\" 2>&1
-        " </dev/null >/dev/null 2>&1 &
-        echo "$!:$DEVICE_ID:$PORT" >> "$PIDFILE"
+        # Same looped, auto-restarting monitor as gw-monitor.sh start
+        bash "$REPO/scripts/testbed/gw-monitor.sh" launch "$MONITOR_SESSION" "$DEVICE_ID:$PORT"
+        MONITORED+=("$DEVICE_ID:$PORT")
         echo "Monitor started for $DEVICE_ID"
     fi
 done
@@ -137,8 +132,12 @@ echo "  Upload summary: $SUCCEEDED/$TOTAL succeeded"
 if [[ -n "$FAILED_DEVICES" ]]; then
     echo "  Failed:$FAILED_DEVICES"
 fi
+if [[ -n "$MONITOR_SESSION" && ${#MONITORED[@]} -gt 0 ]]; then
+    # Save the session for gw-monitor.sh resume (gateway reboot) and install the cron lines
+    bash "$REPO/scripts/testbed/gw-monitor.sh" persist "$MONITOR_SESSION" "$ENV" "${MONITORED[@]}"
+fi
 if [[ -n "$MONITOR_SESSION" ]]; then
-    echo "  Monitors running: $SUCCEEDED device(s)"
+    echo "  Monitors running: ${#MONITORED[@]} device(s)"
     echo "  Logs: $LOG_DIR/"
 fi
 echo "========================================"

@@ -1,7 +1,15 @@
 # Plan: 7-day SF10 soak of the default LoRaChat firmware on LoRaMesher 2.0.0
 
 ## Resume here in a new session (status 2026-10-16)
-- **Status: PLAN ONLY, nothing executed yet.** No code changed, nothing pushed, the testbed untouched since the #136 round.
+- **Status (2026-10-16): steps 1-3 implemented and pushed; deploy (step 2) next.**
+  - Firmware: 41f9b68 pinned, `LORAMESHER_LOG_LEVEL=1` on `ttgo-t-beam-v2`, monService count fixed. Builds: RAM 41.3 KB, flash 1.33 MB (v3 was 46.4 KB / 1.51 MB).
+  - `gw-monitor.sh`: `setsid` + `while true` loop per monitor, `launch`/`persist`/`resume`/`rotate`. **`gw-upload.sh` starts the monitors on `deploy.sh all`**, not `gw-monitor.sh start`, so it now calls `launch`/`persist` too. `persist` saves PATH and PIO_NICE, which cron lacks, and installs the tagged crontab lines.
+  - `deploy.sh logs-days [--snapshot]` fetches only missing day files. `soak_update.sh` runs fetch, then `analysis/soak_report.py`, then `analysis/soak_page.py`. Outputs go to `scripts/testbed/logs_testbed/soak_200_sf10_report/`.
+  - Baseline v3 computed and cached (`baseline_full_deploy_sf10_v3.json`, 12 nodes, no 77A4, no HEALTH). 006C's v3 log ends 10-04 05:29.
+- **Corrections to the plan below:**
+  - Sync-beacon RX is counted from `PKT_RX type=0x46` (INFO). The "Received sync beacon" line is DEBUG.
+  - 2.0.0 does not log every state change (JOINING to NORMAL is often missing), so HEALTH and the `(my state: N` tags also drive the state tracker.
+  - Beacon type 0x46 is the same in 134ae25.
 - **User decisions (2026-10-16):**
   - Default firmware, as in the earlier full_deploy runs, on the new 2.0.0 library at SF10.
   - **7 days**.
