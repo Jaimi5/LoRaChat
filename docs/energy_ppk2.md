@@ -113,6 +113,20 @@ Setup: the sensor under test on the PPK2; the gateway on its own USB as mesh man
 
 `scripts/energy/ppk2_compare.py release/bench/energy/campaign.json` reads the reports listed in the campaign file (group, label, report path) and writes per group a figure with the average power, the battery life and the superframe profiles, plus `summary.md` with the saving against the first row of each group.
 
+## Packets and the slot model
+
+`scripts/energy/ppk2_events.py <capture> --source <node>` matches each packet the gateway logged as received from the node (`PKT_RX ... size=N`) to the transmit burst that ended just before it in the trace. It prints, per packet size, the airtime and the charge above listening.
+
+`scripts/energy/slot_model.py validate|extrapolate release/bench/energy/model.json` predicts a member's average current from LoRaMesher's slot rule and the measured currents in `model.json`:
+- active slots = sync (hops + 1) + control (one per node) + discovery 2 (hops + 1) + data (nodes × data slots);
+- total = max(16, active + 2, active / (1 − fraction)), at most 255;
+- the member listens in every active slot and sleeps (none/light/deep) in the others;
+- the transmit charge grows with the routing table and scales with the LoRa airtime of the spreading factor.
+
+`validate` compares the model with the bench runs listed in `model.json`; `extrapolate` draws the member current against network size and the battery life against the sleep fraction.
+
+Test images with another spreading factor: `FW_VERSION=<next> PLATFORMIO_BUILD_FLAGS="-D LORA_SPREADING_FACTOR=7U" scripts/pio.sh run -e tbeam`, then `release.py`. Every node needs the same SF; USB boards keep their settings with `flash_floor.py --keep-nvs`.
+
 ## Sleep modes
 
 Sensors sleep as set by `/sleep.set none|light|deep` (signed, so send it through the gateway: `@<node> /sleep.set light #<sig>` from `lmcmd.py sign`). Deep sleep needs runs of SLEEP slots longer than `LORA_DEEP_SLEEP_MIN_MS` + `LORA_DEEP_SLEEP_BOOT_MS` (34.2 s), which needs a gateway with `/sleep.fraction` of about 85 % at 4 nodes. `/sleep` shows the light and deep sleeps since power-on.

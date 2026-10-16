@@ -72,7 +72,10 @@
 
 // LoRa RF parameters
 #define LORA_FREQUENCY 869.525F
+// Test images may set another spreading factor with -D LORA_SPREADING_FACTOR=<n>U
+#ifndef LORA_SPREADING_FACTOR
 #define LORA_SPREADING_FACTOR 9U
+#endif
 #define LORA_BANDWIDTH 125.0
 #define LORA_CODING_RATE 7U
 #define LORA_POWER 17
