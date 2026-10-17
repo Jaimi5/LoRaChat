@@ -58,7 +58,7 @@ RE_STATE_SEEN = re.compile(r"\((?:my )?state: (\d+)[,)]")
 RE_HEALTH = re.compile(r"HEALTH node=0x[0-9A-Fa-f]+ heap=(\d+) minheap=(\d+) role=(-?\d+) state=(-?\d+)")
 RE_BOOT = re.compile(r"BOOT node=0x[0-9A-Fa-f]+ reason=(-?\d+)")
 RE_RST = re.compile(r"rst:0x([0-9A-Fa-f]+)")
-RE_STACK = re.compile(r"STACK\[([^\]]+)\] total=(\d+) free=(\d+)")
+RE_STACK = re.compile(r"STACK\[([^\]]+)\] total=(\d+) free=(\d+)(?=\s|\x1b|$)")  # skip lines cut by other tasks
 RE_SEND = re.compile(r"Sending DATA to 0x([0-9A-Fa-f]+) via 0x[0-9A-Fa-f]+ \(ttl=\d+, seq=(\d+)\)")
 RE_DELIV = re.compile(r"DATA reached final destination: src=0x([0-9A-Fa-f]+), dest=0x([0-9A-Fa-f]+), seq=(\d+)")
 RE_CFG = re.compile(r"\bCFG (node=0x[0-9A-Fa-f]+ .*)$")

@@ -83,6 +83,9 @@ tr.sep td { border-top: 2px solid var(--rule); }
 td.green, td.amber, td.red, td.na { font-weight: 600; }
 .grid td { text-align: center; padding: 6px 4px; min-width: 46px; }
 .note { color: var(--muted); font-size: 13px; }
+.findings { padding: 4px 16px; }
+.findings p, .findings li { max-width: 72ch; }
+.findings h3 { font: 600 16px/1.3 var(--display); margin: 12px 0 4px; }
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
 .cols > * { min-width: 0; }
 code { font: 13px var(--mono); background: var(--accent-soft); padding: 1px 4px; border-radius: 3px; }
@@ -266,7 +269,7 @@ def warnings_list(rep, n=12):
             f"<th>Nodes</th><th style='text-align:left'>Template (numbers → N)</th></tr>{rows}</table></div>")
 
 
-def render(rep, base):
+def render(rep, base, notes=None):
     status, verdict = overall(rep["checks"])
     ndays = len(rep["days"])
     bars = "".join(f"<span class='{'done' if i < ndays - 1 else 'part' if i == ndays - 1 else ''}'></span>"
@@ -317,6 +320,11 @@ def render(rep, base):
   <p class="note">Gated checks cover the 13-node main cluster. The remote cluster (3428, DD58, 14A4) hangs on one
   3.5 km link whose quality depends on weather and interference, so it is reported but not gated.</p>
 </section>
+{f'''
+<section>
+  <h2>Findings so far</h2>
+  <div class="panel findings">{notes}</div>
+</section>''' if notes else ''}
 
 <section>
   <h2>Nodes</h2>
@@ -364,11 +372,13 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("report", type=Path)
     ap.add_argument("--baseline", type=Path)
+    ap.add_argument("--notes", type=Path, help="hand-written HTML fragment shown under the status")
     ap.add_argument("-o", "--out", type=Path, required=True)
     a = ap.parse_args()
     rep = json.loads(a.report.read_text())
     base = json.loads(a.baseline.read_text()) if a.baseline and a.baseline.exists() else None
-    a.out.write_text(render(rep, base))
+    notes = a.notes.read_text() if a.notes and a.notes.exists() else None
+    a.out.write_text(render(rep, base, notes))
     print(f"wrote {a.out}")
     return 0
 

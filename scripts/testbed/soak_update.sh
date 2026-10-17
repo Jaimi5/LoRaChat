@@ -11,7 +11,8 @@
 # 2. analysis/soak_report.py -> logs_testbed/<SESSION>_report/soak.json
 #    (the old-library baseline full_deploy_sf10_v3 is computed once and cached).
 # 3. analysis/soak_page.py renders logs_testbed/<SESSION>_report/<SESSION>.html,
-#    which is republished to the same artifact URL.
+#    which is republished to the same artifact URL. A hand-written
+#    logs_testbed/<SESSION>_report/notes.html, if present, becomes its findings panel.
 
 set -uo pipefail
 
@@ -49,6 +50,7 @@ python3 analysis/soak_report.py "$LOG_DIR" --json "$OUT/soak.json" || exit 1
 
 page_args=("$OUT/soak.json" -o "$OUT/$SESSION.html")
 [[ -f "$BASELINE_JSON" ]] && page_args+=(--baseline "$BASELINE_JSON")
+[[ -f "$OUT/notes.html" ]] && page_args+=(--notes "$OUT/notes.html")  # hand-written findings
 python3 analysis/soak_page.py "${page_args[@]}" || exit 1
 echo ""
 echo "Page: $(pwd)/$OUT/$SESSION.html"
