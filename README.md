@@ -45,15 +45,29 @@ scripts/pio.sh run -e tbeam                       # build
 scripts/pio.sh run -e tbeam -t upload -t monitor  # flash over USB and open the serial monitor
 scripts/pio.sh test -e native                     # unit tests
 python3 -m pytest scripts/ota_tools/tests test/host
+scripts/pio.sh run -e tbeam -t idedata            # include paths for clang-tidy (no compile)
+python3 scripts/static_check.py clang-tidy --build-dir <workspace>/build/tbeam
+python3 scripts/static_check.py cppcheck
 ```
 
 `scripts/pio.sh` wraps `pio`. Under WSL it keeps the PlatformIO workspace on the Linux filesystem, which makes builds several times faster than on a Windows drive.
 
 The native tests compile the mbedTLS of the ESP-IDF package for the host, so build `tbeam` once before the first `scripts/pio.sh test -e native`. The host tools need Python 3 with `pip install -r scripts/ota_tools/requirements.txt`.
 
+### Checks for memory and concurrency errors
+
+- **Sanitizers.** The native tests run with AddressSanitizer, LeakSanitizer, UndefinedBehaviorSanitizer and the libstdc++ assertions. Any finding stops the program and fails the suite; the runtime options are compiled in from `test/sanitizerOptions.cpp`. PlatformIO prints only that the suite errored, so run the test program (`<workspace>/build/native/program`) directly to read the report. `test/host/test_native_sanitizers.py` checks that each class of error does fail a run.
+- **Warnings.** `test/host/test_lib_cxx11.py` builds `lib/` as gnu++11 and gnu++17 with `-Wall -Wextra -Wshadow -Wconversion -Wsign-conversion -Werror`.
+- **Static analysis.** `scripts/static_check.py` runs clang-tidy 18 (checks in `.clang-tidy`: the clang static analyzer with its leak and new/delete checks, smart-pointer ownership, use-after-move, thread-unsafe calls) and cppcheck over `src/` and `lib/`. clang-tidy needs the include paths of the tbeam build (`-t idedata`, which only configures). Both fail on any finding. Suppress a finding only inline, with the reason: `// NOLINT(<check>): <reason>` or `// cppcheck-suppress <id> ; <reason>`.
+- **Formatting.** Lines changed by a commit must follow `.clang-format`: `git clang-format-18 --diff <base>`.
+
+`<workspace>` is where `scripts/pio.sh` puts the PlatformIO build (`~/.cache/pio-ws/<folder>` under WSL, `.pio` elsewhere).
+
 GitHub Actions (`.github/workflows/firmware.yml`) runs on every push:
-- the rollback guards and the host tests
-- the native tests
+- the rollback guards, the host tests and cppcheck
+- the native tests with the sanitizers
+- clang-tidy on the `tbeam` sources
+- the format check of the changed lines
 - a build of `tbeam` and `tbeam-debug` with every feature on
 - the 90 % size gate
 - the license and acknowledgements check (`scripts/ota_tools/third_party.py`)
@@ -159,7 +173,7 @@ Every message carries a common header followed by the payload of the application
 }
 ```
 
-The fields after the header depend on the application.
+The fields after the header depend on the application. Monitor reports (`appPortSrc` 16) only travel to the server; the gateway drops any it receives from the server.
 
 ## More information on the design and evaluation of LoRaChat
 Please see our open access paper ["Middleware for Distributed Applications in a LoRa Mesh Network"]([https://ieeexplore.ieee.org/document/9930341](https://dl.acm.org/doi/10.1145/3747295)) for a detailed description. If you use the LoRaChat, in academic work, please cite the following:
@@ -208,6 +222,8 @@ LoRaChat stands on the work of many open-source projects. Thank you to their aut
 |---|---|---|---|
 | [GoogleTest](https://github.com/google/googletest) | Google | BSD-3-Clause | Native unit tests |
 | [pytest](https://github.com/pytest-dev/pytest) | pytest-dev | MIT | Host tool tests |
+| [clang-tidy](https://clang.llvm.org/extra/clang-tidy/), [clang-format](https://clang.llvm.org/docs/ClangFormat.html) | LLVM Project | Apache-2.0 WITH LLVM-exception | Static analysis and format check (run as tools) |
+| [Cppcheck](https://cppcheck.sourceforge.io) | Cppcheck team | GPL-3.0 | Static analysis (run as a tool) |
 | [pySerial](https://github.com/pyserial/pyserial) | Chris Liechti | BSD-3-Clause | Serial access from host scripts |
 | [esptool](https://github.com/espressif/esptool) | Espressif | GPL-2.0+ | Flashing and reading flash (run as a tool, not distributed with the firmware) |
 | [ppk2-api](https://github.com/IRNAS/ppk2-api-python) | IRNAS | GPL-2.0 | PPK2 control in `ppk2_bench.py` (host tool, not distributed with the firmware) |
