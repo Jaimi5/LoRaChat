@@ -2,7 +2,7 @@
 
 LoRaChat is ESP32 firmware for LoRa mesh networks of sensor nodes. It runs on TTGO T-Beam boards and uses [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) 2.0, a TDMA LoRa mesh protocol, to carry application messages between nodes. A gateway node bridges the mesh to an MQTT broker over WiFi. Firmware updates are installed over the air with automatic rollback.
 
-You can join LoRaMesher's developers and users on **[Discord](https://discord.gg/SSaZhsChjQ)**, if you like.
+You can join LoRaMesher's developers and users on **[Discord](https://discord.gg/KCY78MbpUa)**, if you like.
 
 ## Organizations & Contributors Using This Project
 
