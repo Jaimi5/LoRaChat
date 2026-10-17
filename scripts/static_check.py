@@ -50,6 +50,8 @@ CPPCHECK_ARGS = [
     "--suppress=missingIncludeSystem",
     "--template={file}:{line}: {severity}: {message} [{id}]",
     "-D", "T_BEAM",
+    "-D", "CORE_DEBUG_LEVEL=3",
+    "-D", "BUILD_ENV_NAME=\"tbeam\"",
     "-D", "ESP32",
     "-D", "ARDUINO=10812",
     "-D", "MACSTR=\"%02x:%02x:%02x:%02x:%02x:%02x\"",

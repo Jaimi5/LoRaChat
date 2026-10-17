@@ -1,4 +1,5 @@
 """Tests of the argument building in scripts/static_check.py."""
+import configparser
 import importlib.util
 from pathlib import Path
 
@@ -71,3 +72,15 @@ def test_sources_are_tracked_firmware_files():
     assert "src/main.cpp" in sources
     assert all(s.startswith(("src/", "lib/")) and s.endswith(".cpp") for s in sources)
     assert not any("/test/" in s for s in sources)
+
+
+def test_cppcheck_defines_every_macro_of_the_tbeam_build_flags():
+    config = configparser.ConfigParser(interpolation=None)
+    config.read(ROOT / "platformio.ini")
+    flags = config["env:tbeam"]["build_flags"].split()
+    names = [flags[i + 1].split("=")[0] for i, flag in enumerate(flags) if flag == "-D"]
+    names += [flag[2:].split("=")[0] for flag in flags if flag.startswith("-D") and len(flag) > 2]
+    assert names
+    args = static_check.cppcheck_args(ROOT)
+    defined = {args[i + 1].split("=")[0] for i, arg in enumerate(args) if arg == "-D"}
+    assert set(names) <= defined
