@@ -1,0 +1,23 @@
+# Run through scripts/static_check.py, which sets the header filter to src/ and lib/.
+Checks: >
+  -*,
+  clang-analyzer-*,
+  bugprone-use-after-move,
+  bugprone-dangling-handle,
+  bugprone-infinite-loop,
+  bugprone-move-forwarding-reference,
+  bugprone-sizeof-expression,
+  bugprone-suspicious-memset-usage,
+  bugprone-not-null-terminated-result,
+  bugprone-undefined-memory-manipulation,
+  bugprone-implicit-widening-of-multiplication-result,
+  bugprone-multi-level-implicit-pointer-conversion,
+  cppcoreguidelines-owning-memory,
+  cppcoreguidelines-no-malloc,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-virtual-class-destructor,
+  modernize-use-nullptr,
+  modernize-avoid-bind,
+  misc-redundant-expression,
+  concurrency-mt-unsafe
+WarningsAsErrors: '*'

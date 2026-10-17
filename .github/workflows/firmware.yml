@@ -6,8 +6,8 @@ on:
 
 jobs:
   host:
-    name: Host tools and guards
-    runs-on: ubuntu-latest
+    name: Host tools, guards and cppcheck
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,10 +25,30 @@ jobs:
           python scripts/ota_tools/ap_pass.py vectors
           python scripts/ota_tools/lmcmd.py vectors
           git diff --exit-code test/vectors
+      - run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: cppcheck
+        run: python scripts/static_check.py cppcheck
+
+  format:
+    name: Format of the changed lines
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Changed lines follow .clang-format
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE=HEAD~1
+          fi
+          git clang-format-18 --diff "$BASE" -- src lib test ':!test/vectors'
 
   firmware:
     name: Build ${{ matrix.env }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -70,10 +90,16 @@ jobs:
       - name: Licenses and acknowledgements
         if: matrix.env == 'tbeam'
         run: python scripts/ota_tools/third_party.py check --env tbeam
+      - name: clang-tidy
+        if: matrix.env == 'tbeam'
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang-tidy-18
+          pio run -e tbeam -t idedata
+          python scripts/static_check.py clang-tidy --build-dir .pio/build/tbeam
 
   native:
-    name: Native tests
-    runs-on: ubuntu-latest
+    name: Native tests with sanitizers
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
