@@ -6,6 +6,8 @@
 #include "soc/rtc_cntl_reg.h"
 
 static const char* LMS_TAG = "LoRaMeshService";
+static constexpr UBaseType_t RECEIVE_QUEUE_LENGTH = 10;
+static_assert(sizeof(LoRaMeshMessage) == 3, "LoRa frame header: port dst, port src, id");
 
 // Sleeps since power-on, in RTC memory so deep sleeps add up. A deep sleep is booked on the
 // next boot: the library can still call it off after the callback allowed it.
@@ -135,7 +137,10 @@ void LoRaMeshService::initLoraMesherService(bool networkManager, SleepMode sleep
              sleepFractionPercent >= 0 ? sleepFractionPercent
                                        : (int)(LORA_MIN_SLEEP_FRACTION * 100));
 
-    loraReceiveQueue_ = xQueueCreate(10, sizeof(LoRaQueueMessage*));
+    if (!loraReceiveQueue_.create(RECEIVE_QUEUE_LENGTH)) {
+        ESP_LOGE(LMS_TAG, "No memory for the receive queue");
+        return;
+    }
 
     mesher_->SetDataCallback([](loramesher::AddressType source, const std::vector<uint8_t>& data) {
         ESP_LOGV(LMS_TAG, "v2 data callback from %04X, size=%d", source, data.size());
@@ -146,23 +151,22 @@ void LoRaMeshService::initLoraMesherService(bool networkManager, SleepMode sleep
         }
 
         const LoRaMeshMessage* lmMsg = reinterpret_cast<const LoRaMeshMessage*>(data.data());
-        uint32_t payloadSize = data.size() - sizeof(LoRaMeshMessage);
-        DataMessage* dm = (DataMessage*)pvPortMalloc(sizeof(DataMessage) + payloadSize);
-        if (!dm) return;
+        size_t payloadSize = data.size() - sizeof(LoRaMeshMessage);
+        DataMessagePtr dm = allocateDataMessage(payloadSize);
+        if (!dm) {
+            ESP_LOGW(LMS_TAG, "No memory for a received packet, dropped");
+            return;
+        }
 
+        auto& svc = LoRaMeshService::getInstance();
         dm->appPortDst = lmMsg->appPortDst;
         dm->appPortSrc = lmMsg->appPortSrc;
         dm->messageId = lmMsg->messageId;
         dm->addrSrc = source;
-        dm->addrDst = LoRaMeshService::getInstance().getLocalAddress();
-        dm->messageSize = payloadSize;
+        dm->addrDst = svc.getLocalAddress();
         memcpy(dm->message, lmMsg->dataMessage, payloadSize);
 
-        auto* qMsg = new LoRaQueueMessage{source, dm};
-        auto& svc = LoRaMeshService::getInstance();
-        if (xQueueSend(svc.loraReceiveQueue_, &qMsg, 0) != pdTRUE) {
-            vPortFree(dm);
-            delete qMsg;
+        if (!svc.loraReceiveQueue_.send(dm, 0)) {
             ESP_LOGW(LMS_TAG, "Receive queue full, dropping packet");
         }
     });
@@ -184,15 +188,12 @@ void LoRaMeshService::createReceiveTask() {
 
 void LoRaMeshService::loraReceiveLoop(void*) {
     auto& svc = LoRaMeshService::getInstance();
-    LoRaQueueMessage* qMsg = nullptr;
     for (;;) {
-        if (xQueueReceive(svc.loraReceiveQueue_, &qMsg, portMAX_DELAY) == pdTRUE) {
-            MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, qMsg->dataMessage);
-            vPortFree(qMsg->dataMessage);
-            delete qMsg;
-            ESP_LOGD(LMS_TAG, "LoRa_Receive stack high water: %u bytes",
-                     uxTaskGetStackHighWaterMark(NULL));
-        }
+        DataMessagePtr message = svc.loraReceiveQueue_.receive(portMAX_DELAY);
+        if (!message) continue;
+        MessageManager::getInstance().processReceivedMessage(LoRaMeshPort, message.get());
+        ESP_LOGD(LMS_TAG, "LoRa_Receive stack high water: %u bytes",
+                 static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     }
 }
 
@@ -238,20 +239,11 @@ void LoRaMeshService::send(DataMessage* message) {
 
     ESP_LOGV(LMS_TAG, "Heap size send: %d", ESP.getFreeHeap());
 
-    LoRaMeshMessage* loraMeshMessage = createLoRaMeshMessage(message);
-    if (!loraMeshMessage)
-        return;
-
-    size_t totalSize = sizeof(LoRaMeshMessage) + message->messageSize;
-    std::vector<uint8_t> payload(reinterpret_cast<uint8_t*>(loraMeshMessage),
-                                 reinterpret_cast<uint8_t*>(loraMeshMessage) + totalSize);
-
-    auto result = mesher_->Send(message->addrDst, payload);
+    auto result = mesher_->Send(message->addrDst, createLoRaMeshFrame(*message));
     if (!result) {
         ESP_LOGW(LMS_TAG, "v2 Send failed");
     }
 
-    vPortFree(loraMeshMessage);
     ESP_LOGV(LMS_TAG, "Heap size send 2: %d", ESP.getFreeHeap());
 }
 
@@ -320,18 +312,14 @@ std::vector<loramesher::RouteEntry> LoRaMeshService::getRoutingTableEntries() {
     return mesher_->GetRoutingTable();
 }
 
-LoRaMeshMessage* LoRaMeshService::createLoRaMeshMessage(DataMessage* message) {
-    LoRaMeshMessage* loraMeshMessage =
-        (LoRaMeshMessage*)pvPortMalloc(sizeof(LoRaMeshMessage) + message->messageSize);
-
-    if (loraMeshMessage) {
-        loraMeshMessage->appPortDst = message->appPortDst;
-        loraMeshMessage->appPortSrc = message->appPortSrc;
-        loraMeshMessage->messageId = message->messageId;
-        memcpy(loraMeshMessage->dataMessage, message->message, message->messageSize);
-    }
-
-    return loraMeshMessage;
+std::vector<uint8_t> LoRaMeshService::createLoRaMeshFrame(const DataMessage& message) {
+    std::vector<uint8_t> frame;
+    frame.reserve(sizeof(LoRaMeshMessage) + message.messageSize);
+    frame.push_back(message.appPortDst);
+    frame.push_back(message.appPortSrc);
+    frame.push_back(message.messageId);
+    frame.insert(frame.end(), message.message, message.message + message.messageSize);
+    return frame;
 }
 
 size_t LoRaMeshService::GetRxQueueSize() const {

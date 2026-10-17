@@ -10,7 +10,7 @@ uint16_t commandAddress(const String& args) {
     for (size_t i = 0; i < first.length(); i++) {
         if (!isHexadecimalDigit(first.charAt(i))) return 0;
     }
-    return strtol(first.c_str(), NULL, 16);
+    return strtol(first.c_str(), nullptr, 16);
 }
 
 }  // namespace

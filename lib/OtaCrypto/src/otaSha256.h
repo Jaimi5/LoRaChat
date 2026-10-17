@@ -16,5 +16,5 @@ public:
     Sha256 finish() override;
 
 private:
-    mbedtls_sha256_context context_;
+    mbedtls_sha256_context context_{};
 };

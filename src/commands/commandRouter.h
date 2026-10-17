@@ -10,6 +10,7 @@
 #include "cmdText.h"
 #include "commands/commandService.h"
 #include "message/messageService.h"
+#include "message/ownedQueue.h"
 
 /** A command line waiting to run, and where its reply goes. */
 struct CommandRequest {
@@ -82,7 +83,7 @@ private:
     bool storeCounter(uint32_t counter);
 
     CommandService commands_;
-    QueueHandle_t queue_ = nullptr;
+    OwnedQueue<CommandRequest> queue_;
     CommandCounter counter_;
     bool counterLoaded_ = false;
     uint8_t nextRequestId_ = 0;

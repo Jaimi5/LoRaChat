@@ -9,6 +9,7 @@
 #include "message/messageService.h"
 
 #include "message/messageManager.h"
+#include "message/ownedQueue.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -42,12 +43,6 @@ public:
         return instance;
     }
 
-    ~MqttService() {
-        if (mqttCommandService != nullptr) {
-            delete mqttCommandService;
-        }
-    }
-
     void initMqtt(String localName);
 
     bool isInitialized() { return initialized; }
@@ -59,8 +54,6 @@ public:
     bool isDeviceConnected();
 
     bool writeToMqtt(DataMessage* message);
-
-    MqttCommandService* mqttCommandService = nullptr;
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
@@ -79,24 +72,23 @@ public:
 
 private:
     MqttService() : MessageService(appPort::MQTTApp, String("MQTT")) {
-        mqttCommandService = new MqttCommandService();
-        commandService = mqttCommandService;
-    };
+        commandService = &commands_;
+    }
+
+    MqttCommandService commands_;
 
     void createMqttTask();
 
     static void MqttLoop(void*);
 
-    TaskHandle_t mqtt_TaskHandle = NULL;
+    TaskHandle_t mqtt_TaskHandle = nullptr;
 
-    struct MQTTQueueMessageV2 {
+    /** A message received from the broker, waiting for the MQTT task. */
+    struct MqttInbound {
         String topic;
         String body;
     };
-    QueueHandle_t receiveQueue;
-    MQTTQueueMessageV2* mqttMessageReceiveV2;
-
-
+    OwnedQueue<MqttInbound> receiveQueue_;
 
     void processMQTTMessage();
 

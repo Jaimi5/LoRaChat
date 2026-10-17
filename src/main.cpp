@@ -256,7 +256,7 @@ void setup() {
 
 void loop() {
     // All work runs in service tasks; the Arduino loop task is not needed.
-    vTaskDelete(NULL);
+    vTaskDelete(nullptr);
 }
 
 #endif

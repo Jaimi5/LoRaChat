@@ -1,9 +1,18 @@
 #include "mqttService.h"
 
+#include <atomic>
+#include <new>
+
 #include "cmdText.h"
 #include "commands/commandRouter.h"
 
 static const char* MQTT_TAG = "MQTT";
+static constexpr UBaseType_t RECEIVE_QUEUE_LENGTH = 10;
+
+namespace {
+esp_mqtt_client_handle_t client;
+std::atomic<bool> mqtt_connected{false};
+}  // namespace
 
 void MqttService::initMqtt(String lclName) {
     if (strlen(MQTT_SERVER) == 0) {
@@ -16,9 +25,13 @@ void MqttService::initMqtt(String lclName) {
 
     localName = lclName;
 
-    mqtt_service_init(lclName.c_str());
+    if (!receiveQueue_.create(RECEIVE_QUEUE_LENGTH)) {
+        ESP_LOGE(MQTT_TAG, "No memory for the receive queue, MQTT disabled");
+        initialized = false;
+        return;
+    }
 
-    receiveQueue = xQueueCreate(10, sizeof(MQTTQueueMessageV2*));
+    mqtt_service_init(lclName.c_str());
 
     createMqttTask();
 
@@ -35,10 +48,6 @@ void MqttService::initMqtt(String lclName) {
     ESP_LOGI(MQTT_TAG, "Mqtt initialized");
 }
 
-
-static esp_mqtt_client_handle_t client;
-bool mqtt_connected = false;
-
 void MqttService::createMqttTask() {
     int res = xTaskCreate(MqttLoop, "Mqtt Task", 4096, (void*)1, 2, &mqtt_TaskHandle);
     if (res != pdPASS)
@@ -51,7 +60,7 @@ void MqttService::MqttLoop(void*) {
 
     for (;;) {
         ESP_LOGV(MQTT_TAG, "Stack space unused after entering the task: %d",
-                 uxTaskGetStackHighWaterMark(NULL));
+                 uxTaskGetStackHighWaterMark(nullptr));
 
         mqttService.processMQTTMessage();
         vTaskDelay(20 / portTICK_PERIOD_MS);
@@ -59,14 +68,10 @@ void MqttService::MqttLoop(void*) {
 }
 
 void MqttService::processMQTTMessage() {
-    if (xQueueReceive(receiveQueue, &mqttMessageReceiveV2, portMAX_DELAY) == pdTRUE) {
-        ESP_LOGV(MQTT_TAG, "Message received from mqtt queue");
-        ESP_LOGV(MQTT_TAG, "Topic: %s", mqttMessageReceiveV2->topic.c_str());
-
-        processReceivedMessageFromMQTT(mqttMessageReceiveV2->topic, mqttMessageReceiveV2->body);
-
-        delete mqttMessageReceiveV2;
-    }
+    std::unique_ptr<MqttInbound> inbound = receiveQueue_.receive(portMAX_DELAY);
+    if (!inbound) return;
+    ESP_LOGV(MQTT_TAG, "Topic: %s", inbound->topic.c_str());
+    processReceivedMessageFromMQTT(inbound->topic, inbound->body);
 }
 
 bool MqttService::connect() {
@@ -111,6 +116,7 @@ bool MqttService::writeToMqtt(DataMessage* message) {
     }
 
     String json = MessageManager::getInstance().getJSON(message);
+    if (json.isEmpty()) return true;
     String topic = String(MQTT_TOPIC_OUT) + String(message->addrSrc);
     mqtt_service_send(topic.c_str(), json.c_str(), 0);
     return true;
@@ -146,9 +152,9 @@ void MqttService::processReceivedMessageFromMQTT(String& topic, String& payload)
         CommandRouter::getInstance().submit(request);
         return;
     }
-    DataMessage* message = MessageManager::getInstance().getDataMessage(payload);
+    DataMessagePtr message = MessageManager::getInstance().getDataMessage(payload);
 
-    if (message == NULL) {
+    if (!message) {
         ESP_LOGE(MQTT_TAG, "Error parsing message");
         return;
     }
@@ -159,16 +165,13 @@ void MqttService::processReceivedMessageFromMQTT(String& topic, String& payload)
 
         if (message->addrDst == 0) {
             ESP_LOGE(MQTT_TAG, "Error parsing destination address");
-            delete message;
             return;
         }
     }
 
-    MessageManager::getInstance().processReceivedMessage(messagePort::MqttPort, message);
+    MessageManager::getInstance().processReceivedMessage(messagePort::MqttPort, message.get());
 
     ESP_LOGI(MQTT_TAG, "Message sent to services");
-
-    delete message;
 }
 
 void MqttService::processReceivedMessage(messagePort port, DataMessage* message) {
@@ -211,8 +214,8 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_ERROR:
             ESP_LOGI(MQTT_TAG, "MQTT_EVENT_ERROR");
             if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-                ESP_LOGI(MQTT_TAG, "Last errno string (%s)",
-                         strerror(event->error_handle->esp_transport_sock_errno));
+                ESP_LOGI(MQTT_TAG, "Last socket errno %d",
+                         event->error_handle->esp_transport_sock_errno);
             }
             if (WiFiServerService::getInstance().isConnected() && mqtt_connected) {
                 mqtt_connected = false;
@@ -248,7 +251,7 @@ void MqttService::mqtt_app_start(const char* client_id) {
     /* The last argument may be used to pass data to the event handler, in this example
      * mqtt_event_handler */
     esp_mqtt_client_register_event(client, esp_mqtt_event_id_t::MQTT_EVENT_ANY, mqtt_event_handler,
-                                   NULL);
+                                   nullptr);
 
 
     ESP_ERROR_CHECK(esp_mqtt_client_start(client));
@@ -270,16 +273,16 @@ void MqttService::mqtt_service_send(const char* topic, const char* data, int len
 
 void MqttService::process_message(const char* topic, int topic_len, const char* payload,
                                   int data_len) {
-    String topicStr = String(topic, topic_len);
-    String payloadStr = String(payload, data_len);
-
-    MQTTQueueMessageV2* mqttMessageReceive = new MQTTQueueMessageV2();
-    mqttMessageReceive->topic = topicStr;
-    mqttMessageReceive->body = payloadStr;
-
-    if (xQueueSend(receiveQueue, &mqttMessageReceive, portMAX_DELAY) != pdPASS) {
-        // ESP_LOGE(MQTT_TAG, "Error sending to queue");
-        delete mqttMessageReceive;
+    auto inbound = std::unique_ptr<MqttInbound>(new (std::nothrow) MqttInbound());
+    if (!inbound) {
+        ESP_LOGW(MQTT_TAG, "No memory for a received message, dropped");
         return;
+    }
+    inbound->topic = String(topic, topic_len);
+    inbound->body = String(payload, data_len);
+
+    // Runs on the esp-mqtt task, which must not block: a full queue drops the message.
+    if (!receiveQueue_.send(inbound, 0)) {
+        ESP_LOGW(MQTT_TAG, "Receive queue full, message dropped");
     }
 }

@@ -23,7 +23,7 @@ static const char* NVS_KEY_DEPLOYMENT = "cmdkey";
 static const char* NVS_OTA_NAMESPACE = "lmota";
 static const char* NVS_KEY_SERVER = "srv";
 static constexpr size_t MAX_SERVER_URL = 128;
-static constexpr uint64_t REBOOT_DELAY_US = 1000 * 1000;
+static constexpr uint64_t REBOOT_DELAY_US = 1000ULL * 1000;
 static const uint8_t SEAL_LABEL[] = {'L', 'M', 'W', '1'};
 
 static constexpr uint32_t MAX_PULL_WINDOW_S = MaintWindowPlan::MAX_PULL_S;

@@ -46,7 +46,7 @@ public:
 
     String getJSON(DataMessage* message);
 
-    DataMessage* getDataMessage(String json);
+    DataMessagePtr getDataMessage(const String& json);
 
     /** Logs the header fields of @p message. */
     void logHeader(const char* title, const DataMessage* message);

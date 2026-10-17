@@ -76,7 +76,7 @@ void OtaBootGuard::begin() {
         xTaskCreate(
             [](void*) {
                 OtaBootGuard::getInstance().runContactTask();
-                vTaskDelete(NULL);
+                vTaskDelete(nullptr);
             },
             "OtaContact", 3072, nullptr, 1, nullptr);
     }
@@ -192,7 +192,7 @@ void OtaBootGuard::startSelfTest() {
         meshRequired = BootGuardLogic::meshFrameRequired(hadNeighbours_, record_);
         skipped = hadNeighbours_ && !meshRequired;
         selfTestStartMs_ = millis();
-        selfTest_.reset(new SelfTest(selfTestStartMs_, meshRequired));
+        selfTest_ = std::make_unique<SelfTest>(selfTestStartMs_, meshRequired);
         watchdogMs = selfTest_->timing().watchdogMs;
         pendingVerify_ = true;
     }
@@ -203,7 +203,7 @@ void OtaBootGuard::startSelfTest() {
     xTaskCreate(
         [](void*) {
             OtaBootGuard::getInstance().runSelfTestTask();
-            vTaskDelete(NULL);
+            vTaskDelete(nullptr);
         },
         "OtaSelfTest", 4096, nullptr, configMAX_PRIORITIES - 2, nullptr);
 
@@ -247,7 +247,7 @@ void OtaBootGuard::runSelfTestTask() {
         SelfTestVerdict verdict;
         FailReason reason;
         bool extended;
-        SelfTestTiming timing;
+        SelfTestTiming timing{};
         uint32_t now = millis();
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -322,8 +322,8 @@ void OtaBootGuard::printBootLine(ImageState state) {
 
     const char* reset = resetReasonName();
 
-    std::string line = formatBootLine(running ? running->label : "?", state, app->version,
-                                      bootloader.c_str(), reset);
+    std::string line =
+        formatBootLine(running ? running->label : "?", state, app->version, bootloader, reset);
     Serial.println(line.c_str());
 
     const esp_partition_t* invalid = esp_ota_get_last_invalid_partition();

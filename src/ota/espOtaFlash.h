@@ -17,7 +17,7 @@
 class EspOtaFlash : public IOtaFlash {
 public:
     EspOtaFlash() : partition_(esp_ota_get_next_update_partition(nullptr)) {}
-    ~EspOtaFlash() override { abort(); }
+    ~EspOtaFlash() override { EspOtaFlash::abort(); }
     EspOtaFlash(const EspOtaFlash&) = delete;
     EspOtaFlash& operator=(const EspOtaFlash&) = delete;
 

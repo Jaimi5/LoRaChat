@@ -44,12 +44,6 @@ public:
         return instance;
     }
 
-    ~WiFiServerService() {
-        if (wiFiCommandService != nullptr) {
-            delete wiFiCommandService;
-        }
-    }
-
     void initWiFi();
 
     bool connectWiFi();
@@ -83,8 +77,6 @@ public:
     String getIP();
 
 
-    WiFiCommandService* wiFiCommandService = nullptr;
-
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
     void sendMessage(DataMessage* message);
@@ -92,9 +84,10 @@ public:
 
 private:
     WiFiServerService() : MessageService(appPort::WiFiApp, String("WiFi")) {
-        wiFiCommandService = new WiFiCommandService();
-        commandService = wiFiCommandService;
-    };
+        commandService = &commands_;
+    }
+
+    WiFiCommandService commands_;
 
     /** Guards the credentials and the connection state shared by the WiFi task and commands. */
     std::recursive_mutex stateMutex_;
@@ -107,7 +100,7 @@ private:
 
     bool checkIfWiFiCredentialsAreSet();
 
-    TaskHandle_t wifi_TaskHandle = NULL;
+    TaskHandle_t wifi_TaskHandle = nullptr;
 
     void createWiFiTask();
 

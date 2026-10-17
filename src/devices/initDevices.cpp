@@ -3,6 +3,7 @@
 #include "config.h"
 
 #include <functional>
+#include <memory>
 
 #include "esp_timer.h"
 #if defined(T_BEAM)
@@ -14,7 +15,7 @@
 static const char* ID_TAG = "InitDevices";
 
 #ifdef HAS_PMU
-XPowersLibInterface* PMU = NULL;
+static std::unique_ptr<XPowersLibInterface> PMU;
 
 static TaskHandle_t pmuIrqTaskHandle = nullptr;
 static std::function<void()> powerKeyHandler;
@@ -31,12 +32,12 @@ static void applyChargeLed() {
 static void restartCharger() {
     constexpr uint32_t CHARGER_OFF_MS = 10;
     if (PMU->getChipModel() == XPOWERS_AXP2101) {
-        auto* axp = static_cast<XPowersAXP2101*>(PMU);
+        auto* axp = static_cast<XPowersAXP2101*>(PMU.get());
         axp->disableCellbatteryCharge();
         delay(CHARGER_OFF_MS);
         axp->enableCellbatteryCharge();
     } else if (PMU->getChipModel() == XPOWERS_AXP192) {
-        auto* axp = static_cast<XPowersAXP192*>(PMU);
+        auto* axp = static_cast<XPowersAXP192*>(PMU.get());
         axp->disableCharge();
         delay(CHARGER_OFF_MS);
         axp->enableCharge();
@@ -48,13 +49,13 @@ static void restartCharger() {
  *        bus is started again for the next probe and for the display.
  */
 template <typename Chip>
-static XPowersLibInterface* probePmu(const char* name) {
-    auto* chip = new Chip(PMU_WIRE_PORT);
+static std::unique_ptr<XPowersLibInterface> probePmu(const char* name) {
+    auto chip = std::make_unique<Chip>(PMU_WIRE_PORT);
     if (chip->init()) {
         ESP_LOGI(ID_TAG, "Power chip %s found", name);
         return chip;
     }
-    delete chip;
+    chip.reset();
     PMU_WIRE_PORT.begin((int)I2C_SDA, (int)I2C_SCL);
     return nullptr;
 }
@@ -133,7 +134,7 @@ std::string InitDevices::powerReport() {
                           PMU->isCharging() ? "yes" : "no");
     if (PMU->getChipModel() == XPOWERS_AXP2101) {
         static const char* STATES[] = {"TRICKLE", "PRE", "CC", "CV", "DONE", "STOP"};
-        auto* axp = static_cast<XPowersAXP2101*>(PMU);
+        auto* axp = static_cast<XPowersAXP2101*>(PMU.get());
         size_t state = static_cast<size_t>(axp->getChargerStatus());
         snprintf(text + length, sizeof(text) - length,
                  " state=%s s1=%02x s2=%02x ts=%02x batdet=%02x led=%02x timer=%02x icc=%02x",
@@ -146,7 +147,7 @@ std::string InitDevices::powerReport() {
                  axp->readRegister(XPOWERS_AXP2101_CHG_TIMEOUT_SET_CTRL),
                  axp->readRegister(XPOWERS_AXP2101_ICC_CHG_SET));
     } else if (PMU->getChipModel() == XPOWERS_AXP192) {
-        auto* axp = static_cast<XPowersAXP192*>(PMU);
+        auto* axp = static_cast<XPowersAXP192*>(PMU.get());
         snprintf(text + length, sizeof(text) - length, " status=%02x mode=%02x chgctl=%02x",
                  axp->readRegister(XPOWERS_AXP192_STATUS),
                  axp->readRegister(XPOWERS_AXP192_MODE_CHGSTATUS),

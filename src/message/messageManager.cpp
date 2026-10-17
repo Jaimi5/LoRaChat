@@ -70,7 +70,7 @@ String MessageManager::getJSON(DataMessage* message) {
     return "{\"Empty\":\"true\"}";
 }
 
-DataMessage* MessageManager::getDataMessage(String json) {
+DataMessagePtr MessageManager::getDataMessage(const String& json) {
     DynamicJsonDocument doc(2048);
 
     DeserializationError error = deserializeJson(doc, json);

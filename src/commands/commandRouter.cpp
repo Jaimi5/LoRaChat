@@ -1,6 +1,7 @@
 #include "commandRouter.h"
 
 #include <memory>
+#include <new>
 #include <vector>
 
 #include "deploymentKey.h"
@@ -18,19 +19,17 @@ static constexpr UBaseType_t QUEUE_LENGTH = 8;
 static const char TRUNCATED_MARK = '~';
 
 void CommandRouter::begin() {
-    queue_ = xQueueCreate(QUEUE_LENGTH, sizeof(CommandRequest*));
-    if (queue_ == nullptr ||
+    if (!queue_.create(QUEUE_LENGTH) ||
         xTaskCreate(task, "Commands", TASK_STACK, this, 1, nullptr) != pdPASS) {
         ESP_LOGE(CR_TAG, "Command task could not be started");
     }
 }
 
 bool CommandRouter::submit(const CommandRequest& request) {
-    if (queue_ == nullptr) return false;
-    CommandRequest* item = new (std::nothrow) CommandRequest(request);
-    if (item == nullptr) return false;
-    if (xQueueSend(queue_, &item, 0) != pdTRUE) {
-        delete item;
+    if (!queue_.valid()) return false;
+    auto item = std::unique_ptr<CommandRequest>(new (std::nothrow) CommandRequest(request));
+    if (!item) return false;
+    if (!queue_.send(item, 0)) {
         ESP_LOGW(CR_TAG, "Command queue full, line dropped");
         return false;
     }
@@ -40,10 +39,8 @@ bool CommandRouter::submit(const CommandRequest& request) {
 void CommandRouter::task(void* parameter) {
     auto* self = static_cast<CommandRouter*>(parameter);
     for (;;) {
-        CommandRequest* item = nullptr;
-        if (xQueueReceive(self->queue_, &item, portMAX_DELAY) != pdTRUE) continue;
-        std::unique_ptr<CommandRequest> request(item);
-        self->handle(*request);
+        std::unique_ptr<CommandRequest> request = self->queue_.receive(portMAX_DELAY);
+        if (request) self->handle(*request);
     }
 }
 
@@ -58,7 +55,7 @@ void CommandRouter::processReceivedMessage(messagePort port, DataMessage* messag
     request.src = message->addrSrc;
     request.requestId = message->messageId;
     request.response = frame.response;
-    request.command.line = frame.line.c_str();
+    request.command.line = frame.line;
     request.command.isSigned = frame.isSigned;
     request.command.counter = frame.counter;
     request.command.tag = frame.tag;
@@ -124,8 +121,10 @@ String CommandRouter::runSigned(const CommandRequest& request) {
     switch (counter_.decide(request.command.counter)) {
         case CounterDecision::REPLAY:
             return "ERR replay";
-        case CounterDecision::REPEAT:
-            return counter_.lastReply().c_str();
+        case CounterDecision::REPEAT: {
+            const std::string lastReply = counter_.lastReply();
+            return String(lastReply.c_str());
+        }
         case CounterDecision::EXECUTE:
             break;
     }
@@ -164,7 +163,7 @@ void CommandRouter::forward(const CommandRequest& request) {
 
 void CommandRouter::reply(const CommandRequest& request, const String& text) {
     if (request.origin == Origin::SERIAL_CONSOLE) {
-        String name = request.command.line.substr(0, request.command.line.find(' ')).c_str();
+        const std::string name = request.command.line.substr(0, request.command.line.find(' '));
         Serial.printf("> %s\n%s\n", name.c_str(), text.c_str());
         return;
     }

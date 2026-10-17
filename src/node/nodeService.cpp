@@ -12,7 +12,7 @@ static const char* NVS_NAMESPACE = "lmnode";
 static const char* NVS_KEY_ROLE = "role";
 static const char* NVS_KEY_SLEEP_MODE = "sleep";
 static const char* NVS_KEY_SLEEP_FRACTION = "sleepfrac";
-static constexpr uint64_t RESTART_DELAY_US = 1000 * 1000;
+static constexpr uint64_t RESTART_DELAY_US = 1000ULL * 1000;
 
 void NodeService::init(uint16_t address) {
     nvs_handle_t handle;

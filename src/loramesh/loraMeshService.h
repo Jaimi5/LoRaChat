@@ -11,6 +11,7 @@
 #include "message/messageManager.h"
 
 #include "message/messageService.h"
+#include "message/ownedQueue.h"
 
 #include "loraMeshCommandService.h"
 
@@ -25,12 +26,6 @@ public:
     static LoRaMeshService& getInstance() {
         static LoRaMeshService instance;
         return instance;
-    }
-
-    ~LoRaMeshService() {
-        if (loraMesherCommandService != nullptr) {
-            delete loraMesherCommandService;
-        }
     }
 
     /**
@@ -77,8 +72,6 @@ public:
 
     void removeGateway();
 
-    LoRaMeshCommandService* loraMesherCommandService = nullptr;
-
     void standby();
 
     /** @return true once the mesh stack has started. */
@@ -117,22 +110,19 @@ private:
 
     std::unique_ptr<loramesher::LoraMesher> mesher_;
 
-    // Queue message struct — heap-allocated pointer, freed after processing
-    struct LoRaQueueMessage {
-        loramesher::AddressType source;
-        DataMessage* dataMessage;  // pvPortMalloc'd
-    };
-
-    QueueHandle_t loraReceiveQueue_ = nullptr;
+    /** Messages received from the mesh, waiting for the receive task. */
+    OwnedQueue<DataMessage, DataMessageDeleter> loraReceiveQueue_;
     TaskHandle_t loraReceiveTask_Handle = nullptr;
 
     static void loraReceiveLoop(void* pvParameters);
     void createReceiveTask();
 
     LoRaMeshService() : MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
-        loraMesherCommandService = new LoRaMeshCommandService();
-        commandService = loraMesherCommandService;
-    };
+        commandService = &commands_;
+    }
 
-    LoRaMeshMessage* createLoRaMeshMessage(DataMessage* message);
+    LoRaMeshCommandService commands_;
+
+    /** @return the LoRa frame of @p message: its ports, its id and its payload. */
+    static std::vector<uint8_t> createLoRaMeshFrame(const DataMessage& message);
 };

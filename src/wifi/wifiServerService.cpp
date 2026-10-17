@@ -63,7 +63,7 @@ void WiFiServerService::wifi_task(void*) {
             s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdTRUE, pdFALSE, wait);
 
         ESP_LOGV(TAG, "Stack space unused after entering the task: %d",
-                 uxTaskGetStackHighWaterMark(NULL));
+                 uxTaskGetStackHighWaterMark(nullptr));
 
         /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which
          * event actually happened. */
@@ -134,9 +134,9 @@ void WiFiServerService::wifi_init_sta() {
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &instance_any_id));
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, nullptr, &instance_any_id));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &instance_got_ip));
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, nullptr, &instance_got_ip));
 }
 
 void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* message) {
@@ -204,9 +204,11 @@ String WiFiServerService::resetWiFiData() {
     // Create empty WiFi configuration with proper initialization
     wifi_config_t wifi_cfg = {};
 
-    // Clear the SSID and password fields explicitly
-    strcpy((char*)wifi_cfg.sta.ssid, DEFAULT_WIFI_SSID);
-    strcpy((char*)wifi_cfg.sta.password, DEFAULT_WIFI_PASSWORD);
+    static_assert(sizeof(DEFAULT_WIFI_SSID) <= MAX_SSID_LENGTH, "default SSID too long");
+    static_assert(sizeof(DEFAULT_WIFI_PASSWORD) <= MAX_PASSWORD_LENGTH,
+                  "default password too long");
+    memcpy(wifi_cfg.sta.ssid, DEFAULT_WIFI_SSID, sizeof(DEFAULT_WIFI_SSID));
+    memcpy(wifi_cfg.sta.password, DEFAULT_WIFI_PASSWORD, sizeof(DEFAULT_WIFI_PASSWORD));
 
     // Apply the cleared configuration
     result = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
@@ -347,7 +349,7 @@ String WiFiServerService::getIP() {
     // TODO: Check if this is the correct way to get the IP
 
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (netif == NULL) {
+    if (netif == nullptr) {
         printf("Could not get netif handle\n");
         return F("No IP");
     }

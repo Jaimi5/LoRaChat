@@ -6,8 +6,6 @@
 
 #include "message/dataMessage.h"
 
-static const char* DISPLAY_TAG = "DisplayService";
-
 #pragma pack(1)
 
 enum DisplayCommand : uint8_t {
@@ -30,36 +28,6 @@ public:
     uint32_t getDisplayTextSize() {
         if (this->messageSize <= sizeof(DisplayCommand)) return 0;
         return std::min<uint32_t>(this->messageSize - sizeof(DisplayCommand), sizeof(displayText));
-    }
-
-    void serialize(JsonObject& doc) { ESP_LOGE(DISPLAY_TAG, "Display Message not implemented"); }
-
-    void deserialize(JsonObject& doc) {
-        // Call the base class deserialize function
-        ((DataMessageGeneric*)(this))->deserialize(doc);
-
-        // Add the derived class data to the JSON object
-        displayCommand = doc["displayCommand"];
-
-        size_t displayTextSize = 0;
-
-        switch (displayCommand) {
-            case DisplayText: {
-                const char* text = doc["displayText"] | "";
-                size_t length = strlen(text);
-                if (length > 32) {
-                    ESP_LOGE(DISPLAY_TAG, "displayText is too long");
-                    break;
-                }
-                memcpy(displayText, text, length + 1);
-                displayTextSize = length + 1;
-                break;
-            }
-            default:
-                break;
-        }
-
-        this->messageSize = displayTextSize + sizeof(DisplayCommand);
     }
 };
 #pragma pack()

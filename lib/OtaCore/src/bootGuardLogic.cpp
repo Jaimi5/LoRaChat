@@ -27,7 +27,7 @@ FailReason reasonFor(SelfTestCheck check) {
     return FailReason::DEADLINE;
 }
 
-BootDecision resolved(BootAction action, OtaRecord record) {
+BootDecision resolved(BootAction action, const OtaRecord& record) {
     BootDecision decision;
     decision.action = action;
     decision.record = record;
