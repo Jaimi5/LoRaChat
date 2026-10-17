@@ -4,6 +4,8 @@
 
 #include <ArduinoJson.h>
 
+#include <cstdlib>
+#include <memory>
 
 #pragma pack(1)
 
@@ -35,6 +37,7 @@ enum appPort : uint8_t {
     MonApp = 16,
     DisplayApp = 17,
     OTAApp = 18,
+    NodeApp = 19,
 };
 
 class DataMessageGeneric {
@@ -75,3 +78,28 @@ public:
 };
 
 #pragma pack()
+
+/** Frees a message made by allocateDataMessage(). */
+struct DataMessageDeleter {
+    void operator()(DataMessage* message) const {
+        // NOLINTNEXTLINE(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory): calloc block
+        free(message);
+    }
+};
+
+/** Sole owner of a message and its payload. */
+using DataMessagePtr = std::unique_ptr<DataMessage, DataMessageDeleter>;
+
+/**
+ * @brief Allocates a zeroed message with room for @p payloadSize payload bytes.
+ *
+ * Every DataMessage, and every message type that extends DataMessageGeneric, is allocated here:
+ * the payload is a flexible array member, so the size is only known at run time.
+ * @return the message with messageSize set, or nullptr if the heap is exhausted.
+ */
+inline DataMessagePtr allocateDataMessage(size_t payloadSize) {
+    // NOLINTNEXTLINE(cppcoreguidelines-no-malloc): flexible array member, freed by the deleter
+    DataMessagePtr message(static_cast<DataMessage*>(calloc(1, sizeof(DataMessage) + payloadSize)));
+    if (message) message->messageSize = static_cast<uint32_t>(payloadSize);
+    return message;
+}

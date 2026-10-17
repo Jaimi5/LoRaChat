@@ -2,9 +2,9 @@
 
 #include <Arduino.h>
 
-#include "message/dataMessage.h"
+#include <algorithm>
 
-static const char* DISPLAY_TAG = "DisplayService";
+#include "message/dataMessage.h"
 
 #pragma pack(1)
 
@@ -24,34 +24,10 @@ public:
         char displayText[128];
     };
 
-    uint32_t getDisplayTextSize() { return this->messageSize - sizeof(DisplayCommand); }
-
-    void serialize(JsonObject& doc) { ESP_LOGE(DISPLAY_TAG, "Display Message not implemented"); }
-
-    void deserialize(JsonObject& doc) {
-        // Call the base class deserialize function
-        ((DataMessageGeneric*)(this))->deserialize(doc);
-
-        // Add the derived class data to the JSON object
-        displayCommand = doc["displayCommand"];
-
-        size_t displayTextSize = 0;
-
-        switch (displayCommand) {
-            case DisplayText: {
-                displayTextSize = strlen(doc["displayText"]);
-                if (displayTextSize > 32) {
-                    ESP_LOGE(DISPLAY_TAG, "displayText is too long");
-                    return;
-                }
-                strcpy(displayText, doc["displayText"]);
-                break;
-            }
-            default:
-                break;
-        }
-
-        this->messageSize = displayTextSize + sizeof(DisplayCommand);
+    /** @return the bytes of displayText that the message carries, NUL included if sent. */
+    uint32_t getDisplayTextSize() {
+        if (this->messageSize <= sizeof(DisplayCommand)) return 0;
+        return std::min<uint32_t>(this->messageSize - sizeof(DisplayCommand), sizeof(displayText));
     }
 };
 #pragma pack()

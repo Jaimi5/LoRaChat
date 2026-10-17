@@ -1,35 +1,12 @@
-# LoRaChat
+# LoRaChat Firmware
 
-LoRaChat is an open-source C++ middleware for ESP32 LoRa boards. It runs on top of the [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) mesh routing library and adds the application layer that a mesh routing library does not provide:
+LoRaChat is ESP32 firmware for LoRa mesh networks of sensor nodes. It runs on TTGO T-Beam boards and uses [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) 2.0, a TDMA LoRa mesh protocol, to carry application messages between nodes. A gateway node bridges the mesh to an MQTT broker over WiFi. Firmware updates are installed over the air with automatic rollback.
 
-- **Application ports (`appPort`)** let several distributed applications run concurrently on the same node. Each incoming message is delivered only to the application it is addressed to.
-- **Message ports (`messagePort`)** identify the network a message is sent or received over: the LoRa mesh, an MQTT broker (via Wi-Fi), Bluetooth, or another application on the same node.
-- **A central `MessageManager`** dispatches every message to the right application and network, so new applications can be added without touching the network layer or the applications already running.
+You can join LoRaMesher's developers and users on **[Discord](https://discord.gg/KCY78MbpUa)**, if you like.
 
-A gateway node with Wi-Fi bridges the mesh to an MQTT broker in both directions, so Internet hosts can send commands to applications on any mesh node and receive data from them. A smartphone paired over Bluetooth can issue text commands to a node.
+## Organizations & Contributors Using This Project
 
-The repository includes example applications (LED actuation, sensor reporting, GPS, OLED display, network monitoring), a Python test harness for experiments with physical nodes, and testbed scripts.
-
-You can join LoRaMesher's and LoRaChat's developers and users on **[Discord](https://discord.gg/KCY78MbpUa)**.
-
-## Contents
-
-- [Organizations and contributors using this project](#organizations-and-contributors-using-this-project)
-- [Demonstrator](#demonstrator)
-- [Architecture](#architecture)
-- [Supported hardware and LoRaMesher versions](#supported-hardware-and-loramesher-versions)
-- [Installation and build](#installation-and-build)
-- [Configuration](#configuration)
-- [Minimal example: from the Internet to a mesh node and back](#minimal-example-from-the-internet-to-a-mesh-node-and-back)
-- [Adding a new application](#adding-a-new-application)
-- [Running experiments with the test harness](#running-experiments-with-the-test-harness)
-- [Known limitations](#known-limitations)
-- [Citing LoRaChat](#citing-lorachat)
-- [License](#license)
-
-## Organizations and contributors using this project
-
-- [Hacking Ecology (Nayad)](https://hackingecology.com/) - Hacking Ecology transforms water monitoring with accessible and open-source systems. LoRaChat has a dedicated build environment for their Nayad board.
+- [Hacking Ecology (Nayad)](https://hackingecology.com/) - Hacking Ecology transforms water monitoring with accessible and open-source systems.
 
 [<img src="https://github.com/Jaimi5/Jaimi5.github.io/blob/master/logos/enclosure%20logo.png" height="60">](https://hackingecology.com/)
 
@@ -37,397 +14,229 @@ You can join LoRaMesher's and LoRaChat's developers and users on **[Discord](htt
 
 [<img src="https://github.com/Jaimi5/Jaimi5.github.io/blob/master/logos/upc-positiu-p3005-interior-blanc.png" height="60">](https://www.upc.edu/)
 
-If you use LoRaChat in a project, let us know through an issue or on Discord and we will add you to this list.
 
 ## Demonstrator
 
-A live view of a permanent 12-node LoRa mesh testbed running LoRaChat's monitoring application is available [here](https://tomir.ac.upc.edu/loraupc/index.php). It shows the network topology reconstructed from the neighbor reports that each node publishes over MQTT.
+A live demonstration of an operation LoRaChat application is [here](https://tomir.ac.upc.edu/loraupc/index.php).
 
-## Architecture
+## Supported hardware
 
-```
-  Applications      LED   Sensor   GPS   Display   Monitor   (your app)
-                     │       │      │       │         │          │
-                     └───────┴──────┴───┬───┴─────────┴──────────┘
-                                        │  DataMessage (appPortSrc/appPortDst, addrSrc/addrDst)
-                                ┌───────┴────────┐
-                                │ MessageManager │   dispatch by appPort and messagePort
-                                └───────┬────────┘
-              ┌──────────────────┬──────┴───────────┬───────────────────┐
-         LoRaMeshPort         MqttPort         BluetoothPort       InternalPort
-              │                  │                  │            (same node)
-      LoRaMeshService       MqttService      BluetoothService
-              │             (over Wi-Fi)    (command console)
-          LoRaMesher
-   (0.0.11 or TDMA-based)
-```
+One firmware image runs on both TTGO T-Beam revisions:
 
-All components exchange a common `DataMessage` (defined in `src/message/dataMessage.h`). Its header carries the source and destination application ports (`appPortSrc`, `appPortDst`), the source and destination node addresses (`addrSrc`, `addrDst`), a `messageId`, and the payload size (`messageSize`). Each application extends this header with its own payload.
+- T-Beam v1.0/v1.1 (AXP192 power management)
+- T-Beam v1.2 (AXP2101 power management)
 
-Source code layout (`src/`):
+The power management chip is detected at boot. The firmware powers the LoRa radio, the ESP32 and the rail of the OLED and the 3.3 V header pins, and switches the GPS off (it is not used). Batteries are charged to 4.2 V. The user LED (GPIO4) is kept off except during `/identify`. With a battery fitted, the charge LED is driven by the charger: on while charging, off when full or on battery, blinking on a charge fault; without a battery it stays off (the T-Beam v1.2 reports battery insertion and removal, and the LED follows). The charger is restarted at every boot, which clears a latched charge fault as unplugging USB does. `/power` prints supply, battery and charger state (an AXP192 without a battery reports a phantom cell at about 3.3 V that does not charge).
 
-| Folder | Content |
+The OLED shows the node address and version for 60 s after boot (`DISPLAY_AWAKE_MS` in `src/config.h`) and then sleeps. A short press of the power button (PWR) wakes it for another 60 s; holding the button for 4 s switches the board off. The `/displayOn` and `/displayOff` commands wake it and put it to sleep.
+
+## Building
+
+The project uses [PlatformIO](https://platformio.org/) with the Arduino framework as an ESP-IDF component (`espressif32@6.5.0`, Arduino 2.0.14, ESP-IDF 4.4.6).
+
+| Environment | Use |
 |---|---|
-| `message` | `DataMessage`, `MessageService` base class, `MessageManager` |
-| `loramesh` | `LoRaMeshService`, the wrapper around LoRaMesher (both versions) |
-| `mqtt`, `wifi`, `bluetooth` | Cross-network services |
-| `commands` | `CommandService` base class for per-application text commands |
-| `led`, `sensor`, `gps`, `display`, `monitor` | Example applications |
-| `simulator` | On-device traffic generator used by the test harness |
-| `battery`, `ota`, `time`, `helpers`, `devices` | Support modules |
-| `config.h` | Feature switches, Wi-Fi/MQTT settings, radio parameters |
-| `main.cpp` | Initialization and registration of all services |
-
-Outside `src/`, `Testing/` contains the Python test harness and `scripts/testbed/` contains the scripts used to deploy and run experiments on our testbed (see [scripts/testbed/README.md](scripts/testbed/README.md)).
-
-## Supported hardware and LoRaMesher versions
-
-LoRaChat builds against two versions of LoRaMesher. The version is selected by the PlatformIO environment, without code changes.
-
-- **LoRaMesher 0.0.11** (environments without suffix): the original CSMA-based distance-vector version, described in the [LoRaMesher SoftwareX paper](https://doi.org/10.1016/j.softx.2026.102570). It supports reliable transfer of large payloads (`sendReliablePacket`). Choose this version if your application sends payloads larger than one LoRa packet.
-- **TDMA-based LoRaMesher** (environments with suffix `-v2`): the complete rewrite first released as [LoRaMesher v1.0.0](https://github.com/LoRaMesher/LoRaMesher/tree/v1.0.0), in which an elected network manager schedules transmissions in a superframe. For reproducible builds, `platformio.ini` pins commit [`134ae25`](https://github.com/LoRaMesher/LoRaMesher/commit/134ae25ff788c40131e3ef744126ff21f6fa038f) of the LoRaMesher `new_loramesher` branch, which contains APIs that LoRaChat needs and that are not in the `v1.0.0` tag. The build flag `USE_LORAMESHER_V2` enables this version. Reliable large-payload transfer is not yet available with it.
-
-Applications are the same for both versions. Only `LoRaMeshService` and the monitor and simulator modules contain version-specific code.
-
-| Board | LoRaMesher 0.0.11 | TDMA-based LoRaMesher |
-|---|---|---|
-| TTGO T-Beam v1.0 | `ttgo-t-beam` | `ttgo-t-beam-v2` |
-| TTGO T-Beam v1.2 | `ttgo-t-beam-v1-2` | `ttgo-t-beam-v1-2-v2` |
-| TTGO LoRa32 v1 | `ttgo-lora32-v1` | `ttgo-lora32-v1-v2` |
-| Nayad v1r2 (Hacking Ecology) | `esp-wrover-kitNAYAD_V1R2` | not available |
-| Makerfabs SenseLoRa (soil moisture) | `MAKERFABS_SENSELORA_MOISTURE` | `MAKERFABS_SENSELORA_MOISTURE-v2` |
-
-Other ESP32 boards with a LoRa radio supported by RadioLib can be added by creating a new environment in `platformio.ini`, a board define, and the corresponding pin settings in `src/config.h` and LoRa module settings in `src/loramesh/loraMeshService.cpp`.
-
-## Installation and build
-
-Requirements:
-
-- [PlatformIO](https://platformio.org/install) (CLI or the VS Code extension). PlatformIO downloads the ESP32 toolchain, the Arduino/ESP-IDF frameworks, LoRaMesher, and the other libraries automatically on the first build.
-- A supported board (see the table above) and a USB cable.
-- For gateway operation, a Wi-Fi network and an MQTT broker (for example [EMQX](https://www.emqx.io/downloads) or Mosquitto).
-
-Build, flash, and monitor a node:
+| `tbeam` | Release image for both T-Beam revisions |
+| `tbeam-debug` | Same image with verbose logs, heap poisoning and heap tracing |
+| `native` | Unit tests of the pure logic in `lib/` (GoogleTest) |
 
 ```bash
-git clone https://github.com/Jaimi5/LoRaChat.git
-cd LoRaChat
-git checkout v1.0.1                                  # optional: the released version
-
-pio run -e ttgo-t-beam                               # build
-pio run -e ttgo-t-beam -t upload                     # build and flash the connected board
-pio device monitor -e ttgo-t-beam                    # serial monitor (115200 baud)
+scripts/pio.sh run -e tbeam                       # build
+scripts/pio.sh run -e tbeam -t upload -t monitor  # flash over USB and open the serial monitor
+scripts/pio.sh test -e native                     # unit tests
+python3 -m pytest scripts/ota_tools/tests test/host
+scripts/pio.sh run -e tbeam -t idedata            # include paths for clang-tidy (no compile)
+python3 scripts/static_check.py clang-tidy --build-dir <workspace>/build/tbeam
+python3 scripts/static_check.py cppcheck
 ```
 
-Replace `ttgo-t-beam` with the environment for your board and LoRaMesher version. The first build takes several minutes because PlatformIO installs the toolchain and frameworks.
+`scripts/pio.sh` wraps `pio`. Under WSL it keeps the PlatformIO workspace on the Linux filesystem, which makes builds several times faster than on a Windows drive.
+
+The native tests compile the mbedTLS of the ESP-IDF package for the host, so build `tbeam` once before the first `scripts/pio.sh test -e native`. The host tools need Python 3 with `pip install -r scripts/ota_tools/requirements.txt`.
+
+### Checks for memory and concurrency errors
+
+- **Sanitizers.** The native tests run with AddressSanitizer, LeakSanitizer, UndefinedBehaviorSanitizer and the libstdc++ assertions. Any finding stops the program and fails the suite; the runtime options are compiled in from `test/sanitizerOptions.cpp`. PlatformIO prints only that the suite errored, so run the test program (`<workspace>/build/native/program`) directly to read the report. `test/host/test_native_sanitizers.py` checks that each class of error does fail a run.
+- **Warnings.** `test/host/test_lib_cxx11.py` builds `lib/` as gnu++11 and gnu++17 with `-Wall -Wextra -Wshadow -Wconversion -Wsign-conversion -Werror`.
+- **Static analysis.** `scripts/static_check.py` runs clang-tidy 18 (checks in `.clang-tidy`: the clang static analyzer with its leak and new/delete checks, smart-pointer ownership, use-after-move, thread-unsafe calls) and cppcheck over `src/` and `lib/`. clang-tidy needs the include paths of the tbeam build (`-t idedata`, which only configures). Both fail on any finding. Suppress a finding only inline, with the reason: `// NOLINT(<check>): <reason>` or `// cppcheck-suppress <id> ; <reason>`.
+- **Formatting.** Lines changed by a commit must follow `.clang-format`: `git clang-format-18 --diff <base>`.
+
+`<workspace>` is where `scripts/pio.sh` puts the PlatformIO build (`~/.cache/pio-ws/<folder>` under WSL, `.pio` elsewhere).
+
+GitHub Actions (`.github/workflows/firmware.yml`) runs on every push:
+- the rollback guards, the host tests and cppcheck
+- the native tests with the sanitizers
+- clang-tidy on the `tbeam` sources
+- the format check of the changed lines
+- a build of `tbeam` and `tbeam-debug` with every feature on
+- the 90 % size gate
+- the license and acknowledgements check (`scripts/ota_tools/third_party.py`)
+
+LoRaMesher is fetched fresh in each run, so CI builds the current head of `release/2.0.0` until that dependency is pinned.
+
+## Versions, releases and updates
+
+- **Version:** `version.txt` (`MAJOR.MINOR.PATCH`). Every build writes it into the image with the git commit, e.g. `0.1.0+gabc1234`, and the node prints it at boot: `BOOT part=app0 state=VALID ver=0.1.0+gabc1234 ...`.
+- **Release:** after a build, `python3 scripts/ota_tools/release.py --env tbeam --sign-key <key.pem> --key-id <id>` checks the image and writes `release/tbeam/<version>/` with the images, `info.json`, the signed `manifest.bin` and `bundle.bin`.
+- **Keys:** images are signed with ECDSA P-256. Key id 1 is the test key in `test/vectors/test_key.pem` for bench and test images; production builds (`OTA_PRODUCTION`) refuse it. Production keys are created with `sign_manifest.py keygen` and kept offline; their public keys go into `src/ota/otaKeys.cpp`.
+- **Rollback:** the flash holds two app slots. A newly installed image boots in `PENDING_VERIFY`; the boot guard (`src/ota/otaBootGuard.cpp`) runs a self-test (radio, power chip, heap, signature check, mesh contact) with a 240 s deadline and an RTC watchdog (timed on the chip's calibrated slow clock), and either keeps the image or makes the bootloader return to the previous one. An image that fails its self-test is blacklisted at once; one that crashes or hangs without a recorded reason is blacklisted after its second rollback. A release built with `--skip-mesh-check` passes without mesh contact (for a change of the mesh protocol). Every rollback is reported.
+- **Upload through the node's access point (push):** `/maint.open <seconds> ap` opens the WPA2 access point `LM-<address>`; its password derives from the deployment key (`scripts/ota_tools/ap_pass.py show --key-file <key> --node <address>` prints it and the WiFi QR text). Join it and open `http://192.168.4.1/`, choose the release's `bundle.bin` and upload it. The node checks the signed manifest and the length before writing anything, then writes and checks the image like the pull and reboots into it.
+- **Over-the-air download (pull):** in a maintenance window the node downloads `manifest.bin` from the OTA server (`OTA_SERVER_URL`), checks its signature and the update policy (board, partition table, size, version, blacklist, battery ≥ 3.6 V unless powered, heap), stops the mesh, streams `firmware.bin` into the other app slot with a running SHA-256 (3 attempts, each from byte 0), checks the written image against the manifest and reboots into it. The boot guard then keeps it or rolls back. After a failed download the node restarts its current image and skips that image until the next power-on. In each window the node reports to `/report` on the server's host (signed with a key derived from the deployment key): nothing to install, image written, download failed, and, at the next window after the reboot, whether the image was kept or rolled back. Command-opened windows: `/maint.open` below.
+
+Commands for keys, signing, inspecting a manifest (`sign_manifest.py show`), test images and bench flashing are in [scripts/ota_tools/README.md](scripts/ota_tools/README.md).
 
 ## Configuration
 
-All settings are in `src/config.h`.
+Site settings are kept out of git. Copy `src/config_local.example.h` to `src/config_local.h` and set:
 
-### Board and features
+- `WIFI_SSID`, `WIFI_PASSWORD`: default WiFi network of the gateway. Credentials stored in NVS with the `/addSSID` and `/addPassword` commands take priority.
+- `MQTT_SERVER`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`: MQTT broker. MQTT is disabled when `MQTT_SERVER` is empty.
+- `LORA_MANAGER_ID`: address of the node that acts as LoRaMesher network manager.
+- `OTA_SERVER_URL`: folder with `manifest.bin` and `firmware.bin` for updates. Default `http://loramesher.com/fw/<environment>/`; on the bench the PC running `scripts/ota_tools/fw_server.py`. Empty disables the update check.
 
-The board is selected by the PlatformIO environment, which sets a board define (for example `T_BEAM_V10`). For each board, `config.h` contains a block of feature switches such as `LED_ENABLED`, `DISPLAY_ENABLED`, `GPS_ENABLED`, `WIFI_ENABLED`, `MQTT_ENABLED`, `MQTT_MON_ENABLED` (monitor application), `BLUETOOTH_ENABLED`, and `SIMULATION_ENABLED`. Comment or uncomment them to choose which services are initialized on that board.
+Product settings (features, LoRa radio parameters, monitor period) are in `src/config.h`, board pins in `src/boards/tbeam.h`. ESP-IDF options are in `sdkconfig.<environment>`.
 
-### Wi-Fi and gateway role
+## Node roles and the serial console
 
-Set `WIFI_SSID` and `WIFI_PASSWORD`. A node that connects to Wi-Fi automatically announces itself as a gateway in the mesh. Nodes that cannot connect act as regular mesh nodes and send MQTT-bound messages to the closest gateway. The Wi-Fi credentials can also be changed at run time with the `wifi` command over the Bluetooth serial console.
+Every node runs the same image and has a role, stored in NVS:
 
-### MQTT
+- `gateway`: LoRaMesher network manager, with WiFi and MQTT always on. Normally on mains power.
+- `sensor`: mesh node without WiFi or MQTT. Data reaches MQTT through the gateway.
 
-Set `MQTT_SERVER`, `MQTT_PORT`, `MQTT_USERNAME`, and `MQTT_PASSWORD`. A gateway subscribes to `MQTT_TOPIC_SUB` + its own address in decimal (by default `from-server/<address>`) and publishes messages from the mesh on `MQTT_TOPIC_OUT` + the source node address (by default `to-server/<addrSrc>`).
+A node without a stored role is the gateway if its mesh address equals `LORA_MANAGER_ID` (`config_local.h`), and a sensor otherwise.
 
-### LoRa radio and sending mode
+### Commands
 
-The radio parameters (`LORA_FREQUENCY`, `LORA_SPREADING_FACTOR`, and others) are in `config.h`. The default frequency is 869.525 MHz in the EU 868 MHz band. Check the regulations of your region before deploying. With LoRaMesher 0.0.11, set `SEND_RELIABLE` to 1 to send every message with `sendReliablePacket()` (acknowledged, with fragmentation for large payloads). The default, 0, uses unacknowledged `createPacketAndSend()`.
+Text commands arrive from three channels and run one at a time:
 
-## Minimal example: from the Internet to a mesh node and back
+- **USB serial** (115200 baud, one command per line): trusted, runs every command. The reply follows a `> <command>` line; the arguments are not echoed, since they can hold keys.
+- **LoRa**: a line typed as `@<node> <command>` on a node's serial console is sent to that node; its reply arrives as `< <node> [<request>] <reply>`.
+- **MQTT** (gateway): publish `<node> <request id> <command>` on `cmd/<gateway>`; the reply is published on `cmd-resp/<node>` as `<request id> <reply>`. A command for another node is sent on over LoRa.
 
-You need at least two boards flashed with LoRaChat, an MQTT broker reachable from your Wi-Fi network, and an MQTT client such as [MQTTX](https://mqttx.app/) or `mosquitto_pub`/`mosquitto_sub`.
+Every command has a permission: **Open** commands run from any channel, **Signed** commands need a signature when they come over LoRa or MQTT, and **local** commands only run on the serial console. A signature is ` #<counter>.<tag>` at the end of the line, made with the deployment key by `scripts/ota_tools/lmcmd.py sign` (see [scripts/ota_tools/README.md](scripts/ota_tools/README.md)). A node runs each counter once: an older counter gets `ERR replay`, the same counter again gets the stored reply. Remote errors are short: `ERR unknown`, `ERR perm`, `ERR auth`, `ERR replay`.
 
-1. Start a broker, for example with Docker:
+| Command | Permission | Effect |
+|---|---|---|
+| `/help` | Open | Lists the commands the channel may run |
+| `/version` | Open | Version, slot, image state, bootloader hash, board and address |
+| `/ota.status` | Open | Last update attempt and its outcome |
+| `/role` | Open | The role and whether it is stored or the default |
+| `/power` | Open | Power chip, supply, battery and charger state (with the AXP2101 registers) |
+| `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10) to find the board |
+| `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
+| `/sleep` | Open | Sleep mode and sleep fraction (stored or default) and the light and deep sleeps since power-on |
+| `/sleep.set none\|light\|deep` | Signed | Stores how a sensor's MCU sleeps through the SLEEP slots and restarts the node. Refused while a new image is being verified |
+| `/sleep.fraction <0-90>` | Signed | Stores the minimum share of the superframe the network sleeps (used by the network manager, i.e. the gateway) and restarts the node |
+| `/key` | Open | Whether a deployment key is stored, and its fingerprint (compare with `ap_pass.py show`) |
+| `/key.set <64 hex digits>` | local | Stores the deployment key (created with `scripts/ota_tools/ap_pass.py keygen`) |
+| `/maint.open <seconds>` | Signed | Sensor nodes: joins the WiFi network and checks the OTA server, up to 7200 s. On a gateway: checks the OTA server right away over its WiFi (MQTT stops while it installs) |
+| `/maint.open <seconds> ap` | Signed | Sensor nodes: opens the access point `LM-<address>` for an upload from a phone or PC, up to 1800 s. Needs the deployment key |
+| `/maint.close` | Signed | Closes the open maintenance window |
+| `/maint.wifi …` | Signed | Stores the node's WiFi credentials (gateway WiFi and maintenance windows). Over LoRa or MQTT they travel encrypted (`lmcmd.py wifi`); on serial also `/maint.wifi <ssid> [<password>]` |
+| `/ota.server [<url>\|default]` | local | Shows or sets the OTA server (bench) |
+| `/reboot` | Signed | Restarts the node |
+| `/getRT` | Open | Routing table |
+| `/getIP` | Open | Gateway IP address |
+| `/addSSID`, `/addPassword` | local | Gateway WiFi credentials (prefer `/maint.wifi`) |
+| `/connectWiFi`, `/resetWiFiData` | Signed | Gateway WiFi |
+| `/displayOn`, `/displayOff`, `/displayBlink`, `/displayClear`, `/displayLogo`, `/displayText` | Open | Display. `/displayText <addr> <text>` sent to another node takes up to 100 characters at SF9 (one LoRa packet); longer text is refused |
 
-   ```bash
-   docker run -d --name emqx -p 1883:1883 -p 18083:18083 emqx/emqx
-   ```
+One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there); longer replies end in `~`.
 
-2. In `src/config.h`, set the Wi-Fi credentials and `MQTT_SERVER` to the IP address of the broker host, and make sure `LED_ENABLED` is defined for the board that should switch its LED. Flash all boards. The board that connects to Wi-Fi becomes the gateway. Each node prints its address on the serial monitor.
+Sensor nodes can let the ESP32 sleep while the mesh has nothing for them (`/sleep.set`, default `none`; the radio always sleeps in the SLEEP slots). `light` puts the MCU into light sleep through each run of SLEEP slots. `deep` deep-sleeps through runs long enough for a reboot (`LORA_DEEP_SLEEP_MIN_MS` plus `LORA_DEEP_SLEEP_BOOT_MS` in `src/config.h`) and light-sleeps through shorter ones; the node keeps its mesh state in RTC memory and resumes its slots after the wake-up, without the display, the charger restart or the WiFi boot window, and the wake-up does not count as a boot. Long sleep runs need a gateway with a higher `/sleep.fraction`. A node stays awake while its display is on, during a maintenance window and while a new image is being verified; the gateway never sleeps. The display stays off after a deep-sleep wake-up. The sleep support comes from LoRaMesher `feat/member-sleep` (86a4072, which contains `release/2.0.0`).
 
-3. **Server to node.** To switch on the LED of node `5284` through gateway `1234` (addresses in decimal), publish on the topic `from-server/1234`:
+Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network, check the OTA server for a newer signed image and install it, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
 
-   ```json
-   {
-     "data": {
-       "appPortDst": 13,
-       "appPortSrc": 13,
-       "addrDst": 5284,
-       "ledCommand": 1
-     }
-   }
-   ```
+## Energy measurements
 
-   - `appPortDst` and `appPortSrc` are the application ports (`13` is `LedApp`, see `src/message/dataMessage.h`).
-   - `appPortSrc` is required. The gateway uses it to select the application whose message class parses the payload, because the payload format is defined by the sending application. The Internet host acts as a remote instance of that application.
-   - `addrDst` is the destination node. If it is omitted, the address in the topic (the gateway itself) is used. If it names another node, the gateway forwards the message through the mesh.
-   - `ledCommand` is the LED application payload (`1` = on, `0` = off, see `src/led/ledMessage.h`).
+[docs/energy_ppk2.md](docs/energy_ppk2.md) describes the energy bench with a Nordic PPK2: the wiring on the T-Beam header (5V pin, or the battery holder for battery life), the tests, `scripts/energy/ppk2_bench.py` for recording (current plus serial logs on one clock) and `scripts/energy/ppk2_report.py` for the analysis (charge, power, bursts, superframe profile, battery life).
 
-4. **Node to server.** Subscribe to `to-server/#`. Every node with the monitor application enabled (`MQTT_MON_ENABLED`) periodically sends its direct neighbors to the closest gateway, which publishes them on `to-server/<addrSrc>`:
+## MQTT messages
 
-   ```json
-   {"RT": {"messageId": 3, "addrSrc": 5284, "addrDst": 1234, "messageSize": 26,
-           "RTcount": 1, "uptime": 86400000, "TxQ": 0, "RxQ": 0, "number_of_neighbors": 2,
-           "rt": [{"neighbor": 56664, "next_hop": 56664, "link_quality": 200, "hop_count": 1},
-                  {"neighbor": 13352, "next_hop": 13352, "link_quality": 190, "hop_count": 1}]}}
-   ```
+Messages travel as JSON on two topics:
 
-   The values above are illustrative. The fields are defined in `src/monitor/monServiceMessage.h`. `uptime` is in milliseconds, and `link_quality` is reported only with the TDMA-based LoRaMesher (it is 0 with 0.0.11). The reporting period is `MON_SENDING_EVERY` in `config.h`.
+- `from-server/<gateway id>` (`MQTT_TOPIC_SUB`): messages from the server to the mesh. The `addrDst` field selects the destination node.
+- `to-server/<gateway id>` (`MQTT_TOPIC_OUT`): messages from the mesh to the server.
 
-## Adding a new application
-
-Every application consists of three parts. The LED application (`src/led/`) is the simplest template, and the monitor application (`src/monitor/`) is a complete example that sends data over MQTT.
-
-1. **Reserve an application port.** Add a new value to the `appPort` enum in `src/message/dataMessage.h`. The value must be the same on all nodes and on the Internet hosts that talk to the application.
-
-2. **Define the payload** as a subclass of `DataMessageGeneric` (for example `src/myapp/myAppMessage.h`). Add your fields and implement `serialize()` and `deserialize()` for the JSON representation, calling the base class methods first. See `src/led/ledMessage.h`.
-
-3. **Implement the application** as a singleton subclass of `MessageService`, constructed with your port and a name, for example `MyAppService() : MessageService(MyApp, "MyApp")` for a new port `MyApp`. Override:
-   - `processReceivedMessage(messagePort port, DataMessage* message)` to handle messages addressed to your port. It only receives messages for your `appPort`, whether they arrived from the mesh, MQTT, Bluetooth, or another application on the node.
-   - `getDataMessage(JsonObject data)` to build your message from JSON received over MQTT.
-   - `getJSON(DataMessage* message)` to serialize your message when it is published over MQTT.
-
-   To send, fill in the header (`appPortSrc`, `appPortDst`, `addrDst`, `messageSize`) and call `MessageManager::getInstance().sendMessage(port, message)` with `LoRaMeshPort` to reach another node or `MqttPort` to reach the Internet (`appPortDst` = `MQTTApp`).
-
-4. **Optionally declare text commands** in a subclass of `CommandService` (see `src/led/ledCommandService.*`). Commands are available over the Bluetooth serial console and through `MessageManager::executeCommand()`.
-
-5. **Wire it into the firmware.**
-   - Add a feature switch, for example `#define MYAPP_ENABLED`, to the board block in `src/config.h`.
-   - In `src/main.cpp`, include your header, initialize the service under `#ifdef MYAPP_ENABLED`, and register it in `initManager()` with `manager.addMessageService(&myApp);`.
-
-No change to `LoRaMeshService`, `MessageManager`, or the existing applications is needed.
-
-## Running experiments with the test harness
-
-The Python test harness in `Testing/` builds and flashes the connected nodes, runs traffic experiments with the `simulator` module, and collects every message that reaches the MQTT broker. For experiments on a permanent testbed, including runs of the same batch under both LoRaMesher versions (`scripts/testbed/run_compare.sh`), see [scripts/testbed/README.md](scripts/testbed/README.md).
-After executing the Testing applications, there is too an UI application that can be used to visualize the results. It is located in the `Testing/ui` directory.
-
-### Quick Start
-
-```bash
-# 1. Install dependencies
-pip install -r ./Testing/requirements.txt
-
-# 2. Start MQTT broker (Docker)
-docker run -d --name emqx -p 1883:1883 -p 8083:8083 emqx/emqx
-
-# 3. Update WiFi credentials in src/config.h
-# WIFI_SSID and WIFI_PASSWORD
-
-# 4. Run the testing script
-python ./Testing/main.py my_experiment
-
-# 5. Follow interactive prompts:
-#    - Configure simulation parameters
-#    - Connect devices one-by-one (auto-detected)
-#    - Select environment for each device
-#    - Configure network topology (optional)
-
-# 6. Tests run automatically with retry support!
-```
-
-### How to use the Testing application
-- Initiate a MQTT broker
-
-We are using EMQX as our MQTT broker. You can install it from [here](https://www.emqx.io/downloads).
-You can use docker and the following command to initiate the broker:
-
-```bash
-docker run -d --name emqx -p 1883:1883 -p 8083:8083 -p 8883:8883 -p 8084:8084 -p 18083:18083 emqx/emqx
-```
-
-- Get the IP address your local network
-
-Get your IP address of your local network and add it to the `config.h` file in the `MQTT_SERVER` variable.
-
-- Add your WiFi credentials
-
-Add your WiFi credentials to the `config.h` file in the `WIFI_SSID` and `WIFI_PASSWORD` variables.
-
-- (Optional) Check available COM ports
-
-If you want to see which ports are currently available, you can run:
-
-```bash
-python ./Testing/main.py directoryName -p
-```
-
-**Note**: This step is optional! The new interactive device mapping will automatically detect ports as you connect each device during configuration.
-
-- Execute requirements.txt
-
-Run the following command to install the requirements:
-
-```bash
-pip install -r ./Testing/requirements.txt
-```
-
-This will install the following dependencies:
-- **platformio**: Device management and compilation
-- **paho-mqtt**: MQTT client for device communication
-- **networkx**: Graph operations for network topology
-- **matplotlib**: Visualization and plotting
-- **colorama**: Colored terminal output
-- **numpy**: Numerical computations and matrix operations
-- **pandas**: Data analysis and manipulation
-
-- Initiate the script
-
-Run the following command to initiate the script:
-
-```bash
-python ./Testing/main.py directoryName
-```
-
-The `directoryName` is the name of the directory where the results will be saved. If the directory does not exist it will be created.
-
-#### Configuration Process
-
-The script will guide you through an interactive configuration process:
-
-1. **Basic Configuration**: You'll be asked for simulation parameters (packet count, packet delay, packet size, etc.)
-
-2. **Interactive Device Mapping** (NEW FEATURE):
-   - The system will detect devices **one by one** as you connect them
-   - For each device:
-     - Start with devices disconnected (or disconnect all)
-     - Connect a device
-     - Press Enter
-     - System automatically detects the new port (e.g., "COM7")
-     - Select the PlatformIO environment from the list:
-       1. ttgo-t-beam
-       2. ttgo-t-beam-v1-2
-       3. ttgo-lora32-v1
-       4. esp-wrover-kitNAYAD_V1R2
-       5. MAKERFABS_SENSELORA_MOISTURE
-     - Repeat for each device
-     - Type 'done' when all devices are configured
-
-   This mapping is saved in `simConfiguration.json` and can be reused across tests!
-
-3. **Adjacency Graph** (Optional): Configure network topology if needed
-
-The configuration is saved and can be reused or modified for future tests.
-
-#### New Features
-
-##### 🔄 Automatic Retry Mechanism
-- **Smart Retries**: Failed simulations automatically retry up to **5 times**
-- **Retry Delay**: 15-second wait between retry attempts
-- **Organized Results**: Each retry creates a separate directory (`experiment_retry1`, `experiment_retry2`, etc.)
-- **Detailed Logging**: Error messages logged for each failure
-- **Graceful Handling**: If all retries fail, the system moves to the next simulation
-
-##### ⏱️ Comprehensive Timeout System
-The testing framework includes multiple timeout layers to detect issues quickly:
-
-- **Global Simulation Timeout**: Configurable (default: 45 minutes) - Overall test duration limit
-- **Device Start Timeout**: 10 minutes - Ensures all devices start the simulation
-- **Device End Simulation Timeout**: 15 minutes - Detects stuck simulations
-- **Monitor Startup Timeout**: 5 minutes per device - Detects monitoring issues
-- **Build/Upload Timeout**: 10 minutes - Prevents hanging during build
-
-All timeouts can be configured in `simConfiguration.json` via the `SimulationTimeoutMinutes` field.
-
-##### 📝 Configurable Device Mapping
-- **No More Code Editing**: Device-to-environment mapping stored in configuration files
-- **Portable Configurations**: Move test configs between different machines
-- **Per-Test Customization**: Each simulation can use different device sets
-- **Backward Compatible**: Old configurations still work with global fallback
-
-> **Migration Note**: If you previously edited `updatePlatformio.py` to add COM ports manually, you can continue using that method (it still works as a fallback). However, the new interactive device mapping is recommended for easier configuration and portability.
-
-##### Example simConfiguration.json
+Every message carries a common header followed by the payload of the application that produced it. The application ports are listed in `src/message/dataMessage.h`.
 
 ```json
 {
-  "SimulationTimeoutMinutes": "45",
-  "DeviceMapping": {
-    "COM7": "ttgo-t-beam",
-    "COM9": "ttgo-t-beam",
-    "COM11": "ttgo-lora32-v1"
-  },
-  "Simulator": {
-    "PACKET_COUNT": "200",
-    "PACKET_DELAY": "120000",
-    "PACKET_SIZE": "50"
-  },
-  "LoRaMesher": {
-    "LM_BAND": "869.900F",
-    "LM_POWER": "6"
-  },
-  "LoRaMesherAdjacencyGraph": []
+  "data": {
+    "appPortDst": 8,
+    "appPortSrc": 16,
+    "addrDst": 0,
+    "addrSrc": 10832,
+    "messageId": 2,
+    "messageSize": 30
+  }
 }
 ```
 
-### Results
+The fields after the header depend on the application. Monitor reports (`appPortSrc` 16) only travel to the server; the gateway drops any it receives from the server.
 
-The results will be saved in the `directoryName` directory and the name of each experiment.
-
-### Folder structure
-
-The folder structure is the following:
-
-```bash
-directoryName
-├── experiment1 # The name of the experiment 1
-│   ├── Monitoring # The monitoring of the experiment
-│   │   ├── build.txt # The build log
-│   │   ├── Device1 # The device 1 log
-│   │   ├── Device2 # The device 2 log
-│   ├── data.json # The data of the experiment (All the data that reaches the MQTT broker)
-│   ├── messages.json # The messages only of the experiment (Messages from the Simulation application of the devices)
-│   ├── simConfiguration.json # The configuration of the simulation (You can grab and modify it to repeat the experiment)
-│   ├── status.json # The status of each device
-│   ├── summary.json # The summary of the experiment (The summary of the experiment)
-├── experiment2 # The name of the experiment 2
-```
-
-## Known limitations
-
-- **Security.** LoRaChat, like LoRaMesher, does not encrypt or authenticate messages. Payloads are transmitted as supplied by the application. Where needed, confidentiality and authentication must be added in the application.
-- **Wi-Fi and Bluetooth ports.** `WiFiPort` is reserved, but Wi-Fi is currently used only as the transport for MQTT. Bluetooth provides a text command console and displays messages addressed to `BluetoothApp`, but it does not forward arbitrary `DataMessage`s to the mesh.
-- **Large payloads.** Reliable, fragmented transfer of large payloads is available only with LoRaMesher 0.0.11. With the TDMA-based LoRaMesher, every message must fit into one LoRa packet.
-- **Application ports** are 8-bit values, and their assignment must be identical on all nodes and Internet hosts. Each node can run as many applications as its memory allows.
-- **Research software.** LoRaChat is developed and used for research on LoRa mesh networks. It has run for long periods on our testbed, but it has not been hardened for production deployments.
-- **Hardware note.** With the TTGO T-Beam, make sure the Wi-Fi antenna is mounted correctly, otherwise gateway nodes may fail to connect.
-
-## Citing LoRaChat
-
-If you use LoRaChat in academic work, please cite:
-
-J. Miquel Solé, R. Pueyo Centelles, F. Freitag, R. Meseguer, R. Baig. *Middleware for Distributed Applications in a LoRa Mesh Network.* ACM Transactions on Embedded Computing Systems 24(4), Article 60, 2025. [doi:10.1145/3747295](https://doi.org/10.1145/3747295)
-
+## More information on the design and evaluation of LoRaChat
+Please see our open access paper ["Middleware for Distributed Applications in a LoRa Mesh Network"]([https://ieeexplore.ieee.org/document/9930341](https://dl.acm.org/doi/10.1145/3747295)) for a detailed description. If you use the LoRaChat, in academic work, please cite the following:
 ```
 @article{10.1145/3747295,
 author = {Miquel Sol\'{e}, Joan and Pueyo Centelles, Roger and Freitag, Felix and Meseguer, Roc and Baig, Roger},
 title = {Middleware for Distributed Applications in a LoRa Mesh Network},
 year = {2025},
+issue_date = {July 2025},
 publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
 volume = {24},
 number = {4},
+issn = {1539-9087},
+url = {https://doi.org/10.1145/3747295},
+doi = {10.1145/3747295},
+abstract = {Recently, LoRa mesh networks have gained increasing interest as a communication layer for sending data between IoT nodes. However, the network service of the firmware on the microcontroller-based nodes is typically limited to sending and receiving LoRa packets through the LoRa radio. Therefore, the packet processing by the node has to be done using an application-specific implementation. In this article, we present the design and implementation of a middleware that facilitates the development and operation of multiple distributed applications on LoRa mesh network nodes. The components we propose leverage the routing capacity of a LoRa mesh network enabled by the LoRaMesher library and provide a service for applications to send and receive messages from each other. Running several applications concurrently is also supported. We experiment with the middleware implemented in the node firmware with distributed applications that span from the LoRa mesh network to the Internet over MQTT. Our results show the support of bidirectional application-level communication, which can be used to build cross-network distributed applications that integrate services on LoRa mesh network nodes.},
+journal = {ACM Trans. Embed. Comput. Syst.},
+month = jul,
 articleno = {60},
 numpages = {26},
-journal = {ACM Trans. Embed. Comput. Syst.},
-doi = {10.1145/3747295},
-url = {https://doi.org/10.1145/3747295}
+keywords = {LoRa, mesh network, IoT, distributed application}
 }
 ```
 
-For the underlying mesh library, please also cite LoRaMesher: J. Miquel Solé, F. Freitag, R. Baig. *LoRaMesher: An open-source library for multi-hop LoRa mesh networks.* SoftwareX 34, 102570, 2026. [doi:10.1016/j.softx.2026.102570](https://doi.org/10.1016/j.softx.2026.102570)
+# Acknowledgements
 
-## License
+LoRaChat stands on the work of many open-source projects. Thank you to their authors and maintainers.
 
-LoRaChat is released under the MIT License. See [LICENSE.txt](LICENSE.txt).
+### Firmware
 
-## ICDCS 2022 Demonstration
+| Project | Author | License | Used for |
+|---|---|---|---|
+| [ESP-IDF](https://github.com/espressif/esp-idf) | Espressif | Apache-2.0 | Framework, WiFi, OTA, NVS, HTTP |
+| [Arduino-ESP32](https://github.com/espressif/arduino-esp32) | Espressif | LGPL-2.1+ | Arduino core on top of ESP-IDF |
+| [Mbed TLS](https://github.com/Mbed-TLS/mbedtls) | Trusted Firmware | Apache-2.0 | SHA-256, HMAC, ECDSA (shipped with ESP-IDF) |
+| [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) | Joan Miquel Solé | MIT | LoRa mesh protocol |
+| [RadioLib](https://github.com/jgromes/RadioLib) | Jan Gromes | MIT | LoRa radio driver |
+| [XPowersLib](https://github.com/lewisxhe/XPowersLib) | Lewis He | MIT | AXP192 / AXP2101 power management |
+| [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library), [SSD1306](https://github.com/adafruit/Adafruit_SSD1306), [BusIO](https://github.com/adafruit/Adafruit_BusIO) | Adafruit | BSD / MIT | OLED display |
+| [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | Benoît Blanchon | MIT | JSON messages |
+
+### Tests and tools
+
+| Project | Author | License | Used for |
+|---|---|---|---|
+| [GoogleTest](https://github.com/google/googletest) | Google | BSD-3-Clause | Native unit tests |
+| [pytest](https://github.com/pytest-dev/pytest) | pytest-dev | MIT | Host tool tests |
+| [clang-tidy](https://clang.llvm.org/extra/clang-tidy/), [clang-format](https://clang.llvm.org/docs/ClangFormat.html) | LLVM Project | Apache-2.0 WITH LLVM-exception | Static analysis and format check (run as tools) |
+| [Cppcheck](https://cppcheck.sourceforge.io) | Cppcheck team | GPL-3.0 | Static analysis (run as a tool) |
+| [pySerial](https://github.com/pyserial/pyserial) | Chris Liechti | BSD-3-Clause | Serial access from host scripts |
+| [esptool](https://github.com/espressif/esptool) | Espressif | GPL-2.0+ | Flashing and reading flash (run as a tool, not distributed with the firmware) |
+| [ppk2-api](https://github.com/IRNAS/ppk2-api-python) | IRNAS | GPL-2.0 | PPK2 control in `ppk2_bench.py` (host tool, not distributed with the firmware) |
+| [NumPy](https://numpy.org), [pandas](https://pandas.pydata.org), [Matplotlib](https://matplotlib.org) | their communities | BSD-3-Clause, BSD-3-Clause, Matplotlib (PSF-based) | Trace analysis in `ppk2_report.py` |
+
+The LGPL components are linked into the firmware. LoRaChat is MIT licensed and its full source is published, so you can rebuild and relink the firmware with modified versions of those libraries.
+
+# Disclaimer
+
+This project is still in development. It is not ready for production. We are still working on it.
+
+Additionally, if you use the TTGO T-Beam be aware that the WiFi antenna should be mounted correctly for the WiFi connect all the times. (It just happened to me to spend a lot of time trying to figure out why the WiFi was not working.)
+
+# ICDCS 2022 Demonstration
 
 ![ICDCS demonstration](images/ICDCS2022.png)

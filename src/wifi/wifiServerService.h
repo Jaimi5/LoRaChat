@@ -9,6 +9,8 @@
 #include "message/messageService.h"
 
 #include <string.h>
+
+#include <mutex>
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -22,6 +24,10 @@
 #include "lwip/sys.h"
 
 #include "config.h"
+
+#include "connectBackoff.h"
+
+#include <atomic>
 
 #define DEFAULT_WIFI_SSID "DEFAULT_SSID"
 #define DEFAULT_WIFI_PASSWORD "DEFAULT_PASSWORD"
@@ -38,12 +44,6 @@ public:
         return instance;
     }
 
-    ~WiFiServerService() {
-        if (wiFiCommandService != nullptr) {
-            delete wiFiCommandService;
-        }
-    }
-
     void initWiFi();
 
     bool connectWiFi();
@@ -52,22 +52,30 @@ public:
 
     bool isConnected();
 
+    /** @return true once the station has an IP address (it can reach the network). */
+    bool hasIp();
 
+
+    static constexpr size_t MAX_SSID_LENGTH = sizeof(wifi_sta_config_t::ssid);
+    static constexpr size_t MAX_PASSWORD_LENGTH = sizeof(wifi_sta_config_t::password);
+
+    /** Sets the SSID used by the next connect. @return a message; rejects empty or > 32 bytes. */
     String addSSID(String ssid);
 
+    /** Sets the password used by the next connect. @return a message; rejects > 64 bytes. */
     String addPassword(String password);
+
+    /**
+     * @brief Saves the station credentials in the WiFi driver's NVS config and reconnects
+     *        with them. @return the reply to the command.
+     */
+    String storeCredentials(const String& ssid, const String& password);
 
     String resetWiFiData();
 
 
     String getIP();
 
-    String getSSID();
-
-    String getPassword();
-
-
-    WiFiCommandService* wiFiCommandService = nullptr;
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
@@ -76,10 +84,13 @@ public:
 
 private:
     WiFiServerService() : MessageService(appPort::WiFiApp, String("WiFi")) {
-        wiFiCommandService = new WiFiCommandService();
-        commandService = wiFiCommandService;
-    };
+        commandService = &commands_;
+    }
 
+    WiFiCommandService commands_;
+
+    /** Guards the credentials and the connection state shared by the WiFi task and commands. */
+    std::recursive_mutex stateMutex_;
     String ssid = DEFAULT_WIFI_SSID;
     String password = DEFAULT_WIFI_PASSWORD;
 
@@ -89,7 +100,7 @@ private:
 
     bool checkIfWiFiCredentialsAreSet();
 
-    TaskHandle_t wifi_TaskHandle = NULL;
+    TaskHandle_t wifi_TaskHandle = nullptr;
 
     void createWiFiTask();
 
@@ -100,9 +111,13 @@ private:
     bool initialized = false;
 
     bool wifiStarted = false;
-    unsigned long lastConnectAttemptMs = 0;
-    unsigned long connectBackoffMs = 5000;
-    static constexpr unsigned long MAX_CONNECT_BACKOFF_MS = 300000;
+
+    // True from the start of a connection attempt until the driver reports success or failure.
+    std::atomic<bool> connecting{false};
+
+    static constexpr uint32_t INITIAL_CONNECT_BACKOFF_MS = 5000;
+    static constexpr uint32_t MAX_CONNECT_BACKOFF_MS = 300000;
+    ConnectBackoff connectBackoff{INITIAL_CONNECT_BACKOFF_MS, MAX_CONNECT_BACKOFF_MS};
 
     bool addWiFiCredentialsFromConfig();
 };

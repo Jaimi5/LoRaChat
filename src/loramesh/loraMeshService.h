@@ -4,19 +4,21 @@
 
 #include "config.h"
 
-#ifdef USE_LORAMESHER_V2
 #include "loramesher.hpp"
-#else
-#include "LoraMesher.h"
-#endif
 
 #include "loraMeshMessage.h"
 
 #include "message/messageManager.h"
 
 #include "message/messageService.h"
+#include "message/ownedQueue.h"
 
 #include "loraMeshCommandService.h"
+
+#include "sleepMode.h"
+
+#include <functional>
+#include <string>
 
 
 class LoRaMeshService : public MessageService {
@@ -26,23 +28,41 @@ public:
         return instance;
     }
 
-    ~LoRaMeshService() {
-        if (loraMesherCommandService != nullptr) {
-            delete loraMesherCommandService;
-        }
+    /**
+     * @brief Starts the mesh.
+     * @param networkManager this node is the LoRaMesher network manager (it never sleeps).
+     * @param sleepMode how the MCU of a sensor sleeps through the SLEEP slots.
+     * @param sleepFractionPercent minimum share of the superframe the network sleeps (used by the
+     *        network manager), or -1 for LORA_MIN_SLEEP_FRACTION.
+     */
+    void initLoraMesherService(bool networkManager, SleepMode sleepMode, int sleepFractionPercent);
+
+    /**
+     * @brief Sets what is asked, on the mesh task, whenever the mesh offers the MCU a sleep.
+     *        It must only read state, never block. Call before initLoraMesherService().
+     */
+    void setSleepBlockers(std::function<SleepBlockers()> blockers) {
+        sleepBlockers_ = std::move(blockers);
     }
 
-    void initLoraMesherService();
+    /** @return the light and deep sleeps (count and planned time) since power-on. */
+    std::string sleepReport() const;
+
+    /**
+     * @brief Releases the pin levels held through a deep sleep. Call first in setup(): until
+     *        then the serial port, I2C and the radio pins stay frozen.
+     */
+    static void releaseDeepSleepPadHold();
 
     uint16_t getLocalAddress();
 
-    String getRoutingTable();
+    /**
+     * @return the largest payload one service message can carry in a single LoRa packet with
+     *         the configured spreading factor and bandwidth (LoRaMesher caps the packet size).
+     */
+    size_t maxAppPayload() const;
 
-    // Human-readable summary of the radio parameters actually applied to the
-    // LoRa stack at init (SF/BW/power/max packet size), captured in both the v1
-    // and v2 paths. Used by the simulator to periodically log the live config so
-    // a stale/ignored value is visible inside the measurement window.
-    String getRadioInfo();
+    String getRoutingTable();
 
     void send(DataMessage* message);
 
@@ -52,78 +72,57 @@ public:
 
     void removeGateway();
 
-    LoRaMeshCommandService* loraMesherCommandService = nullptr;
-
-    bool hasActiveConnections();
-
-    bool hasActiveSentConnections();
-
-    bool hasActiveReceivedConnections();
-
-    size_t queueWaitingSendPacketsLength();
-
     void standby();
+
+    /** @return true once the mesh stack has started. */
+    bool isRunning() const { return running_; }
+
+    /** @return true if this node has heard the mesh, i.e. it knows at least one other node. */
+    bool hasMeshContact();
+
+    /** @return the current TDMA superframe duration in ms, or 0 when unknown or not TDMA. */
+    uint32_t getSuperframeDurationMs();
 
     bool hasGateway();
 
     void updateRoutingTable();
 
-    // Largest known hop_count in the routing table (>=1, version-agnostic). Used
-    // by senders to size how long a packet needs to traverse the mesh.
-    uint8_t getMaxHopDepth();
-
-    // Pace a sender to the LoRaMesher TDMA schedule: block until `nSlots` of this
-    // node's data slots have passed. On v2 each step waits getTimeUntilNextDataSlot()
-    // (falling back to fallbackMs before the node has joined / on v1).
-    void waitForDataSlots(uint8_t nSlots, uint32_t fallbackMs);
-
-#ifdef USE_LORAMESHER_V2
     std::vector<loramesher::RouteEntry> getRoutingTableEntries();
 
     size_t GetRxQueueSize() const;
 
     size_t GetTxQueueSize() const;
 
-    uint32_t getTimeUntilNextDataSlot(uint32_t guard_time_ms = 200) const;
-#else
-    void loopReceivedPackets();
-
-    LM_LinkedList<RouteNode>* routingTableList = NULL;
-#endif
-
 private:
-    // Radio config actually applied at init (version-agnostic). Populated by
-    // initLoraMesherService() in both the v1 and v2 branches.
-    String radioInfo_ = "SF=? BW=? pow=? maxPkt=?";
+    bool running_ = false;
 
-#ifdef USE_LORAMESHER_V2
+    SleepMode sleepMode_ = SleepMode::NONE;
+    std::function<SleepBlockers()> sleepBlockers_;
+    SleepDecision lastSleepDecision_ = SleepDecision::ALLOW;
+    uint32_t lightSleepPlannedMs_ = 0;
+
+    /** Books a deep sleep that ended in this boot into the sleep counters. */
+    static void countDeepSleepWake();
+
+
+    loramesher::power::SleepResult onPrepareSleep(const loramesher::power::SleepContext& context);
+    void onWakeUp(loramesher::power::PowerState previous);
+
     std::unique_ptr<loramesher::LoraMesher> mesher_;
 
-    // Queue message struct — heap-allocated pointer, freed after processing
-    struct LoRaQueueMessage {
-        loramesher::AddressType source;
-        DataMessage* dataMessage;  // pvPortMalloc'd
-    };
-
-    QueueHandle_t loraReceiveQueue_ = nullptr;
+    /** Messages received from the mesh, waiting for the receive task. */
+    OwnedQueue<DataMessage, DataMessageDeleter> loraReceiveQueue_;
     TaskHandle_t loraReceiveTask_Handle = nullptr;
 
     static void loraReceiveLoop(void* pvParameters);
     void createReceiveTask();
-#else
-    LoraMesher& radio = LoraMesher::getInstance();
-
-    TaskHandle_t receiveLoRaMessage_Handle = NULL;
-
-    void createReceiveMessages();
-
-    DataMessage* createDataMessage(AppPacket<LoRaMeshMessage>* message);
-#endif
 
     LoRaMeshService() : MessageService(appPort::LoRaMesherApp, String("LoRaMesherApp")) {
-        loraMesherCommandService = new LoRaMeshCommandService();
-        commandService = loraMesherCommandService;
-    };
+        commandService = &commands_;
+    }
 
-    LoRaMeshMessage* createLoRaMeshMessage(DataMessage* message);
+    LoRaMeshCommandService commands_;
+
+    /** @return the LoRa frame of @p message: its ports, its id and its payload. */
+    static std::vector<uint8_t> createLoRaMeshFrame(const DataMessage& message);
 };

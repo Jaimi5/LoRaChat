@@ -565,7 +565,7 @@ cmd_upgrade() {
         [[ -z "${GW_SSH[$gw_id]+x}" ]] && continue
         # Inline git commands (not gw-upgrade.sh) so it works even on first run
         # before the testbed scripts exist on the gateway
-        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== git checkout $GIT_BRANCH ===' && git checkout $GIT_BRANCH && echo '=== reset config.h ===' && git checkout -- src/config.h 2>/dev/null; echo '=== git pull ===' && git pull -X theirs origin $GIT_BRANCH && echo '=== pio pkg update ===' && \$PIO_NICE pio pkg update && echo '=== Upgrade complete ==='")
+        args+=("$gw_id" "cd $REPO_PATH && echo '=== git fetch ===' && git fetch origin && echo '=== sync to origin/$GIT_BRANCH (untracked files kept, old HEAD -> backup/pre-sync) ===' && git branch -f backup/pre-sync HEAD && git checkout -B $GIT_BRANCH origin/$GIT_BRANCH && git reset --hard origin/$GIT_BRANCH && echo '=== pio pkg update ===' && \$PIO_NICE pio pkg update && echo '=== Upgrade complete ==='")
     done
 
     if [[ ${#args[@]} -eq 0 ]]; then

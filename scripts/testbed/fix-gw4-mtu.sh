@@ -13,6 +13,8 @@
 # Usage:
 #   bash scripts/testbed/fix-gw4-mtu.sh                 # uses defaults below
 #   HOST=lora@10.1.27.17 IFACE=enp1s0 MTU=1400 bash scripts/testbed/fix-gw4-mtu.sh
+#   # GW-7 (same path-MTU issue, static ifupdown config):
+#   HOST=lora@10.139.40.6 IFACE=enp2s0 METHOD=static bash scripts/testbed/fix-gw4-mtu.sh
 #
 # Requirements: sudo on the GW-4 host (you will be prompted for its password
 # once, after the SSH password).
@@ -22,6 +24,7 @@ set -euo pipefail
 HOST="${HOST:-lora@10.1.27.17}"
 IFACE="${IFACE:-enp1s0}"
 MTU="${MTU:-1400}"
+METHOD="${METHOD:-dhcp}"   # inet method of the stanza in /etc/network/interfaces
 REPO="${REPO:-/home/lora/LoRaChat}"
 
 echo "==> Making MTU=$MTU permanent on $HOST ($IFACE)"
@@ -36,7 +39,7 @@ REMOTE_BODY=$(cat <<'REMOTE'
 set -euo pipefail
 
 FILE=/etc/network/interfaces
-STANZA="iface ${IFACE} inet dhcp"
+STANZA="iface ${IFACE} inet ${METHOD}"
 
 echo "--- before ---"
 grep -nA3 "^${STANZA}" "$FILE" || { echo "ERROR: stanza '$STANZA' not found in $FILE"; exit 1; }
@@ -88,6 +91,7 @@ REMOTE
 # Prepend the variable assignments, then base64-encode the whole thing.
 FULL="IFACE='${IFACE}'
 MTU='${MTU}'
+METHOD='${METHOD}'
 REPO='${REPO}'
 ${REMOTE_BODY}"
 

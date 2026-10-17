@@ -1,169 +1,283 @@
-# OTA Tools
+# OTA tools
 
-Host-side Python tooling for over-the-air firmware updates to LoRaChat mesh nodes.
+Host tools for versioning, releasing, signing and testing firmware images. Run them from the project root under WSL or Linux.
 
-## Scripts
+```bash
+pip install -r scripts/ota_tools/requirements.txt   # cryptography (signing) and pytest
+python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
+```
 
-| Script | Purpose |
+| Tool | Purpose |
 |---|---|
-| `generate_patch.py` | Generate a delta patch and optionally split into OTA chunks in one step |
-| `split_chunks.py` | Split any binary into numbered chunks for MQTT or LoRa transport |
-| `ota_campaign.py` | Deploy firmware OTA to a target node (main orchestrator) |
-| `ota_monitor.py` | Monitor OTA progress from all nodes via MQTT |
-| `build_and_deploy.py` | PlatformIO post-build hook for automatic patch generation |
+| `version_hook.py` | Build hook that sets the image version from `version.txt` |
+| `release.py` | Checks a build and collects it into `release/<env>/<version>/`, optionally signed |
+| `sign_manifest.py` | Keys, signed manifests, manifest inspection and test vectors |
+| `build_test_images.sh` | Builds the boot-guard fault images, signed with the test key |
+| `fault_matrix.py` | Runs the fault images on bench nodes and checks every rollback and report |
+| `check_guards.py` | Static checks that keep app rollback working |
+| `otadata.py` | Reads and rewrites the `otadata` partition to boot a chosen slot (bench) |
+| `fw_server.py` | Bench firmware server for the WiFi pull, with injected faults |
+| `ap_pass.py` | Deployment key, and the name, password and QR text of a node's access point |
+| `flash_floor.py` | Flashes the floor image on nodes over USB (several in parallel), provisions them (key, WiFi, role, inventory) and checks them before deployment |
 
-## Installation
+| `lmcmd.py` | Signs commands for nodes, and encrypts WiFi credentials for `/maint.wifi` |
+| `ap_upload.py` | Bench: uploads a bundle to a node's access point through a second T-Beam (`extras/bench_ap_bridge`) |
+| `third_party.py` | License gate and README acknowledgements check of the resolved libraries |
 
-```bash
-pip install -r requirements.txt
-```
+## Versions
 
-## Usage
+`version.txt` holds the version as `MAJOR.MINOR.PATCH`, each part 0-255. `version_hook.py` runs before every `tbeam` build and writes it into the image (`esp_app_desc_t.version`) with git metadata:
 
-### Generate a delta patch
+- `0.1.0+gabc1234`: built from commit `abc1234`
+- `0.1.0+gabc1234.dirty`: tracked files had uncommitted changes
 
-```bash
-python generate_patch.py --old v1.bin --new v2.bin --out patch.bin --version "2.0.0"
-```
+The node prints it on its `BOOT ...` line. `FW_VERSION=0.1.1` in the environment overrides `version.txt` for one build (used for test images). The manifest carries the version packed as `0xMMmmpp00`; build metadata after `+` is ignored when versions are compared.
 
-Always outputs **two files**:
+## Keys
 
-| File | Contents |
-|---|---|
-| `patch.bin` | Binary delta patch to transfer to the node |
-| `patch.json` | Metadata: `old_size`, `new_size`, `patch_size`, `new_crc32`, `fw_version` |
+Manifests are signed with ECDSA P-256. The node only installs images whose manifest is signed by a key it trusts (`src/ota/otaKeys.cpp`).
 
-`ota_campaign.py --delta` requires **both files** in the same directory.
-It reads `patch.bin` to stream chunks and `patch.json` to get the new firmware's
-size and CRC32 — the values the node verifies after applying the patch.
-
-### Generate a patch and split in one step (optional)
-
-The `--split` flag additionally chunks the patch into numbered files for inspection.
-The patch binary is always kept — `ota_campaign.py` reads it directly.
-
-```bash
-# For LoRa nodes (222-byte chunks)
-python generate_patch.py --old v1.bin --new v2.bin --version "2.0.0" \
-    --split --transport lora --output-dir lora_chunks/
-
-# For MQTT nodes (400-byte chunks)
-python generate_patch.py --old v1.bin --new v2.bin --version "2.0.0" \
-    --split --transport mqtt --output-dir mqtt_chunks/
-```
-
-`--split` is for offline inspection only — it is **not** required before running a campaign.
-
-### Deploy a delta patch (end-to-end)
-
-`ota_campaign.py` handles chunk splitting internally.
-
-```bash
-# Step 1 — generate the patch (creates patch.bin + patch.json)
-python generate_patch.py \
-    --old .pio/build/ttgo-t-beam-v2/firmware_v1.bin \
-    --new .pio/build/ttgo-t-beam-v2/firmware.bin \
-    --out patch.bin \
-    --version "2.0.0"
-
-# Step 2 — run the campaign (ACK/retry handled automatically)
-# --target accepts decimal (15071) or hex (0x3ADF) — both work
-python ota_campaign.py \
-    --target 0x3ADF \
-    --firmware patch.bin \
-    --delta \
-    --version "2.0.0" \
-    --host 192.168.1.26
-
-# NOTE: the MQTT topic uses the decimal value regardless of how you pass --target
-# i.e. the node publishes to "to-server/15071", not "to-server/0x3ADF"
-```
-
-For LoRa transport add `--transport lora` to `ota_campaign.py` (222-byte chunks instead of 400).
-
-The campaign sends `OTA_BEGIN` → streams all chunks with ACK-based retransmit
-(timeout 10 s, max 5 retries) → sends `OTA_APPLY`. The node applies the patch,
-verifies the result against `new_crc32`, then reboots automatically on success.
-
-### Deploy full firmware over MQTT
-
-```bash
-python ota_campaign.py \
-    --target 15071 \
-    --firmware .pio/build/ttgo-t-beam-v2/firmware.bin \
-    --host 192.168.1.26
-```
-
-### Inspect pre-split chunks (optional)
-
-```bash
-python generate_patch.py --old v1.bin --new v2.bin --version "2.0.0" \
-    --split --transport lora --output-dir lora_chunks/
-# produces lora_chunks/chunk_000000.bin … chunk_000230.bin
-```
-
-### Monitor OTA progress
-
-```bash
-python ota_monitor.py --host 192.168.1.26
-```
-
-Subscribes to `to-server/+` and displays per-node progress bars for `ACK` and `STATUS` messages.
-
-### Split chunks manually (any binary)
-
-`split_chunks.py` works on any binary — full firmware or patch file:
-
-```bash
-python split_chunks.py --input firmware.bin --transport lora --output-dir chunks/
-python split_chunks.py --input patch.bin    --transport mqtt --output-dir chunks/
-```
-
-## Chunk sizes
-
-| Transport | Chunk size | 50 KB patch |
+| Key id | Key | Use |
 |---|---|---|
-| MQTT | 400 bytes | 128 chunks (~seconds) |
-| LoRa | 222 bytes | 231 chunks (~40–77 min at 1% duty cycle) |
+| `1` | `test/vectors/test_key.pem` (in the repository) | Bench and CI images. Refused for installs by production builds (`OTA_PRODUCTION`) |
+| `0x100` and up | Production keys, never in the repository | Field images |
 
-Each chunk also carries an 11-byte `OTAChunkPayload` header (`src/ota/otaMessage.h`)
-and costs one 10-byte `OTA_ACK` on the return path, so wire cost is roughly
-`patch_size + 21 × total_chunks`.
+Create a production key once and keep the private key offline (password manager, encrypted USB stick):
 
-## How big is a delta patch?
+```bash
+python3 scripts/ota_tools/sign_manifest.py keygen --out /secure/place/lm_prod_0100.pem
+```
 
-Measured on `ttgo-t-beam-v1-2` (baseline image 1,045,376 B), patches generated with
-`generate_patch.py` (detools bsdiff + heatshrink, the same path a campaign uses):
+It never overwrites an existing file and writes it with mode 0600. The command prints the public key as a C array: add it to `otaTrustedKeys()` in `src/ota/otaKeys.cpp` with its id (`makeKey(0x100, ..., false)`) and release a firmware that contains it before you sign anything with it.
 
-| Change vs. baseline | Patch | Full/patch | MQTT chunks | LoRa chunks |
-|---|---|---|---|---|
-| Version string only (`test_firmware/` pair) | 22.8 KB | 64× | 57 | 103 |
-| One added `println` in `main.cpp` | 37.2 KB | 28× | 93 | 168 |
-| Real commit, 61 lines / 4 files (`f96bde5`) | 48.4 KB | 22× | 122 | 219 |
-| Same source, different board (LORA32 vs T-Beam) | 360 KB | 2.8× | 901 | 1623 |
-| Unrelated build (different lib version + board) | 543 KB | 2.7× | 1359 | 2448 |
+## Making a release
 
-Three things to know when budgeting a campaign:
+1. Set `version.txt`, commit, and build: `scripts/pio.sh run -e tbeam`
+2. Collect and sign:
 
-- **Patch size does not track lines-of-diff.** Adding one line shifts ~92% of the raw
-  bytes in the image, because everything after it moves in the link map. bsdiff encodes
-  the shift cheaply, which is why the patch stays in the tens of KB — but it is not free.
-- **There is a floor of ~23 KB.** That is the cost of the compressed diff/extra streams
-  over a 1 MB image, paid no matter how small the change. The `test_firmware/` pair sits
-  at that floor and is *not* representative; budget ~35–60 KB for an ordinary commit.
-- **Toolchain or library changes fall off a cliff.** Changing board target, bumping
-  LoRaMesher, or updating ESP-IDF leaves bsdiff no long matching runs, and the patch
-  lands at 1/3 to 1/2 of the full image. At 1% duty cycle that is ~5–9 h per node over
-  LoRa — for those updates, plan on a wired flash or an MQTT-connected node instead.
+   ```bash
+   python3 scripts/ota_tools/release.py --env tbeam \
+       --sign-key /secure/place/lm_prod_0100.pem --key-id 0x100
+   ```
 
-Regenerate these numbers with `generate_patch.py --old <prev>.bin --new <next>.bin`;
-the printed `Patch size` line and `patch.json` both report it.
+   This writes `release/tbeam/<version>/` (gitignored):
 
-## MQTT defaults
+   | File | Content |
+   |---|---|
+   | `firmware.bin` | App image, written to `app0`/`app1` |
+   | `bootloader.bin`, `partitions.bin`, `ota_data_initial.bin` | For a full USB flash |
+   | `firmware.elf`, `firmware.map` | For backtraces and size analysis; keep them with the release |
+   | `info.json` | Version, `version_u32`, image size and slot use, `image_sha256`, ELF, bootloader and partition table hashes |
+   | `manifest.bin` | Signed manifest, 192 bytes (with `--sign-key`) |
+   | `bundle.bin` | `manifest.bin` followed by `firmware.bin`, for the upload through the node's AP |
 
-Matching `src/config.h`: broker `192.168.1.26:1883`, username `admin`, password `public`.
-Topics: `from-server/{node}` (host→node), `to-server/{node}` (node→host).
+   Before copying, `release.py` checks the SHA-256 that ESP-IDF appends to the image, the 90 % size gate of the app slot (`partitions.csv`), and that the image version matches `version.txt`. It refuses `.dirty` builds unless `--allow-dirty` is given (bench only).
+3. Optional flags of the manifest: `--allow-downgrade` lets nodes install it over a newer version (the way back from a bad image that passed the self-test); `--skip-mesh-check` skips the boot self-test's mesh-contact check (for a release that changes the mesh protocol).
 
-`{node}` is always a **decimal integer** (e.g. `15071`), matching Arduino's `String(uint16_t)`
-which formats decimal by default. The `--target` option accepts both `15071` and `0x3ADF`.
+To sign an already collected release, or to sign it again with other flags:
 
+```bash
+python3 scripts/ota_tools/sign_manifest.py sign release/tbeam/0.1.0+gabc1234 \
+    --key /secure/place/lm_prod_0100.pem --key-id 0x100 [--allow-downgrade] [--skip-mesh-check]
+```
+
+To inspect a manifest and check its signature (`--key` takes the private key or a public PEM key):
+
+```bash
+python3 scripts/ota_tools/sign_manifest.py show release/tbeam/0.1.0+gabc1234/manifest.bin \
+    --key test/vectors/test_key.pem
+```
+
+The image identity used by the manifest, the blacklist and the reports is `image_sha256`: the SHA-256 that ESP-IDF appends to `firmware.bin`, equal to `esp_partition_get_sha256()` on the node.
+
+## Manifest format
+
+128-byte body followed by a 64-byte ECDSA P-256 signature (raw `r || s`) over the SHA-256 of the body. Little-endian:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 4 | Magic `LMOT` |
+| 4 | 1 | Format version (1) |
+| 5 | 1 | Image type (1 = full app image) |
+| 6 | 2 | Flags: bit 0 allow downgrade, bit 1 skip mesh check |
+| 8 | 4 | Key id |
+| 12 | 4 | Version `0xMMmmpp00` |
+| 16 | 4 | Image size |
+| 20 | 4 | Reserved (0) |
+| 24 | 16 | Board env (`tbeam`), zero-terminated |
+| 40 | 16 | Project (`LoRaChat`), zero-terminated |
+| 56 | 32 | Version string, zero-terminated |
+| 88 | 32 | Image SHA-256 |
+| 120 | 8 | First 8 bytes of the SHA-256 of `partitions.bin` |
+
+The firmware side is `lib/OtaCore/src/otaManifest.cpp`; `sign_manifest.py vectors` regenerates the shared test vectors (`test/vectors/`) and the firmware's copy of the test key (`src/ota/otaTestKey.h`) after a change of the format or of the test key.
+
+## Bench procedures
+
+The boards are flashed from Windows-native Python because WSL loses USB devices on every power cut. PlatformIO's Windows Python has `pyserial`; esptool is `%USERPROFILE%\.platformio\packages\tool-esptoolpy\esptool.py`. Copy the release folder to a Windows path first (`release/` in the project is on `D:`).
+
+Full USB flash of a release (bootloader, partition table, `otadata` reset to `app0`, app):
+
+```bat
+python esptool.py --chip esp32 --port COM6 --baud 921600 --after no_reset write_flash ^
+    0x1000 bootloader.bin 0x8000 partitions.bin 0xe000 ota_data_initial.bin 0x10000 firmware.bin
+```
+
+Open the serial port with DTR and RTS low before `open()` and reset once with RTS. Any second reset while a new image is in `PENDING_VERIFY` counts as a failed boot and rolls back.
+
+Boot-guard test without OTA: put an image in the other slot and make the bootloader try it as a new image.
+
+```bash
+# 1. write the image to app1 (0x1D0000) with esptool, and read otadata:
+#    esptool.py ... write_flash 0x1D0000 firmware.bin
+#    esptool.py ... read_flash 0xe000 0x2000 otadata.bin
+# 2. select slot 1 in state NEW
+python3 scripts/ota_tools/otadata.py decode otadata.bin
+python3 scripts/ota_tools/otadata.py select --slot 1 --state new -o otadata_new.bin otadata.bin
+# 3. esptool.py ... --after no_reset write_flash 0xe000 otadata_new.bin, then one reset
+```
+
+Expected serial output: `BOOT part=app1 state=PENDING_VERIFY ...`, `OTA path: signature check ok`, then `Self-test passed, image marked valid` and `BOOT part=app1 state=VALID`. With a fault image the node rolls back: it boots `app0` again and prints a `BOOT last_invalid=app1` line.
+
+Update over WiFi (pull) on the bench. The node's WiFi network must reach the PC, and `OTA_SERVER_URL` in `config_local.h` must point at it, e.g. `"http://192.168.1.50:8070/"`. Run the server with Windows Python, since WSL is not reachable from the LAN, and allow it through the Windows firewall once:
+
+```bat
+python fw_server.py D:\path\to\release\tbeam\0.1.1+gabc1234
+```
+
+A sensor node checks the server in its boot window, or in a window opened with `/maint.open 60`. Expected serial output: `Manifest for tbeam 0.1.1+gabc1234, ...`, `Installing ...`, `Image OK after 1 attempt(s): ... B in ... ms (flash ... ms)`, `Rebooting into ... on app1`, then the boot guard lines above. The server logs every request. With `--report-key-file deploy.key` the server also takes the nodes' signed `POST /report` and prints each report (`report 7680 written {...}`), as the web server does. Faults for the bench cases: `--flip-byte N` (one byte changed: `SHA_MISMATCH`, nothing installed), `--cut-at 0.5 [--cut-times K]` (connection closed at 50 %: up to 3 attempts, then `TRANSPORT_FAILED`), `--missing-image` (404). After a failure the node restarts its current image and skips that image until the next power-on.
+
+## Deployment key and the node's access point
+
+All nodes of a deployment share one 32-byte key. It derives the password of each node's maintenance access point and will also sign commands and reports (F5, F7). Create it once and keep it offline:
+
+```bash
+python3 scripts/ota_tools/ap_pass.py keygen --out /secure/place/deploy.key
+```
+
+Load it on each node over USB serial with `/key.set <the 64 hex digits in the file>`; `/key` prints its fingerprint, which `ap_pass.py show` prints too. For a node with mesh address `7680`:
+
+```bash
+python3 scripts/ota_tools/ap_pass.py show --key-file /secure/place/deploy.key --node 7680
+```
+
+prints the access point name (`LM-7680`), its WPA2 password (`hex(HMAC-SHA256(K, "LMAP1" || address)[:8])`) and the WiFi QR text for a sticker. `ap_pass.py vectors` regenerates `test/vectors/apPassVectors.h`, which the native tests compare with the firmware.
+
+Upload through the access point: `/maint.open 600 ap` on the node, join `LM-<address>` from the phone (QR) or a PC, open `http://192.168.4.1/` and upload `bundle.bin` of a signed release. From a PC: `curl --data-binary @bundle.bin http://192.168.4.1/update`. The reply is `OK: <version> written ...` (the node reboots into it and the boot guard decides) or `ERROR <status>`, e.g. `ERROR MANIFEST_REJECTED: REFUSE_DOWNGRADE`; a refused manifest leaves the flash untouched and the access point open. Once the mesh is stopped for writing, a failure restarts the node on its current image (the access point closes).
+
+Bench without a phone: a second T-Beam runs `extras/bench_ap_bridge` and acts as the client, so the PC stays on its own network. Build it with `PLATFORMIO_WORKSPACE_DIR=~/.cache/pio-ws/bench_ap_bridge pio run -d extras/bench_ap_bridge` and flash only its app (`write_flash 0xe000 ota_data_initial.bin 0x10000 firmware.bin`; same partition table, the board's NVS stays). Then, with Windows Python:
+
+```bat
+python ap_upload.py COM3 --key-file deploy.key --node 7680 --status
+python ap_upload.py COM3 --key-file deploy.key --node 7680 --bundle bundle.bin [--cut-at 0.5]
+```
+
+If the node needs a mesh frame for its self-test (it has seen the mesh before), flash the bridge board back to LoRaChat right after a successful upload; the self-test waits at least 120 s.
+
+## Signed commands
+
+Commands with the Signed permission (`/maint.open`, `/reboot`, `/maint.wifi`, ...) only run over LoRa or MQTT with a signature made with the deployment key:
+
+```bash
+python3 scripts/ota_tools/lmcmd.py sign --key-file deploy.key --node 7680 "/maint.open 600 ap"
+# @7680 /maint.open 600 ap #6526b3c0.1f2e...   <- type this on a gateway's (or any node's) serial console
+python3 scripts/ota_tools/lmcmd.py sign --key-file deploy.key --node 7680 --mqtt 12 "/reboot"
+# 7680 12 /reboot #6526b3c1.9a0b...            <- publish this on cmd/<gateway>
+```
+
+The tag is `HMAC-SHA256(K, "LMC1" || node u16 LE || counter u32 LE || line)[:8]`, so a signed line only runs on the node it was made for. The counter is `max(last + 1, unix time)`; `lmcmd.py` remembers the last one per key in `~/.config/loramesher/command_counters.json`, so several computers can sign with the same key.
+
+WiFi credentials for a node (gateway WiFi and maintenance windows), encrypted for that node and that counter so the password never travels in clear over LoRa or MQTT:
+
+```bash
+python3 scripts/ota_tools/lmcmd.py wifi --key-file deploy.key --node 7680 --ssid MyHotspot
+# asks for the password, prints "@7680 /maint.wifi <encrypted> #<counter>.<tag>"
+```
+
+The keystream is `HMAC-SHA256(Kw, node || counter || block)` with `Kw = HMAC-SHA256(K, "LMW1")`, and the tag covers the encrypted line. At SF9 one LoRa frame fits SSID and password up to about 37 bytes together. `lmcmd.py vectors` regenerates `test/vectors/cmdVectors.h`.
+
+## Fault images
+
+Fault images (`TEST_IMAGE_KIND` 1 crash, 2 irq-hang, 3 loop-hang, 4 self-test fail) are built at the next patch version and signed with the test key:
+
+```bash
+scripts/ota_tools/build_test_images.sh        # all kinds, or e.g. "build_test_images.sh 4"
+```
+
+They land in `release/tbeam/<version>-t<kind>/`. The script reuses the `tbeam` build directory, so the next normal build recompiles, mostly from the build cache.
+
+## Fault matrix
+
+`fault_matrix.py` runs the four fault images on bench nodes and judges each rollback, with Windows Python:
+
+```bat
+python fault_matrix.py --floor D:\path\to\release\tbeam\0.1.2+gabc1234-floor ^
+    --images D:\path\to\release\tbeam --sensors COM6,COM7,COM9 --gateway COM3 ^
+    --key-file deploy.key --server-url http://192.168.1.26:8070/ --runs 3
+```
+
+For each run and kind every node gets the floor again (so its blacklist is empty), the script serves the newest `<version>-t<kind>` image itself (as `fw_server.py`, on the port of `--server-url`, which must be this PC's address as the nodes reach it) and takes the reports, and each node opens a pull window; a gateway checks over its own WiFi and gets a new window after a rollback. The serial log is followed until the node refuses the image as blacklisted. Expected:
+
+| Kind | Installs | Rollback | Reset after the fault |
+|---|---|---|---|
+| 1 crash | 2 | unexplained, blacklisted on the second | `PANIC` |
+| 2 irq-hang | 2 | unexplained, blacklisted on the second | `INT_WDT` |
+| 3 loop-hang | 1 | reason 6 (deadline), blacklisted at once | `SW` |
+| 4 selftest-fail | 1 | reason 5 (OTA path), blacklisted at once | `SW` |
+
+Every install and rollback must be reported (in the log and at the server), the refusal too (`noop`), and the node must end on a valid image. A table per run is printed, the details go to `fault_matrix.json`, and the exit code is 0 only if everything passed. One run of the four kinds takes about 20 min.
+
+## Floor image and provisioning
+
+The floor image is the release every field node gets over USB; a failed update always rolls back to it, so it must already contain the boot guard, the blacklist and the reports. Collect it with `release.py`, then for each node, with Windows Python:
+
+```bat
+python flash_floor.py D:\path\to\release\tbeam\0.2.0+gabc1234 --port COM6,COM7,COM9 ^
+    --key-file deploy.key --wifi-ssid FarmNet --role sensor --inventory nodes.csv ^
+    --check --ota-server http://loramesher.com/fw/tbeam/
+```
+
+It writes bootloader, partition table, an erased NVS (`--keep-nvs` keeps it), erased `otadata` and the image in `app0`, resets the node once, waits for its `BOOT` line, then sends `/key.set` (and checks the fingerprint), `/maint.wifi` (asks for the password) and `/role.set`. Each node adds a row to the inventory: MAC, node address, version, bootloader hash, key fingerprint, AP name and the WiFi QR text for its sticker. The QR text contains the AP password, so keep the inventory like the key.
+
+Several ports (comma separated) are flashed and provisioned in parallel. With `--check` each node is then tested before it joins the deployment; a gateway must be running for the mesh check:
+
+| Check | Passes when |
+|---|---|
+| `boot` | the floor image boots `VALID` |
+| `bl` | the bootloader hash matches the release (`info.json`) |
+| `pmu` | a power chip (AXP192 or AXP2101) answers; boards without one cannot run the self-test |
+| `key` | `/key` shows the fingerprint of the key file |
+| `mesh` | `/getRT` lists a route within `--mesh-timeout` (180 s) |
+| `wifi` | a 90 s pull window joins the network, reaches the OTA server (`--ota-server`, else the image's) and gets a report accepted |
+
+The result (`pmu`, `checks`, `PASS`/`FAIL`) goes into the inventory row, a table is printed, and nodes that pass blink their LEDs for 2 min (`/identify`), so the good boards stand out on the table. The exit code is 0 only if every node passes.
+
+## Guards
+
+`python3 scripts/ota_tools/check_guards.py` fails when:
+
+- `esp_ota_mark_app_valid_cancel_rollback()` is called outside `src/ota/otaBootGuard.cpp`;
+- `verifyRollbackLater()` is missing or does not return true;
+- an sdkconfig enables `CONFIG_ARDUINO_ISR_IRAM`, lacks app rollback, or sets `CONFIG_BOOTLOADER_WDT_DISABLE_IN_USER_CODE`;
+- `sdkconfig.tbeam-debug` differs from `sdkconfig.tbeam` in anything but heap and log debug options.
+
+The earlier delta OTA over MQTT (patch generation, chunking, campaign and monitor tools) is kept in `extras/legacy_delta_ota/` for the planned delta OTA over LoRa.
+
+## Node reports
+
+A node reports the result of each maintenance window with `POST /report` on the host of its OTA server (loramesher.com in the field). The body is compact JSON (`lib/OtaCore/src/otaReport`, built by `src/ota/otaReporter`) signed with the report key `Kr = HMAC-SHA256(K, "LMR1")` and sent as `X-LM-Tag: hex(HMAC-SHA256(Kr, body))` (`lib/OtaCrypto/src/deploymentKey`). The server holds only `Kr`, so it cannot sign commands. The server side, its field list and the device manager live in the LoRaMesherWeb repository.
+
+```bash
+python3 scripts/ota_tools/ap_pass.py report-key --key-file deploy.key   # Kr for the server's OTA_REPORT_KEY
+```
+
+`test/vectors/reportVectors.h` holds cases of LoRaMesherWeb `ota/vectors/report_vectors.json`; the native tests build those bodies byte for byte and check their tags, and `test/host/test_report_vectors.py` checks the copy against the server's file when LoRaMesherWeb is next to this repository.
+
+## Third-party check
+
+```bash
+python3 scripts/ota_tools/third_party.py check --env tbeam   # after a build of the env
+python3 scripts/ota_tools/release.py --size-only --env tbeam # size gate only
+```
+
+`third_party.py` reads every library PlatformIO resolved for the env. It fails if a license is unknown or copyleft and not in its allowlist (TinyGPSPlus, EspSoftwareSerial, ghostl), or if a library is missing from the README acknowledgements or listed there with another license family. The license comes from `library.json` or `library.properties`, else from the license file. CI runs both checks on every push.

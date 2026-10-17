@@ -25,10 +25,6 @@ public:
         return instance;
     }
 
-    xQueueHandle xProcessQueue;
-
-    xQueueHandle xSendQueue;
-
     void init();
 
     void addMessageService(MessageService* service);
@@ -37,34 +33,30 @@ public:
 
     void sendMessage(messagePort port, DataMessage* message);
 
-    String getAvailableCommands();
+    /**
+     * @brief Runs one command line (name and arguments, without target or signature).
+     * @param origin channel the line arrived on; decides which commands may run.
+     * @param signedValid the line carried a valid signature.
+     * @return the reply. Remote channels get short errors: "ERR unknown", "ERR perm".
+     */
+    String executeCommand(const String& line, Origin origin, bool signedValid);
 
-    String executeCommand(uint8_t serviceId, uint8_t commandId, String args);
-
-    String executeCommand(uint8_t serviceId, String command);
-
-    String executeCommand(String command);
+    /** @return the commands that may run from @p origin, one per line. */
+    String help(Origin origin) const;
 
     String getJSON(DataMessage* message);
 
-    DataMessage* getDataMessage(String json);
+    DataMessagePtr getDataMessage(const String& json);
 
-    String printDataMessageHeader(String title, DataMessage* message);
+    /** Logs the header fields of @p message. */
+    void logHeader(const char* title, const DataMessage* message);
 
 private:
     MessageManager(){};
 
     std::vector<MessageService*> services;
 
-    TaskHandle_t sendMessageManager_TaskHandle = NULL;
-
-    TaskHandle_t receiveMessageManager_TaskHandle = NULL;
-
-    // TODO: Fix that to a specific sender
     static void sendMessageLoRaMesher(DataMessage* message);
 
-    static void sendMessageBluetooth(DataMessage* message) {};
-
-    static void sendMessageWiFi(DataMessage* message);
     static void sendMessageMqtt(DataMessage* message);
 };

@@ -1,8 +1,8 @@
 #pragma once
-#include "Arduino.h"
+
 #include "commands/commandService.h"
 
-class OTACommandService : public CommandService {
+class OtaCommandService : public CommandService {
 public:
-    OTACommandService();
+    OtaCommandService();
 };

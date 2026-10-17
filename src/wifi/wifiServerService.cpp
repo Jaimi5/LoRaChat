@@ -1,5 +1,7 @@
 #include "wifiServerService.h"
 
+#include <algorithm>
+
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
 
@@ -19,19 +21,12 @@ void WiFiServerService::initWiFi() {
     wifi_init_sta();
     createWiFiTask();
 
-#if defined(WIFI_OVERRIDE_CREDENTIALS)
-    if (!addWiFiCredentialsFromConfig()) {
-        ESP_LOGW(TAG, "No WiFi credentials found");
-        return;
-    }
-#else
     if (!restartWiFiData()) {
         if (!addWiFiCredentialsFromConfig()) {
             ESP_LOGW(TAG, "No WiFi credentials found");
             return;
         }
     }
-#endif
 
     connectWiFi();
 
@@ -55,31 +50,41 @@ void WiFiServerService::wifi_task(void*) {
     LoRaMeshService& LoRaMeshService = LoRaMeshService::getInstance();
 
     for (;;) {
-        /* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection
-         * failed for the maximum number of re-tries (WIFI_FAIL_BIT). The bits are set by
-         * event_handler() (see above) */
+        // Wait for a connect or fail event (set by wifi_event_handler). While disconnected,
+        // also wake up when the backoff expires to retry the connection.
+        bool idle;
+        TickType_t wait;
+        {
+            std::lock_guard<std::recursive_mutex> lock(wiFiServerService.stateMutex_);
+            idle = !wiFiServerService.connected && !wiFiServerService.connecting;
+            wait = idle ? pdMS_TO_TICKS(wiFiServerService.connectBackoff.waitMs()) : portMAX_DELAY;
+        }
         EventBits_t bits = xEventGroupWaitBits(
-            s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdTRUE, pdFALSE, portMAX_DELAY);
+            s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdTRUE, pdFALSE, wait);
 
         ESP_LOGV(TAG, "Stack space unused after entering the task: %d",
-                 uxTaskGetStackHighWaterMark(NULL));
+                 uxTaskGetStackHighWaterMark(nullptr));
 
         /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which
          * event actually happened. */
-        if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
-            LoRaMeshService.setGateway();
-            wiFiServerService.connected = true;
-            wiFiServerService.connectBackoffMs = 5000;
-            ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", wiFiServerService.ssid.c_str(),
-                     wiFiServerService.password.c_str());
-        } else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
-            wiFiServerService.connected = false;
-            LoRaMeshService.removeGateway();
-            wiFiServerService.connectBackoffMs = min(
-                wiFiServerService.connectBackoffMs * 2,
-                WiFiServerService::MAX_CONNECT_BACKOFF_MS);
-            ESP_LOGI(TAG, "Failed to connect to SSID:%s, backoff %lu ms",
-                     wiFiServerService.ssid.c_str(), wiFiServerService.connectBackoffMs);
+        {
+            std::lock_guard<std::recursive_mutex> lock(wiFiServerService.stateMutex_);
+            if ((bits & WIFI_CONNECTED_BIT) == WIFI_CONNECTED_BIT) {
+                LoRaMeshService.setGateway();
+                wiFiServerService.connected = true;
+                wiFiServerService.connecting = false;
+                wiFiServerService.connectBackoff.onSuccess();
+                ESP_LOGI(TAG, "connected to ap SSID:%s", wiFiServerService.ssid.c_str());
+            } else if ((bits & WIFI_FAIL_BIT) == WIFI_FAIL_BIT) {
+                wiFiServerService.connected = false;
+                wiFiServerService.connecting = false;
+                LoRaMeshService.removeGateway();
+                wiFiServerService.connectBackoff.onFailure();
+                ESP_LOGI(TAG, "Failed to connect to SSID:%s, backoff %u ms",
+                         wiFiServerService.ssid.c_str(), wiFiServerService.connectBackoff.waitMs());
+            } else if (idle) {
+                wiFiServerService.connectWiFi();
+            }
         }
 
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
@@ -112,14 +117,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
 }
 
 void WiFiServerService::wifi_init_sta() {
-    // Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
 
     s_wifi_event_group = xEventGroupCreate();
@@ -137,9 +134,9 @@ void WiFiServerService::wifi_init_sta() {
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &instance_any_id));
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, nullptr, &instance_any_id));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &instance_got_ip));
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, nullptr, &instance_got_ip));
 }
 
 void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* message) {
@@ -149,19 +146,51 @@ void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* me
 void WiFiServerService::sendMessage(DataMessage* message) {}
 
 String WiFiServerService::addSSID(String ssid) {
-    // Copy the string to the ssid
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
+    if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH) {
+        return F("SSID must be 1 to 32 bytes");
+    }
     this->ssid = ssid;
 
     return F("SSID added");
 }
 
 String WiFiServerService::addPassword(String password) {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
+    if (password.length() > MAX_PASSWORD_LENGTH) {
+        return F("Password must be at most 64 bytes");
+    }
     this->password = password;
 
     return F("Password added");
 }
 
+String WiFiServerService::storeCredentials(const String& ssid, const String& password) {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
+    if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH ||
+        password.length() > MAX_PASSWORD_LENGTH) {
+        return F("Invalid WiFi credentials");
+    }
+    wifi_config_t config = {};
+    memcpy(config.sta.ssid, ssid.c_str(), ssid.length());
+    memcpy(config.sta.password, password.c_str(), password.length());
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
+    if (err != ESP_OK) {
+        return String("Could not store the WiFi credentials: ") + esp_err_to_name(err);
+    }
+
+    this->ssid = ssid;
+    this->password = password;
+    // A running station keeps retrying its old network; the WiFi task starts it again with the
+    // new credentials.
+    disconnectWiFi();
+    connecting = false;
+    connectBackoff.onSuccess();
+    return "WiFi credentials stored for " + ssid + ", reconnecting";
+}
+
 String WiFiServerService::resetWiFiData() {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     esp_err_t result;
 
     // Stop WiFi before changing configuration to prevent conflicts
@@ -175,9 +204,11 @@ String WiFiServerService::resetWiFiData() {
     // Create empty WiFi configuration with proper initialization
     wifi_config_t wifi_cfg = {};
 
-    // Clear the SSID and password fields explicitly
-    strcpy((char*)wifi_cfg.sta.ssid, DEFAULT_WIFI_SSID);
-    strcpy((char*)wifi_cfg.sta.password, DEFAULT_WIFI_PASSWORD);
+    static_assert(sizeof(DEFAULT_WIFI_SSID) <= MAX_SSID_LENGTH, "default SSID too long");
+    static_assert(sizeof(DEFAULT_WIFI_PASSWORD) <= MAX_PASSWORD_LENGTH,
+                  "default password too long");
+    memcpy(wifi_cfg.sta.ssid, DEFAULT_WIFI_SSID, sizeof(DEFAULT_WIFI_SSID));
+    memcpy(wifi_cfg.sta.password, DEFAULT_WIFI_PASSWORD, sizeof(DEFAULT_WIFI_PASSWORD));
 
     // Apply the cleared configuration
     result = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
@@ -227,6 +258,7 @@ bool WiFiServerService::isConnected() {
 }
 
 bool WiFiServerService::connectWiFi() {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (!initialized)
         return false;
 
@@ -244,12 +276,16 @@ bool WiFiServerService::connectWiFi() {
         return false;
     }
 
-    // Exponential backoff: don't retry too frequently
-    unsigned long now = millis();
-    if ((now - lastConnectAttemptMs) < connectBackoffMs) {
+    if (connecting) {
         return false;
     }
-    lastConnectAttemptMs = now;
+
+    uint32_t now = millis();
+    if (!connectBackoff.shouldAttempt(now)) {
+        return false;
+    }
+    connectBackoff.onAttempt(now);
+    connecting = true;
 
     ESP_LOGI(TAG, "Connecting to %s...", ssid.c_str());
     s_retry_num = 0;
@@ -257,8 +293,10 @@ bool WiFiServerService::connectWiFi() {
     if (!wifiStarted) {
         // Full initialization: configure and start the WiFi stack
         wifi_config_t wifi_config = {};
-        memcpy(wifi_config.sta.ssid, ssid.c_str(), ssid.length());
-        memcpy(wifi_config.sta.password, password.c_str(), password.length());
+        memcpy(wifi_config.sta.ssid, ssid.c_str(),
+               std::min(size_t(ssid.length()), size_t(MAX_SSID_LENGTH)));
+        memcpy(wifi_config.sta.password, password.c_str(),
+               std::min(size_t(password.length()), size_t(MAX_PASSWORD_LENGTH)));
 
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
@@ -268,9 +306,11 @@ bool WiFiServerService::connectWiFi() {
         // WiFi stack already running — just reconnect without stop/start cycle
         esp_err_t err = esp_wifi_connect();
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "esp_wifi_connect() failed: %s, doing full restart", esp_err_to_name(err));
+            ESP_LOGW(TAG, "esp_wifi_connect() failed: %s, doing full restart",
+                     esp_err_to_name(err));
             esp_wifi_stop();
             wifiStarted = false;
+            connecting = false;
             return false;
         }
     }
@@ -280,6 +320,7 @@ bool WiFiServerService::connectWiFi() {
 }
 
 bool WiFiServerService::disconnectWiFi() {
+    std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (!initialized)
         return true;
 
@@ -294,13 +335,21 @@ bool WiFiServerService::disconnectWiFi() {
     return true;
 }
 
+bool WiFiServerService::hasIp() {
+    if (!initialized) return false;
+    esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ipInfo;
+    return netif != nullptr && esp_netif_get_ip_info(netif, &ipInfo) == ESP_OK &&
+           ipInfo.ip.addr != 0;
+}
+
 String WiFiServerService::getIP() {
     if (!initialized)
         return F("No IP");
     // TODO: Check if this is the correct way to get the IP
 
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (netif == NULL) {
+    if (netif == nullptr) {
         printf("Could not get netif handle\n");
         return F("No IP");
     }
@@ -314,30 +363,6 @@ String WiFiServerService::getIP() {
     }
 
     return F("No IP");
-}
-
-String WiFiServerService::getSSID() {
-    wifi_config_t wifi_cfg;
-
-    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
-    if (error != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get wifi config");
-        return F("Failed to get SSID");
-    }
-
-    return String((char*)wifi_cfg.sta.ssid);
-}
-
-String WiFiServerService::getPassword() {
-    wifi_config_t wifi_cfg;
-
-    esp_err_t error = esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
-    if (error != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get wifi config");
-        return F("Failed to get password");
-    }
-
-    return String((char*)wifi_cfg.sta.password);
 }
 
 bool WiFiServerService::restartWiFiData() {
@@ -355,7 +380,6 @@ bool WiFiServerService::restartWiFiData() {
     }
 
     ESP_LOGI(TAG, "WIFI SSID: %s", (char*)wifi_cfg.sta.ssid);
-    ESP_LOGI(TAG, "WIFI Password: %s", (char*)wifi_cfg.sta.password);
 
     this->ssid = String((char*)wifi_cfg.sta.ssid);
     this->password = String((char*)wifi_cfg.sta.password);

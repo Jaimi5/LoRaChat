@@ -9,6 +9,7 @@
 #include "message/messageService.h"
 
 #include "message/messageManager.h"
+#include "message/ownedQueue.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -37,19 +38,9 @@
 
 class MqttService : public MessageService {
 public:
-    /**
-     * @brief Construct a new BluetoothService object
-     *
-     */
     static MqttService& getInstance() {
         static MqttService instance;
         return instance;
-    }
-
-    ~MqttService() {
-        if (mqttCommandService != nullptr) {
-            delete mqttCommandService;
-        }
     }
 
     void initMqtt(String localName);
@@ -63,41 +54,41 @@ public:
     bool isDeviceConnected();
 
     bool writeToMqtt(DataMessage* message);
-    bool writeToMqtt(String message);
-
-    MqttCommandService* mqttCommandService = nullptr;
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
 
-    void inline process_message(const char* topic, int topic_len, const char* payload, int data_len);
+    void inline process_message(const char* topic, int topic_len, const char* payload,
+                                int data_len);
 
     void processReceivedMessageFromMQTT(String& topic, String& payload);
 
-    void mqtt_service_subscribe(const char* topic);
+    /** @return the topic this gateway takes text commands on: cmd/<address in hex>. */
+    static String commandTopic();
+
+    /** Publishes "<request id> <text>" on cmd-resp/<node in hex>. */
+    void publishCommandReply(uint16_t node, uint8_t requestId, const String& text);
 
     String localName = "";
 
 private:
     MqttService() : MessageService(appPort::MQTTApp, String("MQTT")) {
-        mqttCommandService = new MqttCommandService();
-        commandService = mqttCommandService;
-    };
+        commandService = &commands_;
+    }
+
+    MqttCommandService commands_;
 
     void createMqttTask();
 
     static void MqttLoop(void*);
 
-    TaskHandle_t mqtt_TaskHandle = NULL;
+    TaskHandle_t mqtt_TaskHandle = nullptr;
 
-    struct MQTTQueueMessageV2 {
+    /** A message received from the broker, waiting for the MQTT task. */
+    struct MqttInbound {
         String topic;
         String body;
     };
-    QueueHandle_t receiveQueue;
-    MQTTQueueMessageV2* mqttMessageReceiveV2;
-
-    bool sendMqttMessage(MQTTQueueMessageV2* message);
-
+    OwnedQueue<MqttInbound> receiveQueue_;
 
     void processMQTTMessage();
 

@@ -50,3 +50,9 @@ docs/formation_convergence_floor.md
 # Local assistant notes
 CLAUDE.md
 CONTINUE.md
+
+# Site settings with credentials. Template: src/config_local.example.h
+src/config_local.h
+
+# Collected release and bench images (scripts/ota_tools/release.py)
+release/

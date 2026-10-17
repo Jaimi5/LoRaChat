@@ -1,12 +1,54 @@
-// This file initializes the device that is enabled by the config.h file or using the platformio.ini
-// file.
+// Board power (AXP192 or AXP2101, detected at runtime), the power key and the charge LED.
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <string>
+
+/** Battery and supply as read from the PMU. */
+struct PowerState {
+    /** Battery voltage, 0 without a battery. */
+    uint32_t batteryMv = 0;
+    /** USB or the solar charger feeds the board. */
+    bool externalPower = false;
+};
 
 class InitDevices {
 public:
-    static void init();
+    /**
+     * @brief Powers the board's rails through the PMU.
+     * @param deepSleepWake the node woke from deep sleep: the charger keeps running as it was.
+     */
+    static void init(bool deepSleepWake);
+
+    /**
+     * @brief Sets the function called when the PMU power button is pressed briefly.
+     *
+     * Call it before init(). The handler runs in a task, not in the interrupt.
+     */
+    static void onPowerKeyShortPress(std::function<void()> handler);
+
+    /** @return true if the PMU answers on I2C, or if the board has no PMU. */
+    static bool pmuResponds();
+
+    /** Reads battery and supply from the PMU. @return false if the board has no PMU. */
+    static bool readPower(PowerState& out);
+
+    /**
+     * @return supply, battery and charger state as one line; on the AXP2101 also the raw
+     *         status, TS, battery detection, charge LED and charge timer registers.
+     */
+    static std::string powerReport();
+
+    /**
+     * @brief Blinks the user LED and the charge LED for @p seconds so the board can be found.
+     *        A second call while blinking sets a new end time.
+     * @return the reply for the command.
+     */
+    static std::string identify(uint32_t seconds);
 
 private:
-    static void initTBeam();
-    static bool beginPower();
-    static void initMakerfabsSenseLoraMoisture();
+    static void initTBeam(bool deepSleepWake);
+    static bool beginPower(bool deepSleepWake);
+    static void startPmuIrqTask();
 };
