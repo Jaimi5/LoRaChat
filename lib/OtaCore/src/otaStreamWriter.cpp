@@ -55,7 +55,7 @@ UpdateStatus OtaStreamWriter::write(const uint8_t* data, size_t size) {
     if (size > manifest_.imageSize - written_) return fail(UpdateStatus::TOO_LONG);
 
     // Everything before the appended digest is hashed; the digest itself is kept to compare.
-    const uint32_t bodySize = manifest_.imageSize - DIGEST_SIZE;
+    const uint32_t bodySize = manifest_.imageSize - static_cast<uint32_t>(DIGEST_SIZE);
     size_t hashed = written_ < bodySize ? std::min<size_t>(size, bodySize - written_) : 0;
     sha_.update(data, hashed);
     if (hashed < size) {

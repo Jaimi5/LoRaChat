@@ -4,8 +4,8 @@
 
 std::string displayTextFrom(const char* text, size_t size) {
     if (text == nullptr) return {};
-    const void* nul = std::memchr(text, '\0', size);
-    return std::string(text, nul ? static_cast<const char*>(nul) - text : size);
+    const char* nul = static_cast<const char*>(std::memchr(text, '\0', size));
+    return std::string(text, nul ? static_cast<size_t>(nul - text) : size);
 }
 
 size_t displayTextLimit(size_t maxPayload, size_t capacity) {

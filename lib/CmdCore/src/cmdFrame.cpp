@@ -28,7 +28,7 @@ bool CommandFrame::decode(const uint8_t* data, size_t size, CommandFrame& out) {
     if (frame.isSigned) {
         if (size < 2 + SIGNATURE_SIZE) return false;
         lineEnd = size - SIGNATURE_SIZE;
-        for (int i = 3; i >= 0; i--) frame.counter = frame.counter << 8 | data[lineEnd + i];
+        for (size_t i = 4; i-- > 0;) frame.counter = frame.counter << 8 | data[lineEnd + i];
         for (size_t i = 0; i < frame.tag.size(); i++) frame.tag[i] = data[lineEnd + 4 + i];
     }
     frame.line.assign(reinterpret_cast<const char*>(data + 1), lineEnd - 1);

@@ -1,6 +1,7 @@
 #include "otaManifest.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstring>
 
 namespace {
@@ -48,7 +49,7 @@ uint32_t getU32(const uint8_t* in, size_t offset) {
 
 bool putString(std::vector<uint8_t>& out, size_t offset, size_t field, const std::string& value) {
     if (value.size() >= field) return false;
-    std::copy(value.begin(), value.end(), out.begin() + offset);
+    std::copy(value.begin(), value.end(), out.begin() + static_cast<std::ptrdiff_t>(offset));
     return true;
 }
 
