@@ -12,7 +12,8 @@
 #    (the old-library baseline full_deploy_sf10_v3 is computed once and cached).
 # 3. analysis/soak_page.py renders logs_testbed/<SESSION>_report/<SESSION>.html,
 #    which is republished to the same artifact URL. A hand-written
-#    logs_testbed/<SESSION>_report/notes.html, if present, becomes its findings panel.
+#    logs_testbed/<SESSION>_report/notes.html, if present, becomes its findings panel,
+#    and maintenance.txt there lists planned-work windows the gates skip.
 
 set -uo pipefail
 
@@ -45,8 +46,16 @@ if [[ ! -f "$BASELINE_JSON" && -d "$BASELINE_DIR" ]]; then
     python3 analysis/soak_report.py "$BASELINE_DIR" --json "$BASELINE_JSON" -q || exit 1
 fi
 
+# Planned-work windows, one "FROM,TO[,NOTE]" per line (gateway time; # starts a comment)
+report_args=()
+if [[ -f "$OUT/maintenance.txt" ]]; then
+    while IFS= read -r w; do
+        w="${w%%#*}"; [[ -n "${w// /}" ]] && report_args+=(--maintenance "$w")
+    done < "$OUT/maintenance.txt"
+fi
+
 echo "=== Report ==="
-python3 analysis/soak_report.py "$LOG_DIR" --json "$OUT/soak.json" || exit 1
+python3 analysis/soak_report.py "$LOG_DIR" --json "$OUT/soak.json" "${report_args[@]}" || exit 1
 
 page_args=("$OUT/soak.json" -o "$OUT/$SESSION.html")
 [[ -f "$BASELINE_JSON" ]] && page_args+=(--baseline "$BASELINE_JSON")

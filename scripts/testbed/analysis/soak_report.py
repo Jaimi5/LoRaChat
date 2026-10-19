@@ -7,6 +7,9 @@ Reads one log directory holding, per node, any mix of
 and reports, per node and per (gateway-local) day:
   - boots and crash reboots (BOOT reason=, ROM `rst:0x`, Guru/abort markers),
   - monitor gaps (log silence > --gap-s, i.e. the monitor/USB, not the node),
+  - --maintenance windows (planned reflashes) are skipped like a monitor gap, so
+    their rejoins and fault recoveries do not count, and the heap slope gets a
+    separate intercept on each side of a window,
     and monitor restarts written by the gw-monitor.sh restart loop,
   - joins, fault recoveries and NM elections from `Network service state changed`
     (these are the flaps formation.py's cumulative convergence cannot see),
@@ -104,6 +107,18 @@ def _epoch(ts: str, _cache: dict = {}) -> float:
         return base
 
 
+def _maint_window(spec: str) -> tuple[float, float, str]:
+    """'FROM,TO[,NOTE]' in gateway time (treated as UTC, like _epoch) -> (from, to, note)."""
+    parts = [x.strip() for x in spec.split(",", 2)]
+    if len(parts) < 2:
+        raise SystemExit(f"--maintenance needs FROM,TO: {spec!r}")
+    a, b = (datetime.strptime(x if len(x) > 16 else x + ":00", "%Y-%m-%d %H:%M:%S")
+            .replace(tzinfo=timezone.utc).timestamp() for x in parts[:2])
+    if b <= a:
+        raise SystemExit(f"--maintenance window ends before it starts: {spec!r}")
+    return a, b, parts[2] if len(parts) > 2 else ""
+
+
 def _day(t: float) -> str:
     return datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d")
 
@@ -181,7 +196,9 @@ def parse_node(args) -> dict:
     sends: list[tuple[float, str, int]] = []   # (t, dest, seq)
     received: list[tuple[str, int]] = []       # (src, seq) that reached this node
     manager_tx_t: list[float] = []
-    heap_fit = [0, 0.0, 0.0, 0.0, 0.0]  # n, sum t, sum h, sum t^2, sum t*h (t in days)
+    # one [n, sum t, sum h, sum t^2, sum t*h] per segment between maintenance windows (t in days)
+    heap_segs = [[0, 0.0, 0.0, 0.0, 0.0]]
+    maint = ctx["maintenance"]
     t_ref = None
     heap_fit_last = 0.0
     cfg = None
@@ -190,6 +207,7 @@ def parse_node(args) -> dict:
     state_since = 0.0
     prev_t = None
     file_end_t = None
+    seen_t = None
 
     def transition(new: int, t: float, d: _Day) -> None:
         """Move the tracked state to `new` at t, counting joins/recoveries/elections.
@@ -217,6 +235,15 @@ def parse_node(args) -> dict:
                 t = _epoch(ts)
                 # A snapshot taken before a rotation overlaps the day file that follows.
                 if file_end_t is not None and t <= file_end_t:
+                    continue
+                seen_t = t
+                if maint and any(a <= t < b for a, b, _ in maint):
+                    # planned work: unknown state, no events, a new heap segment after it
+                    if prev_t is not None:
+                        _add_state_time(days, state, state_since, prev_t)
+                    state, prev_t = None, None
+                    if heap_segs[-1][0]:
+                        heap_segs.append([0, 0.0, 0.0, 0.0, 0.0])
                     continue
                 d = days[ts[:10]]
                 d.lines += 1
@@ -275,11 +302,12 @@ def parse_node(args) -> dict:
                             t_ref = t
                         heap_fit_last = t
                         x = (t - t_ref) / DAY_S
-                        heap_fit[0] += 1
-                        heap_fit[1] += x
-                        heap_fit[2] += heap
-                        heap_fit[3] += x * x
-                        heap_fit[4] += x * heap
+                        seg = heap_segs[-1]
+                        seg[0] += 1
+                        seg[1] += x
+                        seg[2] += heap
+                        seg[3] += x * x
+                        seg[4] += x * heap
                         transition(st, t, d)
                     continue
                 if "STACK[" in msg:
@@ -355,7 +383,7 @@ def parse_node(args) -> dict:
                             d.warn[f"{m.group(1)} {m.group(2)}: {RE_NORM.sub('N', m.group(3))[:110]}"] += 1
                 if any(k in msg for k in CRASH_MARKERS):
                     d.crash_markers += 1
-        file_end_t = prev_t
+        file_end_t = seen_t
     node_first = min((dd.first for dd in days.values() if dd.first is not None), default=None)
     for t, label_r, crash, _ in boots:
         d = days[_day(t)]
@@ -368,10 +396,12 @@ def parse_node(args) -> dict:
     if prev_t is not None:
         _add_state_time(days, state, state_since, prev_t)
 
-    n, sx, sy, sxx, sxy = heap_fit
+    # pooled within-segment least squares: one slope, one intercept per segment
+    sxx_c = sum(sxx - sx * sx / n for n, sx, _, sxx, _ in heap_segs if n > 1)
+    sxy_c = sum(sxy - sx * sy / n for n, sx, sy, _, sxy in heap_segs if n > 1)
+    n = sum(seg[0] for seg in heap_segs)
     span = (heap_fit_last - t_ref) / DAY_S if t_ref is not None else 0.0
-    slope = ((n * sxy - sx * sy) / (n * sxx - sx * sx)
-             if n > 2 and span >= MIN_HEAP_FIT_DAYS and (n * sxx - sx * sx) > 1e-9 else None)
+    slope = sxy_c / sxx_c if n > 2 and span >= MIN_HEAP_FIT_DAYS and sxx_c > 1e-9 else None
 
     out_days = {}
     for day, d in sorted(days.items()):
@@ -557,6 +587,7 @@ def summarize(nodes: dict, ctx: dict, gap_s: float) -> dict:
         "data_from": _iso(all_first), "data_up_to": _iso(all_last),
         "days": sorted({d for nd in nodes.values() for d in nd["days"]}),
         "gap_threshold_s": gap_s,
+        "maintenance": [{"from": _iso(a), "to": _iso(b), "note": note} for a, b, note in ctx["maintenance"]],
         "manager": ctx["manager"], "uplinks": uplinks, "in_flight_s": IN_FLIGHT_S,
         "superframe_s": mgr.get("superframe_s"),
         "checks": checks,
@@ -702,6 +733,8 @@ def main() -> int:
     ap.add_argument("--remote", default="3428,DD58,14A4", help="remote-cluster node labels")
     ap.add_argument("--longlink", default="006C:3428", help="A:B labels of the long link")
     ap.add_argument("--gap-s", type=float, default=600.0, help="log silence counted as a monitor gap")
+    ap.add_argument("--maintenance", action="append", default=[], metavar="FROM,TO[,NOTE]",
+                    help="planned-work window in gateway time, 'YYYY-MM-DD HH:MM[:SS]'; repeatable")
     ap.add_argument("-j", "--jobs", type=int, default=8)
     ap.add_argument("-q", "--quiet", action="store_true")
     a = ap.parse_args()
@@ -709,7 +742,8 @@ def main() -> int:
     la, lb = (v2_runtime_addr(x) for x in a.longlink.split(":"))
     ctx = {"manager": v2_runtime_addr(a.manager), "manager_label": a.manager.upper(),
            "remote": {x.strip().upper() for x in a.remote.split(",") if x.strip()},
-           "longlink": {la: lb, lb: la}}
+           "longlink": {la: lb, lb: la},
+           "maintenance": [_maint_window(w) for w in a.maintenance]}
     rep = build(a.log_dir, ctx, a.gap_s, a.jobs)
     if a.json:
         a.json.parent.mkdir(parents=True, exist_ok=True)

@@ -269,6 +269,16 @@ def warnings_list(rep, n=12):
             f"<th>Nodes</th><th style='text-align:left'>Template (numbers → N)</th></tr>{rows}</table></div>")
 
 
+def maint_note(rep) -> str:
+    wins = rep.get("maintenance") or []
+    if not wins:
+        return ""
+    items = "; ".join(f"{esc(w['from'])} → {esc(w['to'][11:])}" + (f" ({esc(w['note'])})" if w["note"] else "")
+                      for w in wins)
+    return (f"<p class='note'>Planned work, skipped by every check like a logging gap (no joins, fault "
+            f"recoveries or joined time counted): {items}.</p>")
+
+
 def render(rep, base, notes=None):
     status, verdict = overall(rep["checks"])
     ndays = len(rep["days"])
@@ -319,6 +329,7 @@ def render(rep, base, notes=None):
   </div>
   <p class="note">Gated checks cover the 13-node main cluster. The remote cluster (3428, DD58, 14A4) hangs on one
   3.5 km link whose quality depends on weather and interference, so it is reported but not gated.</p>
+  {maint_note(rep)}
 </section>
 {f'''
 <section>
@@ -348,7 +359,8 @@ def render(rep, base, notes=None):
 
 <section>
   <h2>Long link 006C ↔ 3428</h2>
-  <p class="lede">Both ends transmit at 20 dBm; every other node uses 2 dBm. SF10 needs an SNR above about −15 dB to
+  <p class="lede">Both ends transmitted at 20 dBm until 08:52 on 19 October and at 14 dBm since, which keeps
+  their 14 dBi panels inside band O's 27 dBm e.r.p.; every other node uses 2 dBm. SF10 needs an SNR above about −15 dB to
   demodulate.</p>
   {longlink_table(rep)}
 </section>

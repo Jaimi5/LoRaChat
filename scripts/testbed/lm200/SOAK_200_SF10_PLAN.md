@@ -2,6 +2,7 @@
 
 ## Resume here in a new session (status 2026-10-16)
 - **Status (2026-10-16 ~18:00): RUNNING.** `deploy.sh all -n soak_200_sf10` finished 17:19 (7/7 gateways, 16/16 nodes on 2.0.0+sha.41f9b68, cron on all). Smoke check passed. Page (private): https://claude.ai/artifact/23S5SdY7JR4M63sS46uX9J. Day 7 ends ~2026-10-23 17:20.
+- **2026-10-19 08:52–09:03: long-link ends reflashed 20 → 14 dBm.** 006C and 3428 feed 14 dBi panels; 20 dBm conducted with an assumed 2 dB chain loss is ~29.9 dBm e.r.p., over band O's 27 dBm (see `docs/compliance/antenna_filter_power_table.md`, in ../LoRaChat). 14 dBm complies even with zero chain loss. Done per device without stopping the other monitors: the user killed only those two monitor loops, then `deploy.sh upload -d C6213-006C,GV-3428 --skip-config` (no `-n`: with a session, gw-upload.sh runs `gw-monitor.sh stop` for the whole gateway), then `gw-monitor.sh launch soak_200_sf10 …` on each gateway. The manager restart caused one fault recovery on every main node (08:57:13, all rejoined by 09:02:31); the window is in `logs_testbed/soak_200_sf10_report/maintenance.txt` and the report skips it (`soak_report.py --maintenance`). Local `current.yaml` now has 006C/3428 at 14 dBm.
   - Smoke (17:54): 0 reboots and 0 fault recoveries; main ≥99.7 % joined and ≥99.2 % beacon coverage; 3428 joined and heard 95.9 % of 006C superframes (SNR med −1.8 / −8.2 dB); 14A4/DD58 joined once 3428 was up.
   - **Three MQTT uplinks** (77A4, E464, DF10 have WiFi); nodes send to the closest. Delivery is matched by (src, dest, seq), and sends in the last 20 min are excluded as in flight.
   - PC-independence tests passed: pio kill restarts in ~45 s (pio start is slow under nice/ionice); saved PATH resolves pio under a bare env; rotate on a scratch copy on GW-7. A pattern without `^` also matches the loop's `bash -c` line and kills the whole monitor, so anchor any pkill at the python path.
@@ -43,7 +44,7 @@ The campaigns are over and #136 is merged. release/2.0.0 head is now **41f9b68**
 The user wants the testbed back on the **default deployment as it was before**:
 - the normal LoRaChat firmware, not the simulator;
 - monitor messages over MQTT;
-- `experiments/current.yaml`: SF10, 006C manager, 006C and 3428 at 20 dBm, everything else at 2 dBm, `mon_sending_every` 900 s.
+- `experiments/current.yaml`: SF10, 006C manager, 006C and 3428 at 20 dBm (14 dBm from 2026-10-19 08:52), everything else at 2 dBm, `mon_sending_every` 900 s.
 
 This time it runs the new library, for **7 days**. A **daily-updated report page** gives people confidence that the protocol works.
 
