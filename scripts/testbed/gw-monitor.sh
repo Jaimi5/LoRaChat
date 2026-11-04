@@ -47,9 +47,11 @@ launch_monitor() {
     # script provides the pseudo-TTY that pio device monitor requires; the read
     # loop adds [YYYY-MM-DD HH:MM:SS.mmm] to each line. Appending (>>) keeps the
     # file safe to truncate from `rotate`.
+    # -b 115200: the cron @reboot resume runs from $HOME, where no platformio.ini sets
+    # monitor_speed, and pio falls back to 9600 (GW-2 logged garbage after its 2026-11-04 reboot).
     setsid nohup bash -c "
         while true; do
-            $PIO_NICE script -qfc 'pio device monitor --port $port --filter esp32_exception_decoder' /dev/null 2>&1 | \
+            $PIO_NICE script -qfc 'pio device monitor --port $port -b 115200 --filter esp32_exception_decoder' /dev/null 2>&1 | \
             while IFS= read -r line; do
                 echo \"[\$(date \"+%Y-%m-%d %H:%M:%S.%3N\")] \$line\"
             done >> \"$logfile\" 2>&1
