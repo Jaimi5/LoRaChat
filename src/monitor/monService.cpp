@@ -88,6 +88,8 @@ void MonService::createSendingTask() {
 monOneMessage* MonService::createMONPayloadMessage(int number_of_neighbors) {
     uint32_t messageSize = sizeof(monOneMessage) + sizeof(routing_entry) * number_of_neighbors;
     monOneMessage* MONMessage = (monOneMessage*)pvPortMalloc(messageSize);
+    if (MONMessage == nullptr)
+        return nullptr;
     MONMessage->messageSize = messageSize - sizeof(DataMessageGeneric);
     MONMessage->RTcount = MONCOUNT_MONONEMESSAGE;
     MONMessage->uptime = millis();
@@ -123,17 +125,18 @@ void MonService::sendingLoopOneMessage(void* parameter) {
 #ifdef USE_LORAMESHER_V2
             LoRaMeshService::getInstance().updateRoutingTable();
             auto routes = LoRaMeshService::getInstance().getRoutingTableEntries();
+            // The count and the fill loop must use the same filter.
+            auto reported = [](const loramesher::RouteEntry& route) {
+#ifdef MON_REPORT_ALL_ROUTES
+                return route.is_valid;
+#else
+                return route.is_valid && route.destination == route.next_hop;
+#endif
+            };
             uint16_t routeCount = 0;
             for (const auto& route : routes) {
-#ifdef MON_REPORT_ALL_ROUTES
-                if (route.is_valid) {
-#else
-                // Must match the fill loop's filter below: counting a stale direct route
-                // leaves the last message unfilled, so it is never sent and leaks.
-                if (route.is_valid && route.destination == route.next_hop) {
-#endif
+                if (reported(route))
                     ++routeCount;
-                }
             }
             if (routeCount > 0) {
                 monOneMessage* MONMessage = nullptr;
@@ -142,19 +145,23 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                 int i = 0;
                 MonService::getInstance().monMessageId++;
                 for (const auto& route : routes) {
-                    if ((routeNext == 0 && routeSent < routeCount) ||
-                        MONMessage == nullptr) {  // create a new message
+                    // Allocate only for a route that goes in the message. Allocating on any
+                    // route left a message that was never sent or freed whenever the table
+                    // ended in an unreported route (multi-hop or stale): ~52 B every cycle.
+                    if (!reported(route))
+                        continue;
+                    if (MONMessage == nullptr) {  // create a new message
                         routeNext = 1;
                         while ((MonService::getOneMessageSize(routeNext + 1) < MAX_MSG_SIZE) &&
                                (routeNext < (routeCount - routeSent)))
                             ++routeNext;
                         MONMessage = getInstance().createMONPayloadMessage(routeNext);
+                        if (MONMessage == nullptr) {
+                            ESP_LOGE(MON_TAG, "No memory for a monitor message");
+                            break;
+                        }
                     }
-#ifdef MON_REPORT_ALL_ROUTES
-                    if (route.is_valid) {
-#else
-                    if (route.is_valid && route.destination == route.next_hop) {
-#endif
+                    {
                         routing_entry entry;
                         entry.neighbor = route.destination;
                         entry.next_hop = route.next_hop;
@@ -182,6 +189,9 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                         }
                     }
                 }
+                // Safety net: count and fill walk the same copy with the same filter
+                if (MONMessage != nullptr)
+                    vPortFree(MONMessage);
             } else {
                 ESP_LOGD(MON_TAG, "sendingLoopOneMessage: no neighbors?");
             }
