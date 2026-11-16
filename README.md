@@ -6,7 +6,7 @@ LoRaChat is an open-source C++ middleware for ESP32 LoRa boards. It runs on top 
 - **Message ports (`messagePort`)** identify the network a message is sent or received over: the LoRa mesh, an MQTT broker (via Wi-Fi), Bluetooth, or another application on the same node.
 - **A central `MessageManager`** dispatches every message to the right application and network, so new applications can be added without touching the network layer or the applications already running.
 
-A gateway node with Wi-Fi bridges the mesh to an MQTT broker in both directions, so Internet hosts can send commands to applications on any mesh node and receive data from them. A smartphone paired over Bluetooth can issue text commands to a node.
+A gateway node with Wi-Fi bridges the mesh to an MQTT broker in both directions, so Internet hosts can send commands to applications on any mesh node and receive data from them. A smartphone paired over Bluetooth can issue text commands to a node and chat with the users of other nodes.
 
 The repository includes example applications (LED actuation, sensor reporting, GPS, OLED display, network monitoring), a Python test harness for experiments with physical nodes, and testbed scripts.
 
@@ -21,6 +21,7 @@ You can join LoRaMesher's and LoRaChat's developers and users on **[Discord](htt
 - [Installation and build](#installation-and-build)
 - [Configuration](#configuration)
 - [Minimal example: from the Internet to a mesh node and back](#minimal-example-from-the-internet-to-a-mesh-node-and-back)
+- [Chat over Bluetooth](#chat-over-bluetooth)
 - [Adding a new application](#adding-a-new-application)
 - [Running experiments with the test harness](#running-experiments-with-the-test-harness)
 - [Known limitations](#known-limitations)
@@ -73,6 +74,7 @@ Source code layout (`src/`):
 | `mqtt`, `wifi`, `bluetooth` | Cross-network services |
 | `commands` | `CommandService` base class for per-application text commands |
 | `led`, `sensor`, `gps`, `display`, `monitor` | Example applications |
+| `chat` | Text chat between nodes, used from the Bluetooth console |
 | `simulator` | On-device traffic generator used by the test harness |
 | `battery`, `ota`, `time`, `helpers`, `devices` | Support modules |
 | `config.h` | Feature switches, Wi-Fi/MQTT settings, radio parameters |
@@ -127,11 +129,11 @@ All settings are in `src/config.h`.
 
 ### Board and features
 
-The board is selected by the PlatformIO environment, which sets a board define (for example `T_BEAM_V10`). For each board, `config.h` contains a block of feature switches such as `LED_ENABLED`, `DISPLAY_ENABLED`, `GPS_ENABLED`, `WIFI_ENABLED`, `MQTT_ENABLED`, `MQTT_MON_ENABLED` (monitor application), `BLUETOOTH_ENABLED`, and `SIMULATION_ENABLED`. Comment or uncomment them to choose which services are initialized on that board.
+The board is selected by the PlatformIO environment, which sets a board define (for example `T_BEAM_V10`). For each board, `config.h` contains a block of feature switches such as `LED_ENABLED`, `DISPLAY_ENABLED`, `GPS_ENABLED`, `WIFI_ENABLED`, `MQTT_ENABLED`, `MQTT_MON_ENABLED` (monitor application), `BLUETOOTH_ENABLED`, `CHAT_ENABLED` (see [Chat over Bluetooth](#chat-over-bluetooth)), and `SIMULATION_ENABLED`. Comment or uncomment them to choose which services are initialized on that board.
 
 ### Wi-Fi and gateway role
 
-Set `WIFI_SSID` and `WIFI_PASSWORD`. A node that connects to Wi-Fi automatically announces itself as a gateway in the mesh. Nodes that cannot connect act as regular mesh nodes and send MQTT-bound messages to the closest gateway. The Wi-Fi credentials can also be changed at run time with the `wifi` command over the Bluetooth serial console.
+Set `WIFI_SSID` and `WIFI_PASSWORD`. A node that connects to Wi-Fi automatically announces itself as a gateway in the mesh. Nodes that cannot connect act as regular mesh nodes and send MQTT-bound messages to the closest gateway. The Wi-Fi credentials can also be changed at run time with the `/addSSID`, `/addPassword` and `/connectWiFi` commands over the Bluetooth serial console.
 
 ### MQTT
 
@@ -181,6 +183,37 @@ You need at least two boards flashed with LoRaChat, an MQTT broker reachable fro
    ```
 
    The values above are illustrative. The fields are defined in `src/monitor/monServiceMessage.h`. `uptime` is in milliseconds, and `link_quality` is reported only with the TDMA-based LoRaMesher (it is 0 with 0.0.11). The reporting period is `MON_SENDING_EVERY` in `config.h`.
+
+## Chat over Bluetooth
+
+The Chat application (`src/chat/`) lets the user of a node exchange text with the users of other nodes. It is used from the Bluetooth serial console, by typing commands in a serial terminal app on a phone.
+
+To enable it, uncomment `BLUETOOTH_ENABLED` and `CHAT_ENABLED` in the T-Beam block of `src/config.h` and flash every node that takes part. Both switches are off by default. The console uses Bluetooth Classic (Serial Port Profile), which among the supported boards is only available with the T-Beam configurations: the build stops with an error on the other boards. Bluetooth Classic adds about 380 KB to the firmware. In the `-v2` environments it only fits in the application partition with `WIFI_ENABLED`, `MQTT_ENABLED` and `MQTT_MON_ENABLED` commented out, and the build stops with an error otherwise. With LoRaMesher 0.0.11 everything fits together, but little flash is left (about 98 % of the partition is used) and running Bluetooth and Wi-Fi at the same time has not been tested, so commenting them out is recommended there as well.
+
+The node appears on the phone as a Bluetooth device named after its mesh address in hexadecimal (for example `3ADF`). Pair with it, connect from the terminal app, and type:
+
+| Command | Effect |
+|---|---|
+| `/nodes` | Lists this node and the nodes in its routing table, with their nicknames when known |
+| `/msg <node> <text>` | Sends one text to a node |
+| `/chat <node>` | Enters chat mode: every following line that does not start with `/` is sent to that node |
+| `/exit` | Leaves chat mode |
+| `/name <nickname>` | Sets the nickname of this node. Without an argument, shows it |
+| `/help` | Lists the commands of all applications |
+
+`<node>` is either a mesh address in hexadecimal (1 to 4 digits, as shown by `/nodes`) or a nickname. A received text is shown as `nickname(address): text`, or as `address: text` when the sender has no nickname.
+
+- **Nicknames** have 1 to 12 characters from `A-Z`, `a-z`, `0-9`, `_` and `-`, and cannot be a hexadecimal number of 1 to 4 digits, so that they are never confused with an address. The nickname of a node is stored in its flash memory. A node learns the nicknames of the others from the texts it receives, and `/nodes` also asks the nodes whose nickname is still unknown, so it may take a second `/nodes` to see them.
+- **Texts** have up to 160 bytes and travel in a single LoRa packet. Lines may end with CR, LF or CRLF, and a line longer than 200 characters is ignored.
+- While in chat mode, commands still work and are never sent to the other node.
+
+Limitations:
+
+- There is no delivery confirmation. `/msg` answers as soon as the text is handed to the mesh.
+- Texts are shown only on a phone that is connected at that moment. They are not stored.
+- Only one-to-one texts are supported, not broadcast or groups.
+- Texts and nicknames are not encrypted or authenticated (see [Known limitations](#known-limitations)). A nickname is whatever the sending node claims, which is why the address is always shown next to it.
+- Bluetooth Classic serial is supported by Android terminal apps, but not by iOS.
 
 ## Adding a new application
 
@@ -393,8 +426,8 @@ directoryName
 
 ## Known limitations
 
-- **Security.** LoRaChat, like LoRaMesher, does not encrypt or authenticate messages. Payloads are transmitted as supplied by the application. Where needed, confidentiality and authentication must be added in the application.
-- **Wi-Fi and Bluetooth ports.** `WiFiPort` is reserved, but Wi-Fi is currently used only as the transport for MQTT. Bluetooth provides a text command console and displays messages addressed to `BluetoothApp`, but it does not forward arbitrary `DataMessage`s to the mesh.
+- **Security.** LoRaChat, like LoRaMesher, does not encrypt or authenticate messages. Payloads are transmitted as supplied by the application. Where needed, confidentiality and authentication must be added in the application. This includes the Chat application: its texts and nicknames are sent in clear, and a node can claim any nickname.
+- **Wi-Fi and Bluetooth ports.** `WiFiPort` is reserved, but Wi-Fi is currently used only as the transport for MQTT. Bluetooth provides a text command console and displays messages addressed to `BluetoothApp`, but it does not forward arbitrary `DataMessage`s to the mesh. Only the Chat application sends text typed on the console to other nodes.
 - **Large payloads.** Reliable, fragmented transfer of large payloads is available only with LoRaMesher 0.0.11. With the TDMA-based LoRaMesher, every message must fit into one LoRa packet.
 - **Application ports** are 8-bit values, and their assignment must be identical on all nodes and Internet hosts. Each node can run as many applications as its memory allows.
 - **Research software.** LoRaChat is developed and used for research on LoRa mesh networks. It has run for long periods on our testbed, but it has not been hardened for production deployments.
