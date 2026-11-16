@@ -4,6 +4,10 @@
 
 #include "bluetoothService.h"
 
+#ifdef CHAT_ENABLED
+#include "chat/chatService.h"
+#endif
+
 // The console uses the Bluetooth Classic Serial Port Profile. Stop the build on boards where it
 // cannot work instead of failing at run time.
 #if !defined(CONFIG_BT_SPP_ENABLED)
@@ -103,8 +107,11 @@ void BluetoothService::loop() {
         disconnectPending = false;
         ESP_LOGV(BLE_TAG, "Bluetooth Disconnected");
         hasClient = false;
-        // A half-typed line belongs to the device that has just left.
+        // A half-typed line and the chat mode belong to the device that has just left.
         lineReader.reset();
+#ifdef CHAT_ENABLED
+        ChatService::getInstance().leaveChat();
+#endif
         // TODO: Bluetooth and WiFi should not be used at the same time
     }
 
@@ -147,7 +154,22 @@ void BluetoothService::loop() {
 void BluetoothService::handleLine(const char* line) {
     Serial.println(line);
 
-    String result = MessageManager::getInstance().executeCommand(line);
+    String result;
+
+#ifdef CHAT_ENABLED
+    // Chat mode is applied here, before the command dispatch, so that only the text the user
+    // typed for the peer is sent over the air and never the line of another command.
+    ChatService& chatService = ChatService::getInstance();
+    if (chatService.inChatMode() && line[0] != '/') {
+        result = chatService.sendChatLine(line);
+    } else if (chatService.inChatMode() && strcasecmp(line, "/exit") == 0) {
+        result = chatService.leaveChat();
+    } else {
+        result = MessageManager::getInstance().executeCommand(line);
+    }
+#else
+    result = MessageManager::getInstance().executeCommand(line);
+#endif
 
     if (result.length() > 0) {
         Serial.println(result);

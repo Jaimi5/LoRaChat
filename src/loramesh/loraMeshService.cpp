@@ -151,6 +151,20 @@ String LoRaMeshService::getRoutingTable() {
     return routingTable;
 }
 
+std::vector<uint16_t> LoRaMeshService::getNodeAddresses() {
+    std::vector<uint16_t> addresses;
+
+    if (!mesher_)
+        return addresses;
+
+    for (const auto& route : mesher_->GetRoutingTable()) {
+        if (route.is_valid)
+            addresses.push_back(route.destination);
+    }
+
+    return addresses;
+}
+
 void LoRaMeshService::send(DataMessage* message) {
     if (!mesher_)
         return;
@@ -482,6 +496,29 @@ String LoRaMeshService::getRoutingTable() {
     routingTableList->Clear();
 
     return routingTable;
+}
+
+std::vector<uint16_t> LoRaMeshService::getNodeAddresses() {
+    std::vector<uint16_t> addresses;
+
+    LM_LinkedList<RouteNode>* nodes = radio.routingTableListCopy();
+    if (nodes == NULL)
+        return addresses;
+
+    nodes->setInUse();
+
+    if (nodes->moveToStart()) {
+        do {
+            addresses.push_back(nodes->getCurrent()->networkNode.address);
+        } while (nodes->next());
+    }
+
+    nodes->releaseInUse();
+
+    nodes->Clear();
+    delete nodes;
+
+    return addresses;
 }
 
 void LoRaMeshService::send(DataMessage* message) {

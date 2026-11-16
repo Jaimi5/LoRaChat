@@ -182,6 +182,18 @@ void initBluetooth() {
 #pragma endregion
 #endif
 
+#ifdef CHAT_ENABLED
+#pragma region Chat
+#include "chat/chatService.h"
+ChatService& chatService = ChatService::getInstance();
+
+void initChat() {
+    chatService.init();
+}
+
+#pragma endregion
+#endif
+
 #pragma region Manager
 
 MessageManager& manager = MessageManager::getInstance();
@@ -193,6 +205,11 @@ void initManager() {
 #ifdef BLUETOOTH_ENABLED
     manager.addMessageService(&bluetoothService);
     ESP_LOGV(TAG, "Bluetooth service added to manager");
+#endif
+
+#ifdef CHAT_ENABLED
+    manager.addMessageService(&chatService);
+    ESP_LOGV(TAG, "Chat service added to manager");
 #endif
 
     manager.addMessageService(&gpsService);
@@ -299,6 +316,11 @@ void setup() {
     // Initialize GPS
     initGPS();
     ESP_LOGV(TAG, "Heap after initGPS: %d", ESP.getFreeHeap());
+#endif
+
+#ifdef CHAT_ENABLED
+    // Initialize Chat before the mesh, so it is ready for the first received message
+    initChat();
 #endif
 
     // Initialize LoRaMesh

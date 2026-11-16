@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include <vector>
+
 #include "config.h"
 
 #ifdef USE_LORAMESHER_V2
@@ -37,6 +39,9 @@ public:
     uint16_t getLocalAddress();
 
     String getRoutingTable();
+
+    // Addresses of the nodes currently in the routing table, with either LoRaMesher version.
+    std::vector<uint16_t> getNodeAddresses();
 
     // Human-readable summary of the radio parameters actually applied to the
     // LoRa stack at init (SF/BW/power/max packet size), captured in both the v1
