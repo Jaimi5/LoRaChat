@@ -41,6 +41,10 @@ struct SleepBlockers {
     bool maintenanceWindow = false;
     /** The display is on. */
     bool displayAwake = false;
+    /** The PMU holds its interrupt line low: an event waits to be read. */
+    bool pmuIrqLow = false;
+    /** Install mode is on: the node stays awake and reports often. */
+    bool installMode = false;
 };
 
 /** Answer to the mesh's sleep request. Values are logged, keep them. */
@@ -52,6 +56,8 @@ enum class SleepDecision : uint8_t {
     PENDING_VERIFY = 4,
     MAINTENANCE_WINDOW = 5,
     DISPLAY_AWAKE = 6,
+    PMU_IRQ_PENDING = 7,
+    INSTALL_MODE = 8,
 };
 
 /**

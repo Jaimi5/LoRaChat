@@ -32,6 +32,15 @@ std::string formatSignature(uint32_t counter, const CommandTag& tag);
 /** Splits "/name args" at the first space; @p args has no surrounding spaces. */
 void splitCommand(const std::string& line, std::string& name, std::string& args);
 
+/**
+ * @brief Reads the node address that starts the arguments of a command: "<4 hex digits>[ <rest>]".
+ *
+ * The first word is an address only when it has exactly four hex digits. @p rest gets the text
+ * after the space that follows it.
+ * @return false, leaving @p dst and @p rest unchanged, if @p args does not start with an address.
+ */
+bool parseAddressedArgs(const std::string& args, uint16_t& dst, std::string& rest);
+
 /** A command published to the gateway over MQTT: "<dst hex> <request id> <command line>". */
 struct MqttCommand {
     uint16_t dst = 0;

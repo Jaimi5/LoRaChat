@@ -1,8 +1,12 @@
 #include "loraMeshService.h"
 
+#include "devices/initDevices.h"
+
 #include "driver/gpio.h"
 #include "esp_attr.h"
+#include "esp_sleep.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "soc/rtc_cntl_reg.h"
 
 static const char* LMS_TAG = "LoRaMeshService";
@@ -23,6 +27,11 @@ struct SleepStats {
 static constexpr uint32_t SLEEP_STATS_MAGIC = 0x534C5031;  // "SLP1"
 RTC_DATA_ATTR static SleepStats sleepStats;
 
+/** @return milliseconds since boot. The clock keeps running through light sleep. */
+static uint32_t clockMs() {
+    return static_cast<uint32_t>(esp_timer_get_time() / 1000);
+}
+
 void LoRaMeshService::releaseDeepSleepPadHold() {
     // The digital pads latched at the deep sleep stay held after the wake-up until released.
     gpio_deep_sleep_hold_dis();
@@ -42,10 +51,16 @@ void LoRaMeshService::countDeepSleepWake() {
 }
 
 std::string LoRaMeshService::sleepReport() const {
-    char text[96];
-    snprintf(text, sizeof(text), "light %u x %u s, deep %u x %u s since power-on",
-             (unsigned)sleepStats.lightCount, (unsigned)(sleepStats.lightMs / 1000),
-             (unsigned)sleepStats.deepCount, (unsigned)(sleepStats.deepMs / 1000));
+    char text[128];
+    int length = snprintf(text, sizeof(text), "light %u x %u s, deep %u x %u s since power-on",
+                          (unsigned)sleepStats.lightCount, (unsigned)(sleepStats.lightMs / 1000),
+                          (unsigned)sleepStats.deepCount, (unsigned)(sleepStats.deepMs / 1000));
+#if PMU_KEY_WAKES_LIGHT_SLEEP
+    snprintf(text + length, sizeof(text) - length, ", %u light sleeps ended by the power key",
+             (unsigned)keyWakes_.load());
+#else
+    (void)length;
+#endif
     return text;
 }
 
@@ -60,6 +75,7 @@ loramesher::power::SleepResult LoRaMeshService::onPrepareSleep(
         lastSleepDecision_ = decision;
     }
     if (decision != SleepDecision::ALLOW) return loramesher::power::SleepResult{false};
+    InitDevices::armPowerKeyWake(!deep);
     if (deep) {
         // The radio's reset and chip-select lines keep their levels through the deep sleep, so
         // the radio stays asleep. The hold only acts in deep sleep, so a cancelled one is harmless.
@@ -74,7 +90,12 @@ loramesher::power::SleepResult LoRaMeshService::onPrepareSleep(
 }
 
 void LoRaMeshService::onWakeUp(loramesher::power::PowerState previous) {
+    // An edge of the PMU interrupt line is lost while the MCU sleeps: look at the line now.
+    InitDevices::checkPowerKey();
     if (previous != loramesher::power::PowerState::LIGHT_SLEEP) return;
+#if PMU_KEY_WAKES_LIGHT_SLEEP
+    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO) keyWakes_++;
+#endif
     sleepStats.lightCount++;
     sleepStats.lightMs += lightSleepPlannedMs_;
 }
@@ -144,6 +165,7 @@ void LoRaMeshService::initLoraMesherService(bool networkManager, SleepMode sleep
 
     mesher_->SetDataCallback([](loramesher::AddressType source, const std::vector<uint8_t>& data) {
         ESP_LOGV(LMS_TAG, "v2 data callback from %04X, size=%d", source, data.size());
+        LoRaMeshService::getInstance().lastRxMs_ = std::max<uint32_t>(clockMs(), 1);
 
         if (data.size() < sizeof(LoRaMeshMessage)) {
             ESP_LOGW(LMS_TAG, "Received packet too small");
@@ -299,6 +321,14 @@ bool LoRaMeshService::hasGateway() {
     return mesher_->GetClosestGateway().has_value();
 }
 
+bool LoRaMeshService::hasRouteTo(uint16_t dst) {
+    if (!running_) return false;
+    // The mesh can also be unready for a reason that passes, such as a full queue. Only a
+    // missing route is final.
+    loramesher::Result ready = mesher_->IsReadyToSend(dst);
+    return ready || ready.getErrorCode() != loramesher::LoraMesherErrorCode::kNoRoute;
+}
+
 void LoRaMeshService::updateRoutingTable() {
     // v2 routing table is always fresh from GetRoutingTable()
     if (mesher_ && mesher_->GetRoutingTable().empty()) {
@@ -307,9 +337,73 @@ void LoRaMeshService::updateRoutingTable() {
 }
 
 std::vector<loramesher::RouteEntry> LoRaMeshService::getRoutingTableEntries() {
-    if (!mesher_)
-        return {};
+    if (!running_) return {};
     return mesher_->GetRoutingTable();
+}
+
+MeshStatus LoRaMeshService::getMeshStatus() {
+    using loramesher::types::protocols::lora_mesh::ProtocolState;
+    static_assert(
+        static_cast<int>(ProtocolState::INITIALIZING) ==
+                static_cast<int>(MeshState::INITIALIZING) &&
+            static_cast<int>(ProtocolState::DISCOVERY) == static_cast<int>(MeshState::DISCOVERY) &&
+            static_cast<int>(ProtocolState::JOINING) == static_cast<int>(MeshState::JOINING) &&
+            static_cast<int>(ProtocolState::NORMAL_OPERATION) ==
+                static_cast<int>(MeshState::NORMAL_OPERATION) &&
+            static_cast<int>(ProtocolState::NETWORK_MANAGER) ==
+                static_cast<int>(MeshState::NETWORK_MANAGER) &&
+            static_cast<int>(ProtocolState::FAULT_RECOVERY) ==
+                static_cast<int>(MeshState::FAULT_RECOVERY) &&
+            static_cast<int>(ProtocolState::NM_ELECTION) ==
+                static_cast<int>(MeshState::NM_ELECTION),
+        "MeshState follows the order of the LoRaMesher ProtocolState");
+    MeshStatus status;
+    if (!running_) return status;
+    loramesher::NetworkStatus network = mesher_->GetNetworkStatus();
+    status.state = static_cast<MeshState>(network.current_state);
+    status.synchronized = network.is_synchronized;
+    status.connectedNodes = network.connected_nodes;
+    return status;
+}
+
+bool LoRaMeshService::getGatewayRoute(uint16_t& nextHop, uint8_t& hops) {
+    if (!running_) return false;
+    auto gateway = mesher_->GetClosestGateway();
+    if (!gateway.has_value()) return false;
+    nextHop = gateway->next_hop;
+    hops = gateway->hop_count;
+    return true;
+}
+
+bool LoRaMeshService::getLastRxAgeMs(uint32_t& ageMs) const {
+    uint32_t lastRxMs = lastRxMs_;
+    if (lastRxMs == 0) return false;
+    ageMs = clockMs() - lastRxMs;
+    return true;
+}
+
+bool LoRaMeshService::getLastHeardAgeMs(const std::vector<loramesher::RouteEntry>& routes,
+                                        uint32_t& ageMs) {
+    uint32_t nowMs = clockMs();
+    uint32_t heardMs = lastHeardMs_;
+    bool heard = heardMs != 0;
+    uint32_t age = heard ? nowMs - heardMs : 0;
+    auto note = [&heard, &age](uint32_t candidate) {
+        if (heard && age <= candidate) return;
+        heard = true;
+        age = candidate;
+    };
+    uint32_t rxAgeMs = 0;
+    if (getLastRxAgeMs(rxAgeMs)) note(rxAgeMs);
+    // A neighbour that went silent keeps the time it was last heard.
+    for (const auto& route : routes) {
+        if (route.destination == route.next_hop) note(route.last_seen_ms);
+    }
+    if (!heard) return false;
+    // Remembered, so the answer outlives the routes it came from.
+    lastHeardMs_ = std::max<uint32_t>(nowMs - std::min(age, nowMs), 1);
+    ageMs = age;
+    return true;
 }
 
 std::vector<uint8_t> LoRaMeshService::createLoRaMeshFrame(const DataMessage& message) {

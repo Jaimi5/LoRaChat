@@ -52,6 +52,8 @@ SleepDecision decideSleep(SleepMode mode, bool deepRequested, const SleepBlocker
     if (blockers.pendingVerify) return SleepDecision::PENDING_VERIFY;
     if (blockers.maintenanceWindow) return SleepDecision::MAINTENANCE_WINDOW;
     if (blockers.displayAwake) return SleepDecision::DISPLAY_AWAKE;
+    if (blockers.pmuIrqLow) return SleepDecision::PMU_IRQ_PENDING;
+    if (blockers.installMode) return SleepDecision::INSTALL_MODE;
     if (deepRequested && mode != SleepMode::DEEP) return SleepDecision::NO_DEEP_SLEEP;
     return SleepDecision::ALLOW;
 }
@@ -72,6 +74,10 @@ const char* sleepDecisionName(SleepDecision decision) {
             return "maintenance window";
         case SleepDecision::DISPLAY_AWAKE:
             return "display awake";
+        case SleepDecision::PMU_IRQ_PENDING:
+            return "pmu interrupt pending";
+        case SleepDecision::INSTALL_MODE:
+            return "install mode";
     }
     return "?";
 }

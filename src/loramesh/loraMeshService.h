@@ -16,10 +16,20 @@
 #include "loraMeshCommandService.h"
 
 #include "sleepMode.h"
+#include "statusScreen.h"
 
+#include <atomic>
 #include <functional>
 #include <string>
 
+
+/** State of the mesh as the status screen shows it. */
+struct MeshStatus {
+    MeshState state = MeshState::INITIALIZING;
+    bool synchronized = false;
+    /** Nodes the mesh knows. */
+    size_t connectedNodes = 0;
+};
 
 class LoRaMeshService : public MessageService {
 public:
@@ -85,21 +95,61 @@ public:
 
     bool hasGateway();
 
+    /**
+     * @return false if the mesh is not running or its routing table has no active route to
+     *         @p dst. A route to a node that sleeps or moved away stays active until its
+     *         routing messages have been missed for long enough.
+     */
+    bool hasRouteTo(uint16_t dst);
+
     void updateRoutingTable();
 
     std::vector<loramesher::RouteEntry> getRoutingTableEntries();
+
+    /** @return the state of the mesh. Any task may call it, also before the mesh starts. */
+    MeshStatus getMeshStatus();
+
+    /**
+     * @param nextHop the neighbour that relays toward the closest gateway.
+     * @param hops the hops to that gateway.
+     * @return false if the node knows no gateway. Any task may call it.
+     */
+    bool getGatewayRoute(uint16_t& nextHop, uint8_t& hops);
+
+    /**
+     * @param ageMs milliseconds since the last message for this node arrived from the mesh.
+     * @return false if none has arrived since boot. Any task may call it.
+     */
+    bool getLastRxAgeMs(uint32_t& ageMs) const;
+
+    /**
+     * @brief Tells how long ago this node last heard the mesh: a message for it, or any packet
+     *        that refreshed the route of a direct neighbour in @p routes.
+     * @param ageMs milliseconds since then.
+     * @return false if the node has heard nothing since boot. Any task may call it.
+     */
+    bool getLastHeardAgeMs(const std::vector<loramesher::RouteEntry>& routes, uint32_t& ageMs);
 
     size_t GetRxQueueSize() const;
 
     size_t GetTxQueueSize() const;
 
 private:
-    bool running_ = false;
+    /** Set after mesher_ exists and has started, so other tasks may read through it. */
+    std::atomic<bool> running_{false};
+    /** Clock of the last received message in ms, 0 while there is none. */
+    std::atomic<uint32_t> lastRxMs_{0};
+    /** Clock of the last packet heard from the mesh in ms, 0 while there is none. */
+    std::atomic<uint32_t> lastHeardMs_{0};
 
     SleepMode sleepMode_ = SleepMode::NONE;
     std::function<SleepBlockers()> sleepBlockers_;
     SleepDecision lastSleepDecision_ = SleepDecision::ALLOW;
     uint32_t lightSleepPlannedMs_ = 0;
+#if PMU_KEY_WAKES_LIGHT_SLEEP
+    /** Light sleeps that the power key ended before their timer. */
+    std::atomic<uint32_t> keyWakes_{0};
+#endif
 
     /** Books a deep sleep that ended in this boot into the sleep counters. */
     static void countDeepSleepWake();

@@ -73,22 +73,31 @@ TEST(SleepDecision, EachBlockerKeepsTheNodeAwake) {
     window.maintenanceWindow = true;
     SleepBlockers display;
     display.displayAwake = true;
+    SleepBlockers pmu;
+    pmu.pmuIrqLow = true;
+    SleepBlockers install;
+    install.installMode = true;
     for (bool deep : {false, true}) {
+        EXPECT_EQ(decideSleep(SleepMode::DEEP, deep, install), SleepDecision::INSTALL_MODE);
+        EXPECT_EQ(decideSleep(SleepMode::LIGHT, deep, install), SleepDecision::INSTALL_MODE);
+        EXPECT_EQ(decideSleep(SleepMode::NONE, deep, install), SleepDecision::MODE_NONE);
         EXPECT_EQ(decideSleep(SleepMode::DEEP, deep, gateway), SleepDecision::GATEWAY);
         EXPECT_EQ(decideSleep(SleepMode::DEEP, deep, verifying), SleepDecision::PENDING_VERIFY);
         EXPECT_EQ(decideSleep(SleepMode::DEEP, deep, window), SleepDecision::MAINTENANCE_WINDOW);
         EXPECT_EQ(decideSleep(SleepMode::DEEP, deep, display), SleepDecision::DISPLAY_AWAKE);
+        EXPECT_EQ(decideSleep(SleepMode::DEEP, deep, pmu), SleepDecision::PMU_IRQ_PENDING);
+        EXPECT_EQ(decideSleep(SleepMode::LIGHT, deep, pmu), SleepDecision::PMU_IRQ_PENDING);
     }
 }
 
 TEST(SleepDecision, NamesForTheLog) {
     EXPECT_STREQ(sleepDecisionName(SleepDecision::ALLOW), "allow");
     EXPECT_STREQ(sleepDecisionName(SleepDecision::MAINTENANCE_WINDOW), "maintenance window");
+    EXPECT_STREQ(sleepDecisionName(SleepDecision::PMU_IRQ_PENDING), "pmu interrupt pending");
+    EXPECT_STREQ(sleepDecisionName(SleepDecision::INSTALL_MODE), "install mode");
 }
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
-    if (RUN_ALL_TESTS()) {
-    }
-    return 0;
+    return RUN_ALL_TESTS();
 }

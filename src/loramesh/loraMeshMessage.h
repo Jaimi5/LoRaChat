@@ -6,11 +6,6 @@
 
 #pragma pack(1)
 
-enum LoRaMeshMessageType : uint8_t {
-    sendMessage = 1,
-    getRoutingTable = 2,
-};
-
 class LoRaMeshMessage {
 public:
     appPort appPortDst;

@@ -93,6 +93,15 @@ void splitCommand(const std::string& line, std::string& name, std::string& args)
     args = space == std::string::npos ? "" : trim(text.substr(space));
 }
 
+bool parseAddressedArgs(const std::string& args, uint16_t& dst, std::string& rest) {
+    size_t space = args.find(' ');
+    uint32_t address = 0;
+    if (!parseHexNumber(args.substr(0, space), ADDRESS_DIGITS, address)) return false;
+    dst = static_cast<uint16_t>(address);
+    rest = space == std::string::npos ? "" : args.substr(space + 1);
+    return true;
+}
+
 bool parseMqttCommand(const std::string& text, MqttCommand& out) {
     std::string rest = trim(text);
     size_t first = rest.find(' ');

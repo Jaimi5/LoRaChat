@@ -2,10 +2,11 @@
 
 #include <Arduino.h>
 
-#include <array>
+#include <vector>
 
 #include "cmdAuth.h"
 #include "cmdFrame.h"
+#include "cmdPending.h"
 #include "cmdPerm.h"
 #include "cmdText.h"
 #include "commands/commandService.h"
@@ -33,6 +34,11 @@ struct CommandRequest {
  * before they run; the permission of each command decides what a channel may run. A command
  * for another node (serial "@<dst> ...", or an MQTT dst that is not this gateway) is sent over
  * LoRa; its reply is printed on serial or published on cmd-resp/<dst> when it arrives.
+ *
+ * A forwarded command always gets an answer. Without a route to the node it is "ERR no route".
+ * A signed command is sent once more after half the timeout. When no reply arrives within
+ * the timeout the answer is "ERR timeout <n> s", and a command pushed out of the full table
+ * of waiting commands gets "ERR dropped".
  */
 class CommandRouter : public MessageService {
 public:
@@ -60,16 +66,6 @@ public:
 private:
     static constexpr size_t PENDING_SLOTS = 8;
 
-    /** A forwarded command whose reply has not arrived yet. */
-    struct Pending {
-        bool used = false;
-        uint16_t dst = 0;
-        uint8_t requestId = 0;
-        /** Channel and request id the command came from, where its reply goes. */
-        Origin origin = Origin::SERIAL_CONSOLE;
-        uint8_t originRequestId = 0;
-    };
-
     CommandRouter() : MessageService(CommandApp, "Command") { commandService = &commands_; }
 
     static void task(void* parameter);
@@ -78,7 +74,11 @@ private:
     String runSigned(const CommandRequest& request);
     void forward(const CommandRequest& request);
     void reply(const CommandRequest& request, const String& text);
-    void sendFrame(uint16_t dst, uint8_t requestId, const CommandFrame& frame);
+    /** Hands the answer to a forwarded command to the channel the command came from. */
+    void deliver(const PendingCommand& pending, const String& text);
+    /** Sends again or times out the forwarded commands that are due. */
+    void sweepPending();
+    void sendFrame(uint16_t dst, uint8_t requestId, const std::vector<uint8_t>& bytes);
     bool loadCounter();
     bool storeCounter(uint32_t counter);
 
@@ -86,8 +86,7 @@ private:
     OwnedQueue<CommandRequest> queue_;
     CommandCounter counter_;
     bool counterLoaded_ = false;
-    uint8_t nextRequestId_ = 0;
-    std::array<Pending, PENDING_SLOTS> pending_{};
-    size_t nextPending_ = 0;
+    /** Forwarded commands that wait for a reply. Only the command task uses it. */
+    PendingCommands pending_{PENDING_SLOTS};
     const CommandRequest* running_ = nullptr;
 };

@@ -3,6 +3,7 @@
 #include "devices/initDevices.h"
 #include "loramesh/loraMeshService.h"
 #include "nodeService.h"
+#include "sensor/bme280.h"
 
 NodeCommandService::NodeCommandService() {
     addCommand(Command("/role", "Show the node role (gateway or sensor)", Perm::OPEN,
@@ -27,6 +28,9 @@ NodeCommandService::NodeCommandService() {
                        }));
     addCommand(Command("/power", "Show supply, battery and charger state", Perm::OPEN,
                        [](String) { return String(InitDevices::powerReport().c_str()); }));
+    addCommand(
+        Command("/sensor", "Show the BME280 or BMP280 sensor and a new measurement", Perm::OPEN,
+                [](String) { return String(Bme280Sensor::getInstance().describe().c_str()); }));
     addCommand(Command("/identify", "Blink the LEDs to find the board: /identify [seconds] (10)",
                        Perm::OPEN, [](String args) {
                            constexpr long DEFAULT_S = 10;

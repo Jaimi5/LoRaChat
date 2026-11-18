@@ -13,6 +13,8 @@
 #define MQTT_ENABLED
 #define MQTT_MON_ENABLED
 #define DISPLAY_ENABLED
+// BME280 or BMP280 on the I2C bus. A board without the sensor works the same.
+#define SENSOR_BME280_ENABLED
 
 // Site settings (WiFi credentials, MQTT broker, mesh manager). They are kept out of git: copy
 // config_local.example.h to config_local.h and fill it in. Empty values disable the feature.
@@ -64,6 +66,12 @@
 #define DISPLAY_ADDRESS 0x3C
 // Time the display stays on after boot or after a short press of the power button
 #define DISPLAY_AWAKE_MS 60000
+
+// 1 makes the power key (PMU interrupt, GPIO35) end a light sleep, so a press lights the display
+// at once. It needs a LoRaMesher that accounts for the time really slept when a light sleep ends
+// early (fix/light-sleep-early-wake, cbabcda). With 0 a press made during a light sleep is
+// served when the sleep run ends.
+#define PMU_KEY_WAKES_LIGHT_SLEEP 1
 
 // Monitor: routing table report to MQTT
 #define MON_SENDING_EVERY 300000  // ms

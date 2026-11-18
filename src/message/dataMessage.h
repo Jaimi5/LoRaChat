@@ -51,8 +51,6 @@ public:
 
     uint32_t messageSize;  // Message Size of the payload no include header
 
-    uint32_t getDataMessageSize() { return sizeof(DataMessageGeneric) + messageSize; }
-
     void serialize(JsonObject& doc) {
         // doc["appPortDst"] = appPortDst;
         // doc["appPortSrc"] = appPortSrc;

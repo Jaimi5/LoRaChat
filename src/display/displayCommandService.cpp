@@ -1,55 +1,42 @@
 #include "displayCommandService.h"
 #include "displayService.h"
 
+#include "cmdText.h"
+
 namespace {
 
-/** @return the address given as the first word in hex (without 0x), or 0 for this node. */
-uint16_t commandAddress(const String& args) {
-    String first = args.substring(0, args.indexOf(' '));
-    if (first.length() == 0) return 0;
-    for (size_t i = 0; i < first.length(); i++) {
-        if (!isHexadecimalDigit(first.charAt(i))) return 0;
+/**
+ * Runs @p command with the arguments "[<addr>] [<text>]". The first word is the destination
+ * only when it has exactly four hex digits. Anything else runs on this node.
+ */
+String run(DisplayCommand command, const String& args) {
+    uint16_t dst = 0;
+    std::string text = args.c_str();
+    std::string rest;
+    // An address alone is the text of /displayText: there is nothing to send to that node.
+    if (parseAddressedArgs(text, dst, rest) && (command != DisplayText || !rest.empty())) {
+        text = rest;
+    } else {
+        dst = 0;
     }
-    return strtol(first.c_str(), nullptr, 16);
+    return DisplayService::getInstance().execute(command, dst, text.c_str());
+}
+
+void add(CommandService& service, const char* name, const char* description,
+         DisplayCommand command) {
+    service.addCommand(Command(name, description, Perm::OPEN,
+                               [command](String args) { return run(command, args); }));
 }
 
 }  // namespace
 
 DisplayCommandService::DisplayCommandService() {
-    addCommand(Command(
-        "/displayOn", "Set the Display On specifying the destination in hex (like the display)",
-        Perm::OPEN, [this](String args) {
-            return String(DisplayService::getInstance().displayOn(commandAddress(args)));
-        }));
-    addCommand(Command(
-        "/displayOff", "Set the Display Off specifying the destination in hex (like the display)",
-        Perm::OPEN, [this](String args) {
-            return String(DisplayService::getInstance().displayOff(commandAddress(args)));
-        }));
-    addCommand(Command("/displayBlink",
-                       "Set the Display Blink specifying the destination in hex (like the display)",
-                       Perm::OPEN, [this](String args) {
-                           return String(
-                               DisplayService::getInstance().displayBlink(commandAddress(args)));
-                       }));
-    addCommand(Command(
-        "/displayClear", "Clear the Display specifying the destination in hex (like the display)",
-        Perm::OPEN, [this](String args) {
-            return String(DisplayService::getInstance().clearDisplay(commandAddress(args)));
-        }));
-    addCommand(Command(
-        "/displayLogo", "Display Logo specifying the destination in hex (like the display)",
-        Perm::OPEN, [this](String args) {
-            return String(DisplayService::getInstance().displayLogo(commandAddress(args)));
-        }));
-    addCommand(Command("/displayText",
-                       "Display Text specifying the destination in hex (like the display)",
-                       Perm::OPEN, [this](String args) {
-                           uint16_t address = commandAddress(args);
-                           if (address > 0) {
-                               args = args.substring(5);
-                           }
-
-                           return String(DisplayService::getInstance().displayText(address, args));
-                       }));
+    add(*this, "/displayOn", "[<addr>] Turns the display on for a minute", DisplayOn);
+    add(*this, "/displayOff", "[<addr>] Turns the display off", DisplayOff);
+    add(*this, "/displayBlink", "[<addr>] Blinks the display", DisplayBlink);
+    add(*this, "/displayClear", "[<addr>] Removes the text line from the display", DisplayClear);
+    add(*this, "/displayLogo", "[<addr>] Shows the logo for a second", DisplayLogo);
+    add(*this, "/displayText",
+        "[<addr>] <text> Shows a line of text for five minutes. <addr> has four hex digits",
+        DisplayText);
 }

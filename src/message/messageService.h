@@ -32,8 +32,6 @@ public:
 
     CommandService* commandService = nullptr;
 
-    String toString() { return "Id: " + String(serviceId) + " - " + serviceName; }
-
     /** @return the message that @p data describes, or nullptr if this service accepts none. */
     virtual DataMessagePtr getDataMessage(JsonObject data) {
         ESP_LOGE(MS_TAG, "getDataMessage not implemented for service %s", serviceName.c_str());

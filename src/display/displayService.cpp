@@ -1,29 +1,41 @@
 #include "displayService.h"
 #include "images.h"
 
+#include <cmath>
+#include <cstring>
+
 #include "displayText.h"
 
 #include "esp_ota_ops.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 
+#include "loramesh/loraMeshService.h"
+#include "message/messageManager.h"
+#include "monitor/monService.h"
+#include "mqtt/mqttService.h"
+#include "sensor/bme280.h"
+#include "wifi/wifiServerService.h"
+
 static const char* DISPLAY_TAG = "DisplayService";
-static constexpr TickType_t LOGO_HOLD_TICKS = 10000 / portTICK_PERIOD_MS;
-static constexpr TickType_t BLINK_HALF_PERIOD_TICKS = 500 / portTICK_PERIOD_MS;
-static constexpr int BLINK_COUNT = 5;
-static constexpr size_t SCROLL_ABOVE_CHARS = 20;
+static constexpr int64_t US_PER_MS = 1000;
+static constexpr int64_t US_PER_S = 1000000;
+static constexpr uint32_t REFRESH_MS = 1000;
+static constexpr int64_t LOGO_HOLD_US = 1000 * US_PER_MS;
+static constexpr int64_t BLINK_HALF_PERIOD_US = 500 * US_PER_MS;
+static constexpr uint8_t BLINK_STEPS = 10;
+/** Status refreshes between two readings of the PMU. */
+static constexpr uint32_t POWER_READ_EVERY = 5;
+/** A sensor reading older than this is not shown. */
+static constexpr uint32_t READING_MAX_AGE_S = 900;
 static constexpr int CHAR_WIDTH = 6;
+static constexpr int ROW_HEIGHT = 8;
+static constexpr int HEADER_TEXT_X = 2 * CHAR_WIDTH;
+static constexpr int BIG_LINE_Y = ROW_HEIGHT;
+static constexpr int FIRST_ROW_Y = 3 * ROW_HEIGHT;
+static const char* const COMMAND_NAMES[] = {"On", "Off", "Blink", "Clear", "Text", "Logo"};
 
-void DisplayService::createDisplayTask() {
-    xTaskCreatePinnedToCore(displayTask,         /* Task function. */
-                            "DisplayTask",       /* name of task. */
-                            4096,                /* Stack size of task */
-                            this,                /* parameter of the task */
-                            3,                   /* priority of the task */
-                            &display_TaskHandle, /* Task handle to keep track of created task */
-                            0);                  /* pin task to core 0 */
-}
-
-void DisplayService::init() {
+void DisplayService::init(bool gateway) {
     ESP_LOGV(DISPLAY_TAG, "Initializing Display Service");
 
 #if DISPLAY_RST >= 0
@@ -34,219 +46,85 @@ void DisplayService::init() {
 #endif
 
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
-    if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESS, false, false)) {
+    if (!display_.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESS, false, false)) {
         ESP_LOGE(DISPLAY_TAG, "SSD1306 allocation failed");
         return;
     }
+    display_.setTextWrap(false);
+    display_.clearDisplay();
+    display_.display();
 
-    ESP_LOGV(DISPLAY_TAG, "Display allocation Done");
+    gateway_ = gateway;
+    address_ = LoRaMeshService::getInstance().getLocalAddress();
+    strlcpy(version_, esp_ota_get_app_description()->version, sizeof(version_));
 
-    display.clearDisplay();
+    sleepAtUs_ = esp_timer_get_time() + static_cast<int64_t>(DISPLAY_AWAKE_MS) * US_PER_MS;
+    if (esp_reset_reason() == ESP_RST_POWERON) requests_ = PANEL_LOGO;
 
-    display.setTextColor(WHITE);  // Draw white text
-
-    display.setTextWrap(false);
-
-    delay(50);
-
-    // Set the title
-    setTitle();
-
-    initialized = true;
-    sleepAtUs = esp_timer_get_time() + static_cast<int64_t>(DISPLAY_AWAKE_MS) * 1000;
-
-    // Create display task
-    createDisplayTask();
+    if (xTaskCreatePinnedToCore(displayTask, "DisplayTask", 4096, this, 3, &taskHandle_, 0) !=
+        pdPASS) {
+        ESP_LOGE(DISPLAY_TAG, "Display task creation failed");
+        return;
+    }
+    ready_ = true;
 }
 
 void DisplayService::wake() {
-    if (!initialized)
-        return;
-    sleepAtUs = esp_timer_get_time() + static_cast<int64_t>(DISPLAY_AWAKE_MS) * 1000;
-    xTaskNotifyGive(display_TaskHandle);
+    requestPanel(PANEL_STATUS);
 }
 
 void DisplayService::requestPanel(PanelRequest request) {
-    panelRequests_.fetch_or(request);
-    wake();
+    if (!ready_) return;
+    requests_.fetch_or(request);
+    sleepAtUs_ = esp_timer_get_time() + static_cast<int64_t>(DISPLAY_AWAKE_MS) * US_PER_MS;
+    xTaskNotifyGive(taskHandle_);
 }
 
-String DisplayService::displayOn(uint16_t dst) {
-    if (!initialized)
-        return "Display Service not initialized";
+void DisplayService::setText(const char* text) {
+    std::lock_guard<std::mutex> lock(textMutex_);
+    strlcpy(text_, text, sizeof(text_));
+    textAtUs_ = esp_timer_get_time();
+}
 
+String DisplayService::execute(DisplayCommand command, uint16_t dst, const String& text) {
+    if (command > DisplayCommand::DisplayLogo) return "Unknown display command";
     if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
-        DataMessagePtr msg = getDisplayMessage(DisplayCommand::DisplayOn, dst);
-        if (!msg) return "No memory for the message";
-        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg.get());
-
-        return "Send Display On";
+        return sendRemote(command, dst, text);
     }
+    if (!ready_) return "Display Service not initialized";
 
-    displayOnFlag = true;
-    wake();
-
-    return "Display On";
+    switch (command) {
+        case DisplayCommand::DisplayOn:
+            wake();
+            break;
+        case DisplayCommand::DisplayOff:
+            sleepAtUs_ = 0;
+            xTaskNotifyGive(taskHandle_);
+            break;
+        case DisplayCommand::DisplayBlink:
+            requestPanel(PANEL_BLINK);
+            break;
+        case DisplayCommand::DisplayClear:
+            setText("");
+            break;
+        case DisplayCommand::DisplayText:
+            setText(text.c_str());
+            break;
+        case DisplayCommand::DisplayLogo:
+            requestPanel(PANEL_LOGO);
+            break;
+    }
+    return String("Display ") + COMMAND_NAMES[command];
 }
 
-String DisplayService::displayOff(uint16_t dst) {
-    if (!initialized)
-        return "Display Service not initialized";
-
-    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
-        DataMessagePtr msg = getDisplayMessage(DisplayCommand::DisplayOff, dst);
-        if (!msg) return "No memory for the message";
-        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg.get());
-
-        return "Send Display Off";
+String DisplayService::sendRemote(DisplayCommand command, uint16_t dst, const String& text) {
+    if (command == DisplayCommand::DisplayText && text.length() > maxRemoteTextLength()) {
+        return "Text longer than " + String(maxRemoteTextLength()) + " characters";
     }
-
-    sleepAtUs = 0;
-    xTaskNotifyGive(display_TaskHandle);
-
-    return "Display Off";
-}
-
-
-String DisplayService::displayBlink(uint16_t dst) {
-    if (!initialized)
-        return "Display Service not initialized";
-
-    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
-        DataMessagePtr msg = getDisplayMessage(DisplayCommand::DisplayBlink, dst);
-        if (!msg) return "No memory for the message";
-        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg.get());
-
-        return "Send Display Blink";
-    }
-
-    requestPanel(PANEL_BLINK);
-
-    return "Display Blink";
-}
-
-String DisplayService::clearDisplay(uint16_t dst) {
-    if (!initialized)
-        return "Display Service not initialized";
-
-    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
-        DataMessagePtr msg = getDisplayMessage(DisplayCommand::DisplayClear, dst);
-        if (!msg) return "No memory for the message";
-        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg.get());
-
-        return "Send Display Clear";
-    }
-
-    std::lock_guard<std::mutex> lock(linesMutex_);
-    lines_.clearLog();
-
-    return "Display Clear";
-}
-
-void DisplayService::displayTask(void* pvParameters) {
-    DisplayService& displayService = *static_cast<DisplayService*>(pvParameters);
-    ESP_LOGV(DISPLAY_TAG, "Stack space unused after entering the task: %u",
-             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
-
-    displayService.drawLogo(0);
-
-    for (;;) {
-        if (esp_timer_get_time() >= displayService.sleepAtUs) {
-            if (displayService.panelOn) {
-                displayService.display.ssd1306_command(SSD1306_DISPLAYOFF);
-                displayService.panelOn = false;
-                ESP_LOGI(DISPLAY_TAG, "Display sleeping");
-            }
-            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-            continue;
-        }
-        if (!displayService.panelOn) {
-            displayService.display.ssd1306_command(SSD1306_DISPLAYON);
-            displayService.panelOn = true;
-            ESP_LOGI(DISPLAY_TAG, "Display awake");
-        }
-
-        uint32_t requests = displayService.panelRequests_.exchange(0);
-        if (requests & PANEL_LOGO) displayService.drawLogo(displayService.logoSrc_);
-        if (requests & PANEL_BLINK) displayService.blink();
-
-        if (displayService.displayOnFlag) {
-            displayService.drawDisplay();
-        }
-        vTaskDelay(20 / portTICK_PERIOD_MS);
-    }
-}
-
-void DisplayService::blink() {
-    for (int i = 0; i < BLINK_COUNT; i++) {
-        display.fillRect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, WHITE);
-        display.display();
-        vTaskDelay(BLINK_HALF_PERIOD_TICKS);
-
-        display.fillRect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK);
-        display.display();
-        if (i < BLINK_COUNT - 1) vTaskDelay(BLINK_HALF_PERIOD_TICKS);
-    }
-}
-
-String DisplayService::displayLogo(uint16_t dst, uint16_t src) {
-    if (!initialized)
-        return "Display Service not initialized";
-
-    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
-        DataMessagePtr msg = getDisplayMessage(DisplayCommand::DisplayLogo, dst);
-        if (!msg) return "No memory for the message";
-        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg.get());
-
-        return "Send Display Logo";
-    }
-
-    logoSrc_ = src;
-    requestPanel(PANEL_LOGO);
-
-    return "Display Logo";
-}
-
-void DisplayService::drawLogo(uint16_t src) {
-    display.clearDisplay();
-
-    display.setTextSize(1);
-    display.setTextColor(WHITE);
-    String title = "LoRaChat";
-    if (src != 0) {
-        title += " - From " + String(src, HEX);
-    }
-    // Print the title in the middle of the screen
-    display.setCursor(DISPLAY_WIDTH / 2 - title.length() / 2 * CHAR_WIDTH, 0);
-    display.println(title);
-
-    // Draw a bitmap icon in the middle of the screen
-    display.drawXBitmap((DISPLAY_WIDTH - LOGO_WIDTH) / 2, 15, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT,
-                        WHITE);
-
-    display.display();
-    vTaskDelay(LOGO_HOLD_TICKS);
-}
-
-String DisplayService::displayText(uint16_t dst, String text, uint16_t src) {
-    if (!initialized)
-        return "Display Service not initialized";
-
-    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
-        DataMessagePtr msg = getDisplayMessage(DisplayCommand::DisplayText, dst, text);
-        if (!msg) return "Text longer than " + String(maxRemoteTextLength()) + " characters";
-        MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, msg.get());
-
-        return "Send Display Text";
-    }
-
-    if (src != 0) {
-        text = "From " + String(src, HEX) + ": " + text;
-    }
-
-    addText(text);
-
-    return "Display Text Done";
+    DataMessagePtr message = getDisplayMessage(command, dst, text);
+    if (!message) return "No memory for the message";
+    MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, message.get());
+    return String("Send Display ") + COMMAND_NAMES[command];
 }
 
 String DisplayService::getJSON(DataMessage* message) {
@@ -285,7 +163,7 @@ size_t DisplayService::maxRemoteTextLength() {
 }
 
 DataMessagePtr DisplayService::getDisplayMessage(DisplayCommand command, uint16_t dst,
-                                                 String text) {
+                                                 const String& text) {
     if (command == DisplayCommand::DisplayText && text.length() > maxRemoteTextLength()) {
         ESP_LOGE(DISPLAY_TAG, "displayText is too long");
         return nullptr;
@@ -320,93 +198,237 @@ void DisplayService::processReceivedMessage(messagePort port, DataMessage* messa
     if (displayMessage->messageSize < sizeof(DisplayCommand))
         return;
 
-    switch (displayMessage->displayCommand) {
-        case DisplayCommand::DisplayOn:
-            displayOn(0);
-            break;
-        case DisplayCommand::DisplayOff:
-            displayOff(0);
-            break;
-        case DisplayCommand::DisplayBlink:
-            displayBlink(0);
-            break;
-        case DisplayCommand::DisplayClear:
-            clearDisplay(0);
-            break;
-        case DisplayCommand::DisplayText:
-            displayText(0, displayTextFrom(displayMessage->displayText,
-                                           displayMessage->getDisplayTextSize())
-                               .c_str());
-            break;
-        case DisplayCommand::DisplayLogo:
-            displayLogo(0);
-            break;
-        default:
-            break;
+    String text;
+    if (displayMessage->displayCommand == DisplayCommand::DisplayText) {
+        text = displayTextFrom(displayMessage->displayText, displayMessage->getDisplayTextSize())
+                   .c_str();
+    }
+    execute(displayMessage->displayCommand, 0, text);
+}
+
+void DisplayService::displayTask(void* pvParameters) {
+    static_cast<DisplayService*>(pvParameters)->runTask();
+}
+
+void DisplayService::runTask() {
+    for (;;) {
+        int64_t nowUs = esp_timer_get_time();
+        int64_t awakeUs = sleepAtUs_ - nowUs;
+        if (awakeUs <= 0) {
+            sleepPanel();
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            continue;
+        }
+        if (!panelOn_) {
+            display_.ssd1306_command(SSD1306_DISPLAYON);
+            panelOn_ = true;
+            ESP_LOGI(DISPLAY_TAG, "Display awake");
+        }
+
+        uint32_t requests = requests_.exchange(0);
+        if (requests & PANEL_STATUS) {
+            overlay_ = Overlay::NONE;
+            drawnValid_ = false;
+        }
+        if (requests & PANEL_LOGO) startOverlay(Overlay::LOGO);
+        if (requests & PANEL_BLINK) startOverlay(Overlay::BLINK);
+
+        TickType_t wait = pdMS_TO_TICKS(REFRESH_MS);
+        if (overlay_ != Overlay::NONE) wait = stepOverlay(nowUs);
+        if (overlay_ == Overlay::NONE) refreshStatus();
+
+        TickType_t untilSleep = pdMS_TO_TICKS(awakeUs / US_PER_MS) + 1;
+        ulTaskNotifyTake(pdTRUE, wait < untilSleep ? wait : untilSleep);
     }
 }
 
-void DisplayService::refreshShownLines() {
-    std::lock_guard<std::mutex> lock(linesMutex_);
-    if (shown_.size() == lines_.size() && shownVersion_ == lines_.version()) return;
-    shown_.resize(lines_.size());
-    for (size_t i = 0; i < lines_.size(); i++) {
-        const std::string& text = lines_.line(i);
-        if (shown_[i].text == text.c_str()) continue;
-        shown_[i].text = text.c_str();
-        setupTextMovement(shown_[i]);
-    }
-    shownVersion_ = lines_.version();
+void DisplayService::sleepPanel() {
+    if (!panelOn_) return;
+    display_.ssd1306_command(SSD1306_DISPLAYOFF);
+    panelOn_ = false;
+    overlay_ = Overlay::NONE;
+    drawnValid_ = false;
+    ESP_LOGI(DISPLAY_TAG, "Display sleeping");
+    ESP_LOGD(DISPLAY_TAG, "DisplayTask stack high water: %u bytes",
+             static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
 }
 
-void DisplayService::drawDisplay() {
-    refreshShownLines();
-    display.clearDisplay();
-    for (size_t i = 0; i < shown_.size(); ++i) {
-        printLine(shown_[i], static_cast<int>(i) * LINE_HEIGHT);
-    }
-    display.display();
+void DisplayService::startOverlay(Overlay overlay) {
+    overlay_ = overlay;
+    overlayStepAtUs_ = 0;
+    blinkStepsLeft_ = BLINK_STEPS;
 }
 
-void DisplayService::printLine(ShownLine& line, int y) {
-    display.setTextSize(1);
-    display.setCursor(line.x, y);
-    display.print(line.text);
-
-    if (line.moving) {
-        line.x -= 2;
-        if (line.x < line.minX) line.x = display.width();
+/**
+ * Draws the next step of the logo or of the blink when it is due.
+ * @return the ticks until the following step. The overlay is NONE once it has ended.
+ */
+TickType_t DisplayService::stepOverlay(int64_t nowUs) {
+    if (nowUs >= overlayStepAtUs_) {
+        bool first = overlayStepAtUs_ == 0;
+        if (overlay_ == Overlay::LOGO && first) {
+            drawLogo();
+            overlayStepAtUs_ = nowUs + LOGO_HOLD_US;
+        } else if (overlay_ == Overlay::BLINK && blinkStepsLeft_ > 0) {
+            // The panel is lit on the even steps and dark on the odd ones.
+            display_.fillRect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                              blinkStepsLeft_ % 2 == 0 ? WHITE : BLACK);
+            display_.display();
+            blinkStepsLeft_--;
+            overlayStepAtUs_ = nowUs + BLINK_HALF_PERIOD_US;
+        } else {
+            overlay_ = Overlay::NONE;
+            drawnValid_ = false;
+            return 0;
+        }
     }
+    return pdMS_TO_TICKS((overlayStepAtUs_ - nowUs) / US_PER_MS) + 1;
 }
 
-void DisplayService::addText(const String& text) {
-    if (!initialized) {
-        ESP_LOGW(DISPLAY_TAG, "Display Service not initialized");
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(linesMutex_);
-    lines_.push(text.c_str());
+void DisplayService::drawLogo() {
+    static const char TITLE[] = "LoRaChat";
+    display_.clearDisplay();
+    display_.setTextSize(1);
+    display_.setTextColor(WHITE);
+    display_.setCursor((DISPLAY_WIDTH - static_cast<int>(strlen(TITLE)) * CHAR_WIDTH) / 2, 0);
+    display_.print(TITLE);
+    display_.drawXBitmap((DISPLAY_WIDTH - LOGO_WIDTH) / 2, 15, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT,
+                         WHITE);
+    display_.display();
 }
 
-void DisplayService::setupTextMovement(ShownLine& line) {
-    if (line.text.length() > SCROLL_ABOVE_CHARS) {
-        line.x = display.width();
-        line.minX = -CHAR_WIDTH * static_cast<int>(line.text.length());
-        line.moving = true;
-    } else {
-        line.x = 0;
-        line.minX = 0;
-        line.moving = false;
-    }
+void DisplayService::refreshStatus() {
+    StatusSnapshot snapshot;
+    fillSnapshot(snapshot);
+    ScreenModel model{};
+    buildStatusScreen(snapshot, model);
+    if (drawnValid_ && memcmp(&model, &drawn_, sizeof(model)) == 0) return;
+    drawModel(model);
+    drawn_ = model;
+    drawnValid_ = true;
 }
 
-void DisplayService::setTitle() {
-    String title = "LoRaChat " + String(esp_ota_get_app_description()->version);
-    String device_id =
-        "Device ID: " + String(LoRaMeshService::getInstance().getLocalAddress(), HEX);
+void DisplayService::fillSnapshot(StatusSnapshot& snapshot) {
+    LoRaMeshService& mesh = LoRaMeshService::getInstance();
+    int64_t nowUs = esp_timer_get_time();
 
-    std::lock_guard<std::mutex> lock(linesMutex_);
-    lines_.setStatic(0, title.c_str());
-    lines_.setStatic(1, device_id.c_str());
+    snapshot.gateway = gateway_;
+    snapshot.address = address_;
+    memcpy(snapshot.version, version_, sizeof(snapshot.version));
+    snapshot.uptimeSeconds = static_cast<uint32_t>(nowUs / US_PER_S);
+
+    if (ticks_++ % POWER_READ_EVERY == 0) powerKnown_ = InitDevices::readPower(power_);
+    snapshot.powerKnown = powerKnown_;
+    snapshot.batteryPresent = power_.batteryPresent;
+    snapshot.externalPower = power_.externalPower;
+    snapshot.batteryMv = power_.batteryMv;
+
+    MeshStatus status = mesh.getMeshStatus();
+    if (status.state != observedState_) {
+        observedState_ = status.state;
+        stateSinceUs_ = nowUs;
+    }
+    snapshot.meshState = status.state;
+    snapshot.stateSeconds = static_cast<uint32_t>((nowUs - stateSinceUs_) / US_PER_S);
+    snapshot.syncKnown = status.synchronized;
+    snapshot.connectedNodes = status.connectedNodes;
+
+    std::vector<loramesher::RouteEntry> routes = mesh.getRoutingTableEntries();
+    uint32_t heardAgeMs = 0;
+    if (mesh.getLastHeardAgeMs(routes, heardAgeMs)) statusNoteHeard(snapshot, heardAgeMs / 1000);
+
+    snapshot.hasRoute = !gateway_ && mesh.getGatewayRoute(snapshot.nextHop, snapshot.gatewayHops);
+    for (const auto& route : routes) {
+        // The mesh keeps signal readings of direct neighbours only.
+        if (!route.is_valid || route.destination != route.next_hop) continue;
+        StatusNeighbour neighbour;
+        neighbour.address = route.destination;
+        neighbour.signalKnown = route.last_rssi != 0.0F;
+        neighbour.rssiDbm = static_cast<int16_t>(lroundf(route.last_rssi));
+        neighbour.snrDb = route.last_snr;
+        neighbour.ageSeconds = route.last_seen_ms / 1000;
+        statusAddNeighbour(snapshot, neighbour);
+        if (snapshot.hasRoute && route.destination == snapshot.nextHop) {
+            snapshot.nextHopSnrKnown = neighbour.signalKnown;
+            snapshot.nextHopSnrDb = neighbour.snrDb;
+        }
+    }
+
+    if (gateway_) {
+#ifdef WIFI_ENABLED
+        int8_t rssi = 0;
+        snapshot.wifiConnected = WiFiServerService::getInstance().getRssi(rssi);
+        snapshot.wifiRssiDbm = rssi;
+#endif
+#ifdef MQTT_ENABLED
+        snapshot.mqttConnected = MqttService::getInstance().isDeviceConnected();
+#endif
+    }
+
+    Bme280Reading reading;
+    uint32_t readingAgeS = 0;
+    if (Bme280Sensor::getInstance().lastReading(reading, readingAgeS) &&
+        readingAgeS < READING_MAX_AGE_S) {
+        snapshot.hasTemperature = true;
+        snapshot.temperatureC = static_cast<float>(reading.tempCentiC) / 100.0F;
+        snapshot.hasHumidity = reading.hasHumidity;
+        snapshot.humidityPercent = static_cast<float>(reading.rhCentiPercent) / 100.0F;
+        snapshot.hasPressure = true;
+        snapshot.pressureHpa = static_cast<float>(reading.pressurePa) / 100.0F;
+    }
+
+#ifdef MQTT_MON_ENABLED
+    snapshot.installSeconds = MonService::getInstance().installRemainingS();
+#endif
+
+    std::lock_guard<std::mutex> lock(textMutex_);
+    memcpy(snapshot.text, text_, sizeof(snapshot.text));
+    snapshot.textSeconds = static_cast<uint32_t>((nowUs - textAtUs_) / US_PER_S);
+}
+
+void DisplayService::drawModel(const ScreenModel& model) {
+    const uint8_t* icon = ICON_JOINED;
+    switch (model.icon) {
+        case ScreenIcon::SEARCHING:
+            icon = ICON_SEARCHING[model.iconFrame % SCREEN_SEARCH_FRAMES];
+            break;
+        case ScreenIcon::JOINING:
+            icon = ICON_JOINING;
+            break;
+        case ScreenIcon::FAULT:
+            icon = ICON_FAULT;
+            break;
+        case ScreenIcon::GATEWAY:
+            icon = ICON_GATEWAY;
+            break;
+        case ScreenIcon::INSTALL:
+            icon = ICON_INSTALL;
+            break;
+        case ScreenIcon::JOINED:
+            break;
+    }
+
+    display_.clearDisplay();
+    uint16_t headerColor = WHITE;
+    if (model.invertHeader) {
+        display_.fillRect(0, 0, DISPLAY_WIDTH, ROW_HEIGHT, WHITE);
+        headerColor = BLACK;
+    }
+    display_.drawBitmap(0, 0, icon, ICON_SIZE, ICON_SIZE, headerColor);
+    display_.setTextSize(1);
+    display_.setTextColor(headerColor);
+    display_.setCursor(HEADER_TEXT_X, 0);
+    display_.print(model.header);
+
+    display_.setTextColor(WHITE);
+    display_.setTextSize(2);
+    display_.setCursor(0, BIG_LINE_Y);
+    display_.print(model.big);
+
+    display_.setTextSize(1);
+    for (size_t i = 0; i < SCREEN_ROWS; i++) {
+        display_.setCursor(0, FIRST_ROW_Y + static_cast<int>(i) * ROW_HEIGHT);
+        display_.print(model.rows[i]);
+    }
+    display_.display();
 }

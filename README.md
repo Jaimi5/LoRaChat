@@ -28,7 +28,77 @@ One firmware image runs on both TTGO T-Beam revisions:
 
 The power management chip is detected at boot. The firmware powers the LoRa radio, the ESP32 and the rail of the OLED and the 3.3 V header pins, and switches the GPS off (it is not used). Batteries are charged to 4.2 V. The user LED (GPIO4) is kept off except during `/identify`. With a battery fitted, the charge LED is driven by the charger: on while charging, off when full or on battery, blinking on a charge fault; without a battery it stays off (the T-Beam v1.2 reports battery insertion and removal, and the LED follows). The charger is restarted at every boot, which clears a latched charge fault as unplugging USB does. `/power` prints supply, battery and charger state (an AXP192 without a battery reports a phantom cell at about 3.3 V that does not charge).
 
-The OLED shows the node address and version for 60 s after boot (`DISPLAY_AWAKE_MS` in `src/config.h`) and then sleeps. A short press of the power button (PWR) wakes it for another 60 s; holding the button for 4 s switches the board off. The `/displayOn` and `/displayOff` commands wake it and put it to sleep.
+### Environment sensor (optional)
+
+A node can carry a Bosch BME280 (temperature, pressure and humidity) or BMP280 (temperature and pressure) on a GY-BME280 / GY-BMP280 3.3 V breakout. Sellers often mix the two chips up, so the firmware reads the chip id and handles both (ids 0x60, 0x58, 0x56 and 0x57) at I2C address 0x76 or 0x77.
+
+| Breakout | T-Beam header |
+|---|---|
+| VIN (VCC) | 3V3. Never 5V: this breakout has no regulator and no level shifter |
+| GND | GND |
+| SDA | GPIO21 |
+| SCL | GPIO22 |
+
+The sensor shares the bus with the power chip (0x34) and the OLED (0x3C). The node looks for it once at boot and logs one line with the result. A board without a sensor works the same. The chip sleeps between measurements (about 0.1 µA), and the node takes one measurement per monitor report, at ×1 oversampling. The reading travels in the monitor report, shows on the last row of the screen (`21.4C 61%RH` for a BME280, `21.4C 1013hPa` for a BMP280) and is printed by `/sensor`. A failed measurement is logged once and the report leaves without the reading.
+
+A sensor inside a closed box measures the air in the box, which the sun and the electronics warm up. Mount it outside the box, in the shade, for weather data.
+
+The 3.3 V pin stays powered in light sleep and in deep sleep, since the power chip keeps its rails on. The sensor is in its own sleep mode during both.
+
+### Display and power button
+
+The OLED shows one status screen for 60 s after boot (`DISPLAY_AWAKE_MS` in `src/config.h`) and then sleeps. After a power-on the logo comes first, for one second. The screen is redrawn once per second at most, and only when its content changed.
+
+The power button (PWR):
+
+- A short press turns the display on for 60 s. A press while it is on restarts the 60 s.
+- Holding it for 4 s switches the board off. The power chip does this by itself.
+- A sensor in light sleep (`/sleep.set light`) wakes at the press and lights the display at once. The node then stays awake while the display is on.
+- A sensor in deep-sleep mode (`/sleep.set deep`) starts without the display after each deep sleep. The button does nothing until the next power-on or restart, and it does not end a deep sleep.
+
+The screen of a sensor and of a gateway:
+
+```
+~ 0A3F JOINED   3.98V      G 0A00 GATEWAY    USB
+GOOD   12s                 MQTT    3s
+via 0B12 +6.5  2 hops      wifi -61dBm  nodes  5
+0B12  -97dBm +6.5  4s      0B12  -97dBm +6.5  4s
+0C40 -112dBm -8.0 12s      0C40 -112dBm -8.0 12s
+0D07 -118dBm-11.5 40s      0D07 -118dBm-11.5 40s
+21.4C 61%RH    v0.1.3      up 3d          v0.1.3
+```
+
+| Row | Content |
+|---|---|
+| 1 | Icon, node address, mesh state, power. `3.98V` is the battery, `+3.98V` a battery with USB or solar power connected, `USB` external power without a battery, `--` unknown |
+| 2 (large) | Sensor: the link verdict and, on the right, how long ago the node last heard anything from the mesh (`--` when it has heard nothing since boot). While the node looks for a network: `SEARCH` or `JOIN` and the time spent. Gateway: `MQTT` and the same age when all is well. A gateway fault shows its word alone: `NO WIFI` or `NO MQTT` |
+| 3 | Sensor: the neighbour that relays toward the gateway, the SNR of its last packet and the hops to the gateway (`1 hop`, `2 hops`). The `dB` is left out when the row is full. `no route` without a gateway, `no sync yet` before the first sync. In install mode the right side shows the time left as `m:ss`. Gateway: WiFi signal and the number of nodes in the mesh |
+| 4 to 6 | The three direct neighbours with the strongest signal: address, RSSI, SNR and the age of their route |
+| 7 | The last `/displayText` line for five minutes, otherwise the sensor reading, otherwise the uptime. The firmware version on the right |
+
+Mesh states: `INIT`, `DISCOVER`, `JOINING`, `JOINED`, `MANAGER`, `RECOVER`, `ELECTION`. A healthy gateway shows `GATEWAY`, and a node in install mode shows `INSTALL`. The icon repeats the state: a dot with arcs when joined, a radar that grows once per second while searching, an arrow toward a dot while joining, a house on a gateway and an exclamation mark on a fault. In `RECOVER` and `ELECTION` the first row is inverted.
+
+The verdict comes from the SNR of the neighbour toward the gateway, or of the best neighbour when the node has no route yet. Use it to place a node:
+
+| Verdict | SNR | Meaning |
+|---|---|---|
+| `GOOD` | -2 dB or more | Leave the node here |
+| `FAIR` | -7 dB to -2 dB | It works with about 5 dB of margin. Try a better spot if one is close |
+| `POOR` | below -7 dB | Too close to the SF9 limit of about -12.5 dB. Move the node or add a relay |
+| `NONE` | no reading | The node hears nobody yet |
+
+Ages have one unit: `45s`, `4m`, `2h`, `9d`.
+
+The age on the large row is the smallest of two times: the time since the last application message for this node arrived, and the smallest route age among its direct neighbours. LoRaMesher resets the route age of a node (`last_seen_ms`) whenever a packet it hears refreshes that route: a routing message from the node, a routing message from another neighbour that lists it, or a sync beacon of the network manager. A sensor that only sends therefore still shows a small age while its neighbours are in range.
+
+### Placing a node
+
+There are two ways to find a good spot:
+
+- **At the node.** Press the power button and read the large row. Move the node, wait for the age to restart from a few seconds and read the verdict again. The display keeps the node awake while it is on.
+- **From the web.** Send the signed command `/install` to the node (ten minutes by default) and watch its reports arrive. In install mode the node does not sleep and sends a monitor report every two superframes, at least 10 s apart (about every 30 s with a 15.2 s superframe). The screen shows `INSTALL` and the time left. The mode ends by itself, after `/install 0` or at a reboot, and the node then reports and sleeps as before.
+
+One install report is a 57 byte packet with three neighbours, about 0.46 s on air at SF9. Every 30.4 s that is 1.5 % of the time, next to the 3.4 % of the node's own mesh traffic, so the node stays below the 10 % duty cycle of the 869.4 to 869.65 MHz band.
 
 ## Building
 
@@ -72,7 +142,7 @@ GitHub Actions (`.github/workflows/firmware.yml`) runs on every push:
 - the 90 % size gate
 - the license and acknowledgements check (`scripts/ota_tools/third_party.py`)
 
-LoRaMesher is fetched fresh in each run, so CI builds the current head of `release/2.0.0` until that dependency is pinned.
+LoRaMesher is pinned to one commit in `platformio.ini`, so CI builds the same library as the bench.
 
 ## Versions, releases and updates
 
@@ -113,7 +183,9 @@ Text commands arrive from three channels and run one at a time:
 - **LoRa**: a line typed as `@<node> <command>` on a node's serial console is sent to that node; its reply arrives as `< <node> [<request>] <reply>`.
 - **MQTT** (gateway): publish `<node> <request id> <command>` on `cmd/<gateway>`; the reply is published on `cmd-resp/<node>` as `<request id> <reply>`. A command for another node is sent on over LoRa.
 
-Every command has a permission: **Open** commands run from any channel, **Signed** commands need a signature when they come over LoRa or MQTT, and **local** commands only run on the serial console. A signature is ` #<counter>.<tag>` at the end of the line, made with the deployment key by `scripts/ota_tools/lmcmd.py sign` (see [scripts/ota_tools/README.md](scripts/ota_tools/README.md)). A node runs each counter once: an older counter gets `ERR replay`, the same counter again gets the stored reply. Remote errors are short: `ERR unknown`, `ERR perm`, `ERR auth`, `ERR replay`.
+Every command has a permission: **Open** commands run from any channel, **Signed** commands need a signature when they come over LoRa or MQTT, and **local** commands only run on the serial console. A signature is ` #<counter>.<tag>` at the end of the line, made with the deployment key by `scripts/ota_tools/lmcmd.py sign` (see [scripts/ota_tools/README.md](scripts/ota_tools/README.md)). A node runs each counter once: an older counter gets `ERR replay`, the same counter again gets the stored reply. Remote errors are short: `ERR unknown`, `ERR perm`, `ERR auth`, `ERR replay`, `ERR storage`. A command with a wrong argument answers with its `Usage: ...` line on every channel.
+
+A gateway answers every command it sends on to another node. `ERR no route` comes at once when the mesh has no route to the node. A signed command that gets no reply is sent a second time after half the timeout, and the node still runs it once. After the timeout, 30 s or three superframes if that is longer, the operator sees `ERR timeout <n> s`. `ERR dropped` means that more than eight commands were waiting and the oldest gave up its place. All of these arrive on `cmd-resp/<node>`. A sleeping node hears a command in its next receive slot and answers in its own slot, so its reply takes one to three superframes. A reply that arrives after the timeout is discarded.
 
 | Command | Permission | Effect |
 |---|---|---|
@@ -122,7 +194,9 @@ Every command has a permission: **Open** commands run from any channel, **Signed
 | `/ota.status` | Open | Last update attempt and its outcome |
 | `/role` | Open | The role and whether it is stored or the default |
 | `/power` | Open | Power chip, supply, battery and charger state (with the AXP2101 registers) |
+| `/sensor` | Open | The environment sensor (chip and I2C address) and a new measurement, or that no sensor was found |
 | `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10) to find the board |
+| `/install [seconds]` | Signed | Install mode for 600 s, or for the given time up to 3600 s: the node stays awake and reports every two superframes. A new `/install` sets a new end time, `/install 0` stops it. A value above 3600 is refused. Replies `OK install <n> s` or `OK install off` |
 | `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
 | `/sleep` | Open | Sleep mode and sleep fraction (stored or default) and the light and deep sleeps since power-on |
 | `/sleep.set none\|light\|deep` | Signed | Stores how a sensor's MCU sleeps through the SLEEP slots and restarts the node. Refused while a new image is being verified |
@@ -139,11 +213,18 @@ Every command has a permission: **Open** commands run from any channel, **Signed
 | `/getIP` | Open | Gateway IP address |
 | `/addSSID`, `/addPassword` | local | Gateway WiFi credentials (prefer `/maint.wifi`) |
 | `/connectWiFi`, `/resetWiFiData` | Signed | Gateway WiFi |
-| `/displayOn`, `/displayOff`, `/displayBlink`, `/displayClear`, `/displayLogo`, `/displayText` | Open | Display. `/displayText <addr> <text>` sent to another node takes up to 100 characters at SF9 (one LoRa packet); longer text is refused |
+| `/displayOn [<addr>]`, `/displayOff [<addr>]` | Open | Turns the display on for 60 s, or off |
+| `/displayBlink [<addr>]`, `/displayLogo [<addr>]` | Open | Blinks the display for 5 s, or shows the logo for 1 s |
+| `/displayText [<addr>] <text>` | Open | Shows one line on the last row for five minutes (the first 14 characters fit beside the version). A new line replaces the old one. It does not turn the display on |
+| `/displayClear [<addr>]` | Open | Removes that line |
+
+In the display commands `<addr>` is the destination node as exactly four hex digits (`0A3F`). Any other first word belongs to the text, so `/displayText add milk` shows `add milk` on this node. A text that starts with a four-digit hex word needs the node's own address in front. A node without a working display still sends display commands to other nodes. Text sent to another node takes up to 100 characters at SF9 (one LoRa packet), and longer text is refused.
 
 One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there); longer replies end in `~`.
 
-Sensor nodes can let the ESP32 sleep while the mesh has nothing for them (`/sleep.set`, default `none`; the radio always sleeps in the SLEEP slots). `light` puts the MCU into light sleep through each run of SLEEP slots. `deep` deep-sleeps through runs long enough for a reboot (`LORA_DEEP_SLEEP_MIN_MS` plus `LORA_DEEP_SLEEP_BOOT_MS` in `src/config.h`) and light-sleeps through shorter ones; the node keeps its mesh state in RTC memory and resumes its slots after the wake-up, without the display, the charger restart or the WiFi boot window, and the wake-up does not count as a boot. Long sleep runs need a gateway with a higher `/sleep.fraction`. A node stays awake while its display is on, during a maintenance window and while a new image is being verified; the gateway never sleeps. The display stays off after a deep-sleep wake-up. The sleep support comes from LoRaMesher `feat/member-sleep` (86a4072, which contains `release/2.0.0`).
+Sensor nodes can let the ESP32 sleep while the mesh has nothing for them (`/sleep.set`, default `none`). The radio always sleeps in the SLEEP slots. `light` puts the MCU into light sleep through each run of SLEEP slots. `deep` deep-sleeps through runs long enough for a reboot (`LORA_DEEP_SLEEP_MIN_MS` plus `LORA_DEEP_SLEEP_BOOT_MS` in `src/config.h`) and light-sleeps through shorter ones. In deep-sleep mode the node keeps its mesh state in RTC memory and resumes its slots after the wake-up, without the display, the charger restart or the WiFi boot window, and the wake-up does not count as a boot. Long sleep runs need a gateway with a higher `/sleep.fraction`. A node stays awake while its display is on, in install mode, during a maintenance window and while a new image is being verified. The gateway never sleeps. A node also stays awake while the power chip signals an event that has not been read yet, and logs a warning if that lasts more than 5 s.
+
+The power button ends a light sleep at once (`PMU_KEY_WAKES_LIGHT_SLEEP` in `src/config.h`, on by default). LoRaMesher then corrects its clock with the time the node really slept, so the node keeps its slots. The display stays off after a deep-sleep wake-up, and the button neither turns it on nor ends a deep sleep. The firmware uses LoRaMesher `release/2.0.0` with the early-wake fix of light sleep (`fix/light-sleep-early-wake`, commit `cbabcda`, pull request 145), pinned in `platformio.ini`.
 
 Sensor nodes switch WiFi on only in a maintenance window: for up to 60 s after every boot (not while a newly installed image is being verified) they join the node's WiFi network, check the OTA server for a newer signed image and install it, then switch WiFi off again. They use the same credentials as a gateway: those stored in NVS, otherwise `WIFI_SSID`/`WIFI_PASSWORD` from `config_local.h`. A sensor never becomes a mesh gateway through this WiFi.
 
@@ -174,6 +255,8 @@ Every message carries a common header followed by the payload of the application
 ```
 
 The fields after the header depend on the application. Monitor reports (`appPortSrc` 16) only travel to the server; the gateway drops any it receives from the server.
+
+A monitor report carries the node's uptime, queues, report interval, battery voltage and power flags, and for each direct neighbour its RSSI and SNR (report format 2, `"v": 2` in the JSON). `interval_s` is the time until the next report: 300 s normally and two superframes in install mode, when `install` is 1. A node with an environment sensor adds `temp_c`, `hpa` and, with a BME280, `rh`. A gateway decodes both formats, but a gateway with older firmware drops format 2 reports, so flash the gateway before the other nodes.
 
 ## More information on the design and evaluation of LoRaChat
 Please see our open access paper ["Middleware for Distributed Applications in a LoRa Mesh Network"]([https://ieeexplore.ieee.org/document/9930341](https://dl.acm.org/doi/10.1145/3747295)) for a detailed description. If you use the LoRaChat, in academic work, please cite the following:

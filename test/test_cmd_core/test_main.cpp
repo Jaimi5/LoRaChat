@@ -124,6 +124,57 @@ TEST(CmdCounter, RepeatReturnsTheStoredReply) {
     EXPECT_NE(counter.lastReply(), "OK maint 3600");
 }
 
+TEST(CmdCounter, ARetransmittedCommandGetsTheCachedReplyAndRunsOnce) {
+    CommandCounter counter(41, true);
+    int runs = 0;
+    std::vector<uint32_t> stored;
+    auto store = [&stored](uint32_t value) {
+        stored.push_back(value);
+        return true;
+    };
+    auto execute = [&runs]() {
+        runs++;
+        return std::string("OK install 600 s");
+    };
+    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "OK install 600 s");
+    // The gateway sends the same frame again because the reply was lost.
+    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "OK install 600 s");
+    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "OK install 600 s");
+    EXPECT_EQ(runs, 1);
+    EXPECT_EQ(stored, std::vector<uint32_t>{42});
+    // A retransmission that arrives after a newer command is refused.
+    EXPECT_EQ(runOncePerCounter(counter, 43, store, execute), "OK install 600 s");
+    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "ERR replay");
+    EXPECT_EQ(runs, 2);
+}
+
+TEST(CmdCounter, ARetransmissionAfterARebootDoesNotRunAgain) {
+    // The node stored counter 42, ran the command and restarted before its reply arrived.
+    CommandCounter counter(42, true);
+    int runs = 0;
+    auto store = [](uint32_t) { return true; };
+    auto execute = [&runs]() {
+        runs++;
+        return std::string("OK");
+    };
+    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "OK already executed");
+    EXPECT_EQ(runs, 0);
+}
+
+TEST(CmdCounter, ACommandWhoseCounterCannotBeStoredDoesNotRun) {
+    CommandCounter counter;
+    int runs = 0;
+    auto execute = [&runs]() {
+        runs++;
+        return std::string("OK");
+    };
+    EXPECT_EQ(
+        runOncePerCounter(counter, 7, [](uint32_t) { return false; }, execute), "ERR storage");
+    EXPECT_EQ(runs, 0);
+    EXPECT_EQ(runOncePerCounter(counter, 7, [](uint32_t) { return true; }, execute), "OK");
+    EXPECT_EQ(runs, 1);
+}
+
 TEST(CmdFrame, UnsignedFrameRoundTrips) {
     CommandFrame frame;
     frame.line = "/version";
@@ -246,6 +297,31 @@ TEST(CmdText, SplitsNameAndArguments) {
     EXPECT_EQ(args, "");
 }
 
+TEST(CmdText, ReadsTheAddressOfAddressedArguments) {
+    uint16_t dst = 0;
+    std::string rest;
+    ASSERT_TRUE(parseAddressedArgs("0A3F hello there", dst, rest));
+    EXPECT_EQ(dst, 0x0A3F);
+    EXPECT_EQ(rest, "hello there");
+    ASSERT_TRUE(parseAddressedArgs("beef", dst, rest));
+    EXPECT_EQ(dst, 0xBEEF);
+    EXPECT_EQ(rest, "");
+    ASSERT_TRUE(parseAddressedArgs("0add  milk", dst, rest));
+    EXPECT_EQ(dst, 0x0ADD);
+    EXPECT_EQ(rest, " milk");
+}
+
+TEST(CmdText, OnlyFourHexDigitsAreAnAddress) {
+    uint16_t dst = 7;
+    std::string rest = "kept";
+    for (const char* args : {"", "add milk", "a", "6c", "0A3F5 text", "cafe1", "0x1A text",
+                             "face-to-face", "milk 0A3F", " 0A3F text"}) {
+        EXPECT_FALSE(parseAddressedArgs(args, dst, rest)) << args;
+    }
+    EXPECT_EQ(dst, 7);
+    EXPECT_EQ(rest, "kept");
+}
+
 TEST(CmdText, ParsesMqttCommands) {
     MqttCommand command;
     ASSERT_TRUE(parseMqttCommand("7680 12 /maint.open 600 #65000000.48fbaa33fa0d63c5", command));
@@ -308,7 +384,5 @@ TEST(CmdSeal, ValidatesWifiCredentials) {
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
-    if (RUN_ALL_TESTS()) {
-    }
-    return 0;
+    return RUN_ALL_TESTS();
 }

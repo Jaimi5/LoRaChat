@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 
 /** Battery and supply as read from the PMU. */
@@ -11,6 +12,10 @@ struct PowerState {
     uint32_t batteryMv = 0;
     /** USB or the solar charger feeds the board. */
     bool externalPower = false;
+    /** The charger is charging the battery. */
+    bool charging = false;
+    /** A battery is fitted. */
+    bool batteryPresent = false;
 };
 
 class InitDevices {
@@ -28,10 +33,35 @@ public:
      */
     static void onPowerKeyShortPress(std::function<void()> handler);
 
+    /**
+     * @brief Makes the power key task look at the PMU interrupt line now. The line gives no
+     *        interrupt for an event that happened while the MCU slept.
+     */
+    static void checkPowerKey();
+
+    /**
+     * @brief Arms the power key as a wake-up source before a light sleep, or disarms it
+     *        before a deep sleep, which the key must not end. Does nothing when
+     *        PMU_KEY_WAKES_LIGHT_SLEEP is 0.
+     */
+    static void armPowerKeyWake(bool lightSleep);
+
+    /** @return true while the PMU holds its interrupt line low: an event waits to be read. */
+    static bool powerKeyPending();
+
+    /**
+     * @return the mutex that every task holds while it reads a register of a chip on the I2C
+     *         bus. The display only writes and does not need it.
+     */
+    static std::mutex& i2cMutex();
+
     /** @return true if the PMU answers on I2C, or if the board has no PMU. */
     static bool pmuResponds();
 
-    /** Reads battery and supply from the PMU. @return false if the board has no PMU. */
+    /**
+     * Reads battery and supply from the PMU. Any task may call it.
+     * @return false if the board has no PMU.
+     */
     static bool readPower(PowerState& out);
 
     /**

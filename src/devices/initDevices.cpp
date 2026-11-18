@@ -4,7 +4,10 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 
+#include "driver/gpio.h"
+#include "esp_sleep.h"
 #include "esp_timer.h"
 #if defined(T_BEAM)
 #include <XPowersLib.h>
@@ -13,6 +16,15 @@
 #define PMU_WIRE_PORT Wire
 
 static const char* ID_TAG = "InitDevices";
+
+// A register access is two I2C transfers (address, then data), and a read leaves its bytes in
+// the receive buffer that all users of Wire share. The mutex keeps one access together so
+// another task cannot move the register address or replace the bytes in between.
+static std::mutex busMutex;
+
+std::mutex& InitDevices::i2cMutex() {
+    return busMutex;
+}
 
 #ifdef HAS_PMU
 static std::unique_ptr<XPowersLibInterface> PMU;
@@ -60,35 +72,126 @@ static std::unique_ptr<XPowersLibInterface> probePmu(const char* name) {
     return nullptr;
 }
 
+// Notification bits of the PMU interrupt task.
+static constexpr uint32_t PMU_NOTIFY_IRQ = 1 << 0;
+static constexpr uint32_t PMU_NOTIFY_CHECK = 1 << 1;
+// The task also looks at the line this often: an edge is lost while the MCU sleeps.
+static constexpr uint32_t PMU_IRQ_POLL_MS = 500;
+// A line that stays low this long is reported, then again at every report period.
+static constexpr int64_t PMU_IRQ_STUCK_US = 5LL * 1000 * 1000;
+static constexpr int64_t PMU_IRQ_STUCK_REPORT_US = 60LL * 1000 * 1000;
+
 static void onPmuIrq() {
+#if PMU_KEY_WAKES_LIGHT_SLEEP
+    // A level interrupt repeats while the line is low. It stays masked until the task has
+    // cleared the PMU status and seen the line high.
+    gpio_intr_disable(static_cast<gpio_num_t>(PMU_IRQ));
+#endif
     BaseType_t woken = pdFALSE;
-    vTaskNotifyGiveFromISR(pmuIrqTaskHandle, &woken);
+    xTaskNotifyFromISR(pmuIrqTaskHandle, PMU_NOTIFY_IRQ, eSetBits, &woken);
     if (woken) portYIELD_FROM_ISR();
 }
 
+// Lets the level interrupt fire again. Only called with the line high.
+static void unmaskPmuIrq() {
+#if PMU_KEY_WAKES_LIGHT_SLEEP
+    gpio_intr_enable(static_cast<gpio_num_t>(PMU_IRQ));
+#endif
+}
+
+// Logs a PMU interrupt line that stays low: the node cannot sleep while it does.
+static void reportStuckPmuIrq(bool low) {
+    static int64_t lowSinceUs = 0;
+    static int64_t nextReportUs = 0;
+    int64_t nowUs = esp_timer_get_time();
+    if (!low) {
+        lowSinceUs = 0;
+        return;
+    }
+    if (lowSinceUs == 0) {
+        lowSinceUs = nowUs;
+        nextReportUs = nowUs + PMU_IRQ_STUCK_US;
+    }
+    if (nowUs < nextReportUs) return;
+    nextReportUs = nowUs + PMU_IRQ_STUCK_REPORT_US;
+    ESP_LOGW(ID_TAG, "PMU interrupt line low for %u s, the MCU stays awake",
+             static_cast<unsigned>((nowUs - lowSinceUs) / 1000000));
+}
+
 // The PMU holds its IRQ line low until the status is cleared over I2C, which cannot be done
-// from the interrupt handler.
+// from the interrupt handler. The task serves an interrupt and also a line found low. A line
+// that stays low after the status was cleared is looked at again at the poll period.
 static void pmuIrqTask(void*) {
     for (;;) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        PMU->getIrqStatus();
-        bool pressed = PMU->isPekeyShortPressIrq();
-        bool batteryChanged = PMU->isBatInsertIrq() || PMU->isBatRemoveIrq();
-        PMU->clearIrqStatus();
-        if (batteryChanged) applyChargeLed();
+        uint32_t notified = 0;
+        xTaskNotifyWait(0, UINT32_MAX, &notified, pdMS_TO_TICKS(PMU_IRQ_POLL_MS));
+        if ((notified & PMU_NOTIFY_IRQ) == 0 && digitalRead(PMU_IRQ) != LOW) {
+            unmaskPmuIrq();
+            reportStuckPmuIrq(false);
+            continue;
+        }
+        bool pressed = false;
+        {
+            std::lock_guard<std::mutex> lock(busMutex);
+            PMU->getIrqStatus();
+            pressed = PMU->isPekeyShortPressIrq();
+            bool batteryChanged = PMU->isBatInsertIrq() || PMU->isBatRemoveIrq();
+            PMU->clearIrqStatus();
+            if (batteryChanged) applyChargeLed();
+        }
+        bool stillLow = digitalRead(PMU_IRQ) == LOW;
+        if (!stillLow) unmaskPmuIrq();
         if (pressed && powerKeyHandler) powerKeyHandler();
+        reportStuckPmuIrq(stillLow);
     }
 }
 
 void InitDevices::startPmuIrqTask() {
     if (xTaskCreate(pmuIrqTask, "PmuIrq", 3072, nullptr, 2, &pmuIrqTaskHandle) != pdPASS) {
+        pmuIrqTaskHandle = nullptr;
         ESP_LOGE(ID_TAG, "PMU interrupt task creation failed");
         return;
     }
     pinMode(PMU_IRQ, INPUT);
+#if PMU_KEY_WAKES_LIGHT_SLEEP
+    // The wake-up source needs a level interrupt, which the pin interrupt then shares.
+    attachInterrupt(PMU_IRQ, onPmuIrq, ONLOW);
+    armPowerKeyWake(true);
+#else
     attachInterrupt(PMU_IRQ, onPmuIrq, FALLING);
+#endif
 }
 #endif
+
+void InitDevices::armPowerKeyWake(bool lightSleep) {
+#if defined(HAS_PMU) && PMU_KEY_WAKES_LIGHT_SLEEP
+    if (pmuIrqTaskHandle == nullptr) return;
+    // Left armed, the source would keep the RTC peripherals powered through a deep sleep and
+    // let the key end it.
+    if (lightSleep) {
+        gpio_wakeup_enable(static_cast<gpio_num_t>(PMU_IRQ), GPIO_INTR_LOW_LEVEL);
+        esp_sleep_enable_gpio_wakeup();
+    } else {
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+    }
+#else
+    (void)lightSleep;
+#endif
+}
+
+void InitDevices::checkPowerKey() {
+#ifdef HAS_PMU
+    if (pmuIrqTaskHandle) xTaskNotify(pmuIrqTaskHandle, PMU_NOTIFY_CHECK, eSetBits);
+#endif
+}
+
+bool InitDevices::powerKeyPending() {
+#ifdef HAS_PMU
+    return pmuIrqTaskHandle != nullptr && digitalRead(PMU_IRQ) == LOW;
+#else
+    return false;
+#endif
+}
 
 void InitDevices::onPowerKeyShortPress(std::function<void()> handler) {
 #ifdef HAS_PMU
@@ -105,6 +208,7 @@ void InitDevices::init(bool deepSleepWake) {
 bool InitDevices::pmuResponds() {
 #ifdef HAS_PMU
     if (!PMU) return false;
+    std::lock_guard<std::mutex> lock(busMutex);
     PMU_WIRE_PORT.beginTransmission(AXP2101_SLAVE_ADDRESS);
     return PMU_WIRE_PORT.endTransmission() == 0;
 #else
@@ -115,8 +219,11 @@ bool InitDevices::pmuResponds() {
 bool InitDevices::readPower(PowerState& out) {
 #ifdef HAS_PMU
     if (!PMU) return false;
+    std::lock_guard<std::mutex> lock(busMutex);
     out.externalPower = PMU->isVbusIn();
-    out.batteryMv = PMU->isBatteryConnect() ? PMU->getBattVoltage() : 0;
+    out.batteryPresent = PMU->isBatteryConnect();
+    out.batteryMv = out.batteryPresent ? PMU->getBattVoltage() : 0;
+    out.charging = PMU->isCharging();
     return true;
 #else
     return false;
@@ -126,6 +233,7 @@ bool InitDevices::readPower(PowerState& out) {
 std::string InitDevices::powerReport() {
 #ifdef HAS_PMU
     if (!PMU) return "pmu=none";
+    std::lock_guard<std::mutex> lock(busMutex);
     char text[220];
     int length = snprintf(text, sizeof(text), "pmu=%s vbus=%s battery=%s %umV %d%% charging=%s",
                           PMU->getChipModel() == XPOWERS_AXP2101 ? "AXP2101" : "AXP192",
@@ -167,7 +275,10 @@ static void identifyTask(void*) {
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 #ifdef HAS_PMU
-        if (PMU) PMU->setChargingLedMode(XPOWERS_CHG_LED_BLINK_4HZ);
+        if (PMU) {
+            std::lock_guard<std::mutex> lock(busMutex);
+            PMU->setChargingLedMode(XPOWERS_CHG_LED_BLINK_4HZ);
+        }
 #endif
         bool on = false;
         while (esp_timer_get_time() < identifyUntilUs) {
@@ -177,7 +288,10 @@ static void identifyTask(void*) {
         }
         digitalWrite(LED_PIN, LED_OFF);
 #ifdef HAS_PMU
-        if (PMU) applyChargeLed();
+        if (PMU) {
+            std::lock_guard<std::mutex> lock(busMutex);
+            applyChargeLed();
+        }
 #endif
     }
 }

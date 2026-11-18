@@ -22,6 +22,7 @@
 
 // Devices
 #include "devices/initDevices.h"
+#include "sensor/bme280.h"
 
 // OTA boot guard
 #include "ota/otaBootGuard.h"
@@ -49,8 +50,8 @@ static const char* TAG = "Main";
 
 #pragma region Display
 DisplayService& displayService = DisplayService::getInstance();
-void initDisplay() {
-    displayService.init();
+void initDisplay(bool gateway) {
+    displayService.init(gateway);
 }
 #pragma endregion
 
@@ -204,9 +205,12 @@ void setup() {
 
 #ifdef DISPLAY_ENABLED
     // Initialize Display
-    if (!deepSleepWake) initDisplay();
+    if (!deepSleepWake) initDisplay(gateway);
     ESP_LOGV(TAG, "Heap after initDisplay: %d", ESP.getFreeHeap());
 #endif
+
+    // The sensor rail has been on since InitDevices::init(), longer than the chip's start-up.
+    Bme280Sensor::getInstance().begin();
 
     // Initialize LoRaMesh
     loraMeshService.setSleepBlockers([gateway] {
@@ -216,6 +220,10 @@ void setup() {
         blockers.maintenanceWindow = MaintenanceWifi::getInstance().isBusy();
 #ifdef DISPLAY_ENABLED
         blockers.displayAwake = displayService.isAwake();
+#endif
+        blockers.pmuIrqLow = InitDevices::powerKeyPending();
+#ifdef MQTT_MON_ENABLED
+        blockers.installMode = mon_mqttService.installActive();
 #endif
         return blockers;
     });

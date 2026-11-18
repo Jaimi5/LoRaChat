@@ -52,6 +52,12 @@ public:
 
     bool isConnected();
 
+    /**
+     * @param rssi signal strength of the access point in dBm.
+     * @return false if the station is not connected. Any task may call it.
+     */
+    bool getRssi(int8_t& rssi);
+
     /** @return true once the station has an IP address (it can reach the network). */
     bool hasIp();
 
@@ -78,8 +84,6 @@ public:
 
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);
-
-    void sendMessage(DataMessage* message);
 
 
 private:

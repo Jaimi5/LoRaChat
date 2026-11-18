@@ -143,8 +143,6 @@ void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* me
     ESP_LOGE(TAG, "Receive messages on WiFi is not implemented");
 }
 
-void WiFiServerService::sendMessage(DataMessage* message) {}
-
 String WiFiServerService::addSSID(String ssid) {
     std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH) {
@@ -255,6 +253,14 @@ bool WiFiServerService::isConnected() {
     }
 
     return false;
+}
+
+bool WiFiServerService::getRssi(int8_t& rssi) {
+    if (!initialized) return false;
+    wifi_ap_record_t apInfo;
+    if (esp_wifi_sta_get_ap_info(&apInfo) != ESP_OK) return false;
+    rssi = apInfo.rssi;
+    return true;
 }
 
 bool WiFiServerService::connectWiFi() {

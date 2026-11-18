@@ -66,3 +66,15 @@ private:
     std::string reply_;
     bool hasReply_ = false;
 };
+
+/**
+ * @brief Runs a signed command whose tag is valid, at most once per counter.
+ * @param store persists the counter before the command runs. The command is refused when it
+ *        returns false.
+ * @param execute runs the command and returns its reply.
+ * @return the reply of this run, the stored reply when @p value is the last counter again,
+ *         "ERR replay" for an older counter, or "ERR storage" if the counter cannot be stored.
+ */
+std::string runOncePerCounter(CommandCounter& counter, uint32_t value,
+                              const std::function<bool(uint32_t)>& store,
+                              const std::function<std::string()>& execute);

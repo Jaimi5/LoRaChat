@@ -4,32 +4,24 @@
 #include <Adafruit_SSD1306.h>
 #include <Arduino.h>
 
-#include <SPI.h>
 #include <Wire.h>
 #include <atomic>
 #include <mutex>
-#include <vector>
 
-#include "esp_timer.h"
-
+#include "devices/initDevices.h"
 #include "message/messageService.h"
 
-#include "message/messageManager.h"
-
 #include "displayCommandService.h"
-
-#include "displayLines.h"
 #include "displayMessage.h"
+#include "statusScreen.h"
 
 #include "config.h"
 
-#include "loramesh/loraMeshService.h"
-
 /**
- * @brief SSD1306 display: fixed title lines and a log of received text.
+ * @brief SSD1306 display: one status screen, redrawn when its content changes.
  *
- * Commands may come from any task. They only change the line buffer (under a lock) or post a
- * request; DisplayTask alone talks to the panel.
+ * Commands may come from any task. They only change shared state or post a request.
+ * DisplayTask alone talks to the panel.
  */
 class DisplayService : public MessageService {
 public:
@@ -38,25 +30,25 @@ public:
         return instance;
     }
 
-    void init();
+    /**
+     * @brief Starts the panel and its task. The panel stays on for DISPLAY_AWAKE_MS.
+     * @param gateway the node is a gateway: the screen shows WiFi and MQTT.
+     */
+    void init(bool gateway);
 
-    /** Turns the display on for DISPLAY_AWAKE_MS; it then goes to sleep. */
+    /** Turns the display on for DISPLAY_AWAKE_MS and shows the status screen. */
     void wake();
 
     /** @return true while the display is on. */
-    bool isAwake() const { return initialized && esp_timer_get_time() < sleepAtUs; }
+    bool isAwake() const { return ready_ && esp_timer_get_time() < sleepAtUs_; }
 
-    String displayOn(uint16_t dst);
-
-    String displayOff(uint16_t dst);
-
-    String displayBlink(uint16_t dst);
-
-    String clearDisplay(uint16_t dst);
-
-    String displayLogo(uint16_t dst, uint16_t src = 0);
-
-    String displayText(uint16_t dst, String text, uint16_t src = 0);
+    /**
+     * @brief Runs a display command on this node or sends it to another one.
+     * @param dst the node that runs it. 0 or this node's address runs it here.
+     * @param text the line of a DisplayText command.
+     * @return the reply for the command.
+     */
+    String execute(DisplayCommand command, uint16_t dst, const String& text = "");
 
     String getJSON(DataMessage* message) override;
 
@@ -66,7 +58,7 @@ public:
      * @return the message for @p command, or nullptr if @p text is longer than one radio
      *         frame takes.
      */
-    DataMessagePtr getDisplayMessage(DisplayCommand command, uint16_t dst, String text = "");
+    DataMessagePtr getDisplayMessage(DisplayCommand command, uint16_t dst, const String& text = "");
 
     /** @return the longest text /displayText sends to another node in one message. */
     static size_t maxRemoteTextLength();
@@ -78,55 +70,59 @@ private:
 
     DisplayCommandService commands_;
 
-    /** Panel work that DisplayTask does on behalf of other tasks. */
+    /** Work that DisplayTask does on behalf of other tasks. */
     enum PanelRequest : uint32_t {
         PANEL_BLINK = 1 << 0,
         PANEL_LOGO = 1 << 1,
+        PANEL_STATUS = 1 << 2,
     };
 
-    /** Scroll state of one drawn line; owned by DisplayTask. */
-    struct ShownLine {
-        String text;
-        int x = 0;
-        int minX = 0;
-        bool moving = false;
-    };
+    /** What the panel shows in place of the status screen. DisplayTask only. */
+    enum class Overlay : uint8_t { NONE, LOGO, BLINK };
 
-    Adafruit_SSD1306 display = Adafruit_SSD1306(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire, DISPLAY_RST);
+    Adafruit_SSD1306 display_ = Adafruit_SSD1306(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire, DISPLAY_RST);
 
-    TaskHandle_t display_TaskHandle = nullptr;
+    TaskHandle_t taskHandle_ = nullptr;
+    /** Set once the task exists. Before that every command for this node is refused. */
+    std::atomic<bool> ready_{false};
+    /** esp_timer time at which the display goes to sleep. */
+    std::atomic<int64_t> sleepAtUs_{0};
+    std::atomic<uint32_t> requests_{0};
 
-    void createDisplayTask();
+    std::mutex textMutex_;
+    char text_[SCREEN_ROW_CHARS + 1] = {};
+    int64_t textAtUs_ = 0;
+
+    bool gateway_ = false;
+    uint16_t address_ = 0;
+    char version_[sizeof(StatusSnapshot::version)] = {};
+
+    /** Posts @p request to DisplayTask and turns the display on so it is seen. */
+    void requestPanel(PanelRequest request);
+    void setText(const char* text);
+    String sendRemote(DisplayCommand command, uint16_t dst, const String& text);
 
     static void displayTask(void* pvParameters);
 
-    static constexpr size_t MAX_LINES = 7;     // Maximum number of lines the display can handle
-    static constexpr int LINE_HEIGHT = 9;      // Height of each line of text
-    static constexpr size_t STATIC_LINES = 3;  // Number of static lines at the top
-
-    std::mutex linesMutex_;
-    DisplayLines lines_{STATIC_LINES, MAX_LINES};
-
-    /** Sends a request to DisplayTask and wakes the display so it is seen. */
-    void requestPanel(PanelRequest request);
-    void addText(const String& text);
-    void setTitle();
-
     // DisplayTask only.
-    std::vector<ShownLine> shown_;
-    uint32_t shownVersion_ = 0;
-    bool panelOn = true;
-    void refreshShownLines();
-    void drawDisplay();
-    void printLine(ShownLine& line, int y);
-    void setupTextMovement(ShownLine& line);
-    void drawLogo(uint16_t src);
-    void blink();
+    bool panelOn_ = true;
+    Overlay overlay_ = Overlay::NONE;
+    int64_t overlayStepAtUs_ = 0;
+    uint8_t blinkStepsLeft_ = 0;
+    ScreenModel drawn_{};
+    bool drawnValid_ = false;
+    MeshState observedState_ = MeshState::INITIALIZING;
+    int64_t stateSinceUs_ = 0;
+    uint32_t ticks_ = 0;
+    PowerState power_;
+    bool powerKnown_ = false;
 
-    // esp_timer time at which the display goes to sleep
-    std::atomic<int64_t> sleepAtUs{0};
-    std::atomic<uint32_t> panelRequests_{0};
-    std::atomic<uint16_t> logoSrc_{0};
-    std::atomic<bool> displayOnFlag{true};
-    std::atomic<bool> initialized{false};
+    void runTask();
+    void sleepPanel();
+    void startOverlay(Overlay overlay);
+    TickType_t stepOverlay(int64_t nowUs);
+    void drawLogo();
+    void refreshStatus();
+    void fillSnapshot(StatusSnapshot& snapshot);
+    void drawModel(const ScreenModel& model);
 };
