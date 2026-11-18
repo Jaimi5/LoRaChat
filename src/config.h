@@ -110,5 +110,6 @@
 #define LORA_DEFAULT_DATA_SLOTS 2
 // Maximum number of nodes admitted to the network.
 #define LORA_MAX_NETWORK_NODES 50
-// Total data-slot pool shared by all nodes.
-#define LORA_MAX_DATA_SLOTS 50
+// Total data-slot pool shared by all nodes. 100 gives every one of the LORA_MAX_NETWORK_NODES
+// its LORA_DEFAULT_DATA_SLOTS. It is also the library default.
+#define LORA_MAX_DATA_SLOTS 100
