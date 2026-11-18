@@ -85,6 +85,12 @@ TEST(OtaReport, NamesEveryEvent) {
     EXPECT_STREQ(reportEventName(ReportEvent::FAILED), "failed");
 }
 
+TEST(OtaReport, WritesTheEpochAsAnUnsignedNumber) {
+    std::string body =
+        ReportBuilder().addNumber("boot", 3).addNumber("ep", uint32_t{0xFFFFFFFF}).body();
+    EXPECT_EQ(body, "{\"v\":1,\"boot\":3,\"ep\":4294967295}");
+}
+
 TEST(OtaReport, RefusesTextTheServerWouldReject) {
     EXPECT_EQ(ReportBuilder().addText("ver", "").body(), "");
     EXPECT_EQ(ReportBuilder().addText("ver", "a\"b").body(), "");
@@ -130,7 +136,5 @@ TEST(VerdictId, ImageAndOutcomeChangeTheId) {
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
-    if (RUN_ALL_TESTS()) {
-    }
-    return 0;
+    return RUN_ALL_TESTS();
 }

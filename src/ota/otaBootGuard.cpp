@@ -5,6 +5,7 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_private/esp_clk.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -20,6 +21,7 @@ static const char* NVS_NAMESPACE = "lmota";
 static const char* NVS_KEY_RECORD = "rec";
 static const char* NVS_KEY_NEIGHBOURS = "nbr";
 static const char* NVS_KEY_BOOTS = "boots";
+static const char* NVS_KEY_EPOCH = "epoch";
 
 static constexpr uint32_t BOOTLOADER_REGION_SIZE = 0x7000;
 
@@ -165,11 +167,20 @@ void OtaBootGuard::countBoot() {
     nvs_handle_t handle;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return;
     nvs_get_u32(handle, NVS_KEY_BOOTS, &bootCount_);
+    bool changed = false;
     // A deep-sleep wake-up continues the same boot (and spares the flash a write per wake).
     if (esp_reset_reason() != ESP_RST_DEEPSLEEP) {
         bootCount_++;
-        if (nvs_set_u32(handle, NVS_KEY_BOOTS, bootCount_) == ESP_OK) nvs_commit(handle);
+        changed = nvs_set_u32(handle, NVS_KEY_BOOTS, bootCount_) == ESP_OK;
     }
+    // The epoch is drawn once and lives as long as the boot counter. 0 stands for no epoch.
+    if (nvs_get_u32(handle, NVS_KEY_EPOCH, &reportEpoch_) != ESP_OK || reportEpoch_ == 0) {
+        do {
+            reportEpoch_ = esp_random();
+        } while (reportEpoch_ == 0);
+        changed = nvs_set_u32(handle, NVS_KEY_EPOCH, reportEpoch_) == ESP_OK || changed;
+    }
+    if (changed) nvs_commit(handle);
     nvs_close(handle);
 }
 

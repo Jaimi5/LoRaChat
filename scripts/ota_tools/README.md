@@ -183,6 +183,8 @@ python3 scripts/ota_tools/lmcmd.py sign --key-file deploy.key --node 7680 "/main
 # @7680 /maint.open 600 ap #6526b3c0.1f2e...   <- type this on a gateway's (or any node's) serial console
 python3 scripts/ota_tools/lmcmd.py sign --key-file deploy.key --node 7680 --mqtt 12 "/reboot"
 # 7680 12 /reboot #6526b3c1.9a0b...            <- publish this on cmd/<gateway>
+python3 scripts/ota_tools/lmcmd.py sign --key-file deploy.key --node 7680 --mqtt 13 "/install 600"
+# 7680 13 /install 600 #6526b3c2.47d1...       <- install mode for ten minutes (main README, "Placing a node")
 ```
 
 The tag is `HMAC-SHA256(K, "LMC1" || node u16 LE || counter u32 LE || line)[:8]`, so a signed line only runs on the node it was made for. The counter is `max(last + 1, unix time)`; `lmcmd.py` remembers the last one per key in `~/.config/loramesher/command_counters.json`, so several computers can sign with the same key.
@@ -265,7 +267,7 @@ The earlier delta OTA over MQTT (patch generation, chunking, campaign and monito
 
 ## Node reports
 
-A node reports the result of each maintenance window with `POST /report` on the host of its OTA server (loramesher.com in the field). The body is compact JSON (`lib/OtaCore/src/otaReport`, built by `src/ota/otaReporter`) signed with the report key `Kr = HMAC-SHA256(K, "LMR1")` and sent as `X-LM-Tag: hex(HMAC-SHA256(Kr, body))` (`lib/OtaCrypto/src/deploymentKey`). The server holds only `Kr`, so it cannot sign commands. The server side, its field list and the device manager live in the LoRaMesherWeb repository.
+A node reports the result of each maintenance window with `POST /report` on the host of its OTA server (loramesher.com in the field). The body is compact JSON (`lib/OtaCore/src/otaReport`, built by `src/ota/otaReporter`) signed with the report key `Kr = HMAC-SHA256(K, "LMR1")` and sent as `X-LM-Tag: hex(HMAC-SHA256(Kr, body))` (`lib/OtaCrypto/src/deploymentKey`). The server holds only `Kr`, so it cannot sign commands. Every report carries `boot` (the boot counter in NVS `lmota/boots`) and `ep`, a random number drawn when NVS is empty (`lmota/epoch`), so the reports of a node that was flashed again with an erased NVS are not taken for its old ones. The server side, its field list and the device manager live in the LoRaMesherWeb repository.
 
 ```bash
 python3 scripts/ota_tools/ap_pass.py report-key --key-file deploy.key   # Kr for the server's OTA_REPORT_KEY

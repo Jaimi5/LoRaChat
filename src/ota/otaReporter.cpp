@@ -54,6 +54,7 @@ bool OtaReporter::send(ReportEvent event, const ReportDetails& details) {
         .addText("rr", OtaBootGuard::resetReasonName())
         .addText("bl", OtaBootGuard::bootloaderHash())
         .addText("event", reportEventName(event));
+    if (guard.reportEpoch() != 0) report.addNumber("ep", guard.reportEpoch());
     if (!details.lastInvalid.empty()) report.addText("last_invalid", details.lastInvalid);
     if (details.status >= 0) report.addNumber("status", details.status);
     if (details.decision >= 0) report.addNumber("decision", details.decision);

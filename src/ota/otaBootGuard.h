@@ -61,6 +61,12 @@ public:
     /** @return the number of boots, counted in NVS. */
     uint32_t bootCount() const { return bootCount_; }
 
+    /**
+     * @return the random number that tells apart two lives of the boot counter, kept in NVS
+     *         from the first boot after NVS was erased. 0 if NVS could not be read.
+     */
+    uint32_t reportEpoch() const { return reportEpoch_; }
+
     /** @return the name of the last reset reason, as on the BOOT line. */
     static const char* resetReasonName();
 
@@ -77,6 +83,7 @@ private:
     OtaRecord record_;
     std::atomic<bool> hadNeighbours_{false};
     uint32_t bootCount_ = 0;
+    uint32_t reportEpoch_ = 0;
     std::atomic<bool> attemptResolved_{false};
 
     bool loadRecord();
