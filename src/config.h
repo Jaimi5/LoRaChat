@@ -36,7 +36,11 @@
 #define WIFI_ENABLED
 #define MQTT_ENABLED
 #define MQTT_MON_ENABLED
+// Bluetooth Classic serial console, to type commands from a phone. In the -v2 environments it
+// only fits in flash with WIFI_ENABLED, MQTT_ENABLED and MQTT_MON_ENABLED commented out.
 // #define BLUETOOTH_ENABLED
+// Text chat with other nodes from the Bluetooth console. Needs BLUETOOTH_ENABLED.
+// #define CHAT_ENABLED
 // #define GPS_ENABLED
 // #define SIMULATION_ENABLED
 // #define NO_SENSOR_DATA // If the sensors are not connected
@@ -52,6 +56,16 @@
 #define LORA_ENABLED
 #define WIFI_ENABLED
 #define MQTT_ENABLED
+#endif
+
+#if defined(CHAT_ENABLED) && !defined(BLUETOOTH_ENABLED)
+#error "CHAT_ENABLED needs BLUETOOTH_ENABLED: the chat is used from the Bluetooth serial console"
+#endif
+
+// Bluetooth Classic adds about 380 KB to the firmware. With the TDMA-based LoRaMesher, Bluetooth
+// and Wi-Fi/MQTT together do not fit in the 1.75 MB application partition (partitions.csv).
+#if defined(BLUETOOTH_ENABLED) && defined(USE_LORAMESHER_V2) && defined(WIFI_ENABLED)
+#error "With -v2, BLUETOOTH_ENABLED needs WIFI_ENABLED, MQTT_ENABLED and MQTT_MON_ENABLED off"
 #endif
 
 // ── PDR-comparison experiment (sim-based load generator) ─────────────────────
