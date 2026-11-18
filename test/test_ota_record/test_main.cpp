@@ -119,7 +119,5 @@ TEST(OtaRecordCodec, DecodesVersion1RecordOfOlderImage) {
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
-    if (RUN_ALL_TESTS()) {
-    }
-    return 0;
+    return RUN_ALL_TESTS();
 }
