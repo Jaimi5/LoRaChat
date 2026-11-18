@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "cmdStatus.h"
+
 /** Truncated HMAC-SHA256 that signs a command. */
 using CommandTag = std::array<uint8_t, 8>;
 using HmacDigest = std::array<uint8_t, 32>;
@@ -49,21 +51,24 @@ public:
     /** Records @p counter as the last one; its reply is not known yet. */
     void accept(uint32_t counter);
 
-    /** Stores the reply of the last accepted command. */
-    void setReply(const std::string& reply) {
+    /** Stores the reply of the last accepted command, with its status. */
+    void setReply(const CommandResult& reply) {
         reply_ = reply;
         hasReply_ = true;
     }
 
-    /** @return the reply of the last command, or a fixed text if it was lost in a reboot. */
-    std::string lastReply() const;
+    /**
+     * @return the reply of the last command with its status, or success with a fixed text if it
+     *         was lost in a reboot.
+     */
+    CommandResult lastReply() const;
 
     uint32_t last() const { return last_; }
 
 private:
     uint32_t last_;
     bool any_;
-    std::string reply_;
+    CommandResult reply_;
     bool hasReply_ = false;
 };
 
@@ -73,8 +78,8 @@ private:
  *        returns false.
  * @param execute runs the command and returns its reply.
  * @return the reply of this run, the stored reply when @p value is the last counter again,
- *         "ERR replay" for an older counter, or "ERR storage" if the counter cannot be stored.
+ *         status REPLAY for an older counter, or STORAGE if the counter cannot be stored.
  */
-std::string runOncePerCounter(CommandCounter& counter, uint32_t value,
-                              const std::function<bool(uint32_t)>& store,
-                              const std::function<std::string()>& execute);
+CommandResult runOncePerCounter(CommandCounter& counter, uint32_t value,
+                                const std::function<bool(uint32_t)>& store,
+                                const std::function<CommandResult()>& execute);

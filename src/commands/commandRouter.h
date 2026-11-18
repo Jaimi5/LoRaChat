@@ -8,6 +8,8 @@
 #include "cmdFrame.h"
 #include "cmdPending.h"
 #include "cmdPerm.h"
+#include "cmdRtt.h"
+#include "cmdStatus.h"
 #include "cmdText.h"
 #include "commands/commandService.h"
 #include "message/messageService.h"
@@ -22,6 +24,8 @@ struct CommandRequest {
     uint8_t requestId = 0;
     /** The line is the reply of node src to a command forwarded from here. */
     bool response = false;
+    /** Status of a reply. */
+    uint8_t status = 0;
     CommandLine command;
 };
 
@@ -35,10 +39,12 @@ struct CommandRequest {
  * for another node (serial "@<dst> ...", or an MQTT dst that is not this gateway) is sent over
  * LoRa; its reply is printed on serial or published on cmd-resp/<dst> when it arrives.
  *
- * A forwarded command always gets an answer. Without a route to the node it is "ERR no route".
- * A signed command is sent once more after half the timeout. When no reply arrives within
- * the timeout the answer is "ERR timeout <n> s", and a command pushed out of the full table
- * of waiting commands gets "ERR dropped".
+ * A forwarded command always gets an answer, a status of CommandStatus. NO_ROUTE comes at once
+ * when the mesh has no route. The gateway waits for the reply as long as a lossless one can
+ * take (attemptTimeMs()) and never sends a command again before that. A signed command is then
+ * sent once more. TIMEOUT follows when the wait ends, and a command pushed out of the full
+ * table of waiting commands gets DROPPED. A reply that arrives up to ten minutes after its
+ * TIMEOUT is still delivered. Commands from MQTT also get progress lines on cmd-ack/<dst>.
  */
 class CommandRouter : public MessageService {
 public:
@@ -63,22 +69,36 @@ public:
      */
     bool runningCounter(uint32_t& out) const;
 
+    /** @return the channel of the command that is running. Only valid inside a handler. */
+    Origin runningOrigin() const;
+
 private:
     static constexpr size_t PENDING_SLOTS = 8;
 
-    CommandRouter() : MessageService(CommandApp, "Command") { commandService = &commands_; }
+    CommandRouter();
 
     static void task(void* parameter);
     void handle(const CommandRequest& request);
-    String runLocal(const CommandRequest& request);
-    String runSigned(const CommandRequest& request);
+    /** Pairs the reply of another node with the command it answers and delivers it. */
+    void handleReply(const CommandRequest& request);
+    CommandReply runLocal(const CommandRequest& request);
+    CommandReply runSigned(const CommandRequest& request);
     void forward(const CommandRequest& request);
-    void reply(const CommandRequest& request, const String& text);
+    void reply(const CommandRequest& request, const CommandReply& result);
     /** Hands the answer to a forwarded command to the channel the command came from. */
-    void deliver(const PendingCommand& pending, const String& text);
+    void deliver(const PendingCommand& pending, const CommandReply& result);
+    /** Publishes a progress line of a command that came from MQTT. */
+    void acknowledge(const PendingCommand& pending, const std::string& line);
     /** Sends again or times out the forwarded commands that are due. */
     void sweepPending();
-    void sendFrame(uint16_t dst, uint8_t requestId, const std::vector<uint8_t>& bytes);
+    /** Sends the due command once more, or gives it up if the mesh refuses it. */
+    void retransmit(const PendingCommand& pending);
+    /** @return what the wait for a transmission to @p dst depends on, read from the mesh now. */
+    AttemptTiming currentTiming(uint16_t dst, uint32_t allowanceMs, uint16_t& nextHop);
+    /** @return the time until the reply to a transmission with @p timing is expected. */
+    uint32_t expectedIn(uint16_t dst, uint16_t nextHop, const AttemptTiming& timing);
+    /** @return the status of the failure, or OK if the mesh took the frame. */
+    CommandStatus sendFrame(uint16_t dst, uint8_t requestId, const std::vector<uint8_t>& bytes);
     bool loadCounter();
     bool storeCounter(uint32_t counter);
 
@@ -88,5 +108,7 @@ private:
     bool counterLoaded_ = false;
     /** Forwarded commands that wait for a reply. Only the command task uses it. */
     PendingCommands pending_{PENDING_SLOTS};
+    /** Measured round trip times, for the expected time of a reply. */
+    RttEstimator rtt_;
     const CommandRequest* running_ = nullptr;
 };

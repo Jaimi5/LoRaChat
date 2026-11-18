@@ -35,14 +35,26 @@ public:
 
     /**
      * @brief Runs one command line (name and arguments, without target or signature).
-     * @param origin channel the line arrived on; decides which commands may run.
+     * @param origin channel the line arrived on, which decides which commands may run.
      * @param signedValid the line carried a valid signature.
-     * @return the reply. Remote channels get short errors: "ERR unknown", "ERR perm".
+     * @return the reply with its status: UNKNOWN, PERM, or what the command returns.
      */
-    String executeCommand(const String& line, Origin origin, bool signedValid);
+    CommandReply executeCommand(const String& line, Origin origin, bool signedValid);
 
     /** @return the commands that may run from @p origin, one per line. */
     String help(Origin origin) const;
+
+    /** @return the page of /cmds that @p args asks for, or ARG for a page that does not exist. */
+    CommandReply catalogue(const String& args) const;
+
+    /** @return the time command @p name may take to run in ms, 0 if it declares none. */
+    uint32_t commandAllowanceMs(const String& name) const;
+
+    /**
+     * @return @p reply as a person reads it: the text of a success, the usage line of command
+     *         @p name for a bad argument, and the text of any other error.
+     */
+    String describeReply(const String& name, const CommandReply& reply) const;
 
     String getJSON(DataMessage* message);
 
@@ -55,6 +67,9 @@ private:
     MessageManager(){};
 
     std::vector<MessageService*> services;
+
+    /** Every command of every service, each name once. Filled while the services register. */
+    CommandCatalogue catalogue_;
 
     static void sendMessageLoRaMesher(DataMessage* message);
 

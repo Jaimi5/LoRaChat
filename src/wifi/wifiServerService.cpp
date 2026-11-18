@@ -143,38 +143,38 @@ void WiFiServerService::processReceivedMessage(messagePort port, DataMessage* me
     ESP_LOGE(TAG, "Receive messages on WiFi is not implemented");
 }
 
-String WiFiServerService::addSSID(String ssid) {
+CommandReply WiFiServerService::addSSID(String ssid) {
     std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH) {
-        return F("SSID must be 1 to 32 bytes");
+        return CommandStatus::ARG;
     }
     this->ssid = ssid;
 
-    return F("SSID added");
+    return String(F("SSID added"));
 }
 
-String WiFiServerService::addPassword(String password) {
+CommandReply WiFiServerService::addPassword(String password) {
     std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (password.length() > MAX_PASSWORD_LENGTH) {
-        return F("Password must be at most 64 bytes");
+        return CommandStatus::ARG;
     }
     this->password = password;
 
-    return F("Password added");
+    return String(F("Password added"));
 }
 
-String WiFiServerService::storeCredentials(const String& ssid, const String& password) {
+CommandReply WiFiServerService::storeCredentials(const String& ssid, const String& password) {
     std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH ||
         password.length() > MAX_PASSWORD_LENGTH) {
-        return F("Invalid WiFi credentials");
+        return CommandReply(WIFI_ERR_INVALID, "");
     }
     wifi_config_t config = {};
     memcpy(config.sta.ssid, ssid.c_str(), ssid.length());
     memcpy(config.sta.password, password.c_str(), password.length());
     esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) {
-        return String("Could not store the WiFi credentials: ") + esp_err_to_name(err);
+        return CommandReply(WIFI_ERR_STORE, esp_err_to_name(err));
     }
 
     this->ssid = ssid;
@@ -184,10 +184,10 @@ String WiFiServerService::storeCredentials(const String& ssid, const String& pas
     disconnectWiFi();
     connecting = false;
     connectBackoff.onSuccess();
-    return "WiFi credentials stored for " + ssid + ", reconnecting";
+    return String("WiFi credentials stored for " + ssid + ", reconnecting");
 }
 
-String WiFiServerService::resetWiFiData() {
+CommandReply WiFiServerService::resetWiFiData() {
     std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     esp_err_t result;
 
@@ -196,7 +196,7 @@ String WiFiServerService::resetWiFiData() {
     wifiStarted = false;
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "Failed to stop WiFi: %s", esp_err_to_name(result));
-        return String("Failed to stop WiFi: ") + esp_err_to_name(result);
+        return CommandReply(WIFI_ERR_FAILED, esp_err_to_name(result));
     }
 
     // Create empty WiFi configuration with proper initialization
@@ -212,7 +212,7 @@ String WiFiServerService::resetWiFiData() {
     result = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set WiFi config: %s", esp_err_to_name(result));
-        return String("Failed to reset WiFi config: ") + esp_err_to_name(result);
+        return CommandReply(WIFI_ERR_FAILED, esp_err_to_name(result));
     }
 
     // Reset local credentials to default values
@@ -224,7 +224,7 @@ String WiFiServerService::resetWiFiData() {
         result = esp_wifi_start();
         if (result != ESP_OK) {
             ESP_LOGE(TAG, "Failed to restart WiFi: %s", esp_err_to_name(result));
-            return String("WiFi reset but failed to restart: ") + esp_err_to_name(result);
+            return CommandReply(WIFI_ERR_FAILED, esp_err_to_name(result));
         }
         wifiStarted = true;
     }
@@ -349,15 +349,14 @@ bool WiFiServerService::hasIp() {
            ipInfo.ip.addr != 0;
 }
 
-String WiFiServerService::getIP() {
-    if (!initialized)
-        return F("No IP");
+CommandReply WiFiServerService::getIP() {
+    if (!initialized) return CommandReply(WIFI_ERR_FAILED, "");
     // TODO: Check if this is the correct way to get the IP
 
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (netif == nullptr) {
         printf("Could not get netif handle\n");
-        return F("No IP");
+        return CommandReply(WIFI_ERR_FAILED, "");
     }
 
     esp_netif_ip_info_t ip_info;
@@ -368,7 +367,7 @@ String WiFiServerService::getIP() {
         return String(ipStr);
     }
 
-    return F("No IP");
+    return CommandReply(WIFI_ERR_FAILED, "");
 }
 
 bool WiFiServerService::restartWiFiData() {

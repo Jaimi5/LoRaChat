@@ -6,6 +6,12 @@
 #include <string>
 
 #include "bme280Math.h"
+#include "cmdStatus.h"
+
+/** Errors of /sensor. */
+constexpr uint8_t SENSOR_ERR_NOT_FOUND = 128;
+constexpr uint8_t SENSOR_ERR_NO_MEASUREMENT = 129;
+constexpr uint8_t SENSOR_ERR_NO_SUPPORT = 130;
 
 /**
  * @brief Bosch BME280 or BMP280 on the board's I2C bus, at address 0x76 or 0x77.
@@ -40,8 +46,11 @@ public:
      */
     bool lastReading(Bme280Reading& out, uint32_t& ageSeconds) const;
 
-    /** Takes a measurement. @return chip, address and values as one line for /sensor. */
-    std::string describe();
+    /**
+     * @brief Takes a measurement for /sensor.
+     * @return chip, address and values as one line, or one of the SENSOR_ERR codes.
+     */
+    CommandResult describe();
 
 private:
     Bme280Sensor() = default;

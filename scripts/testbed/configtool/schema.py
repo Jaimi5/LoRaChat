@@ -95,7 +95,7 @@ PARAMS: dict[str, Param] = {p.yaml_key: p for p in [
     Param("lora_power",            "LORA_POWER",            "int",    "TX power in dBm"),
     Param("lora_sync_word",        "LORA_SYNC_WORD",        "uint",   "Network identifier 0..255"),
     Param("lora_duty_cycle",       "LORA_DUTY_CYCLE",       "floatF", "Airtime duty-cycle budget 0.0..1.0"),
-    Param("lora_default_data_slots", "LORA_DEFAULT_DATA_SLOTS", "uint", "Data slots each node requests per superframe (>=1); sum capped by max_network_nodes"),
+    Param("lora_default_data_slots", "LORA_DEFAULT_DATA_SLOTS", "uint", "Data slots each node requests per superframe (>=1, firmware default 2). The sum is capped by lora_max_data_slots"),
     Param("lora_max_network_nodes", "LORA_MAX_NETWORK_NODES", "uint", "Max nodes admitted (node-count cap only)"),
     Param("lora_max_data_slots",   "LORA_MAX_DATA_SLOTS",    "uint", "Total data-slot pool (sum across nodes); raise above nodes*data_slots to avoid starvation"),
     Param("lora_max_packet_size",  "LORA_MAX_PACKET_SIZE",  "uint",   "Max LoRa PHY packet bytes 1..255; SF-derived if unset"),

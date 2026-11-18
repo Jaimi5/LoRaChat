@@ -1,10 +1,10 @@
 #include "monCommandService.h"
+#include "installMode.h"
 #include "monService.h"
 
 monCommandService::monCommandService() {
-    addCommand(Command("/install",
-                       "Install mode, awake and reporting often: /install [seconds] (600, 0 "
-                       "stops, up to 3600)",
-                       Perm::SIGNED,
-                       [](String args) { return MonService::getInstance().install(args); }));
+    addCommand(Command("/install", "Install mode, awake and reporting often", Perm::SIGNED,
+                       [](String args) { return MonService::getInstance().install(args); })
+                   .withUsage(String("[seconds] (default ") + INSTALL_DEFAULT_SECONDS +
+                              ", 0 stops, up to " + INSTALL_MAX_SECONDS + ")"));
 }

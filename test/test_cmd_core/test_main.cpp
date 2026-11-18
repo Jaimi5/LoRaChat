@@ -117,11 +117,12 @@ TEST(CmdCounter, StoredCounterSurvivesARestart) {
 TEST(CmdCounter, RepeatReturnsTheStoredReply) {
     CommandCounter counter;
     counter.accept(7);
-    EXPECT_FALSE(counter.lastReply().empty());
+    EXPECT_EQ(counter.lastReply().status, 0);
+    EXPECT_EQ(counter.lastReply().text, "OK already executed");
     counter.setReply("OK maint 3600");
-    EXPECT_EQ(counter.lastReply(), "OK maint 3600");
+    EXPECT_EQ(counter.lastReply().text, "OK maint 3600");
     counter.accept(8);
-    EXPECT_NE(counter.lastReply(), "OK maint 3600");
+    EXPECT_NE(counter.lastReply().text, "OK maint 3600");
 }
 
 TEST(CmdCounter, ARetransmittedCommandGetsTheCachedReplyAndRunsOnce) {
@@ -134,18 +135,36 @@ TEST(CmdCounter, ARetransmittedCommandGetsTheCachedReplyAndRunsOnce) {
     };
     auto execute = [&runs]() {
         runs++;
-        return std::string("OK install 600 s");
+        return CommandResult("OK install 600 s");
     };
-    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "OK install 600 s");
+    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute).text, "OK install 600 s");
     // The gateway sends the same frame again because the reply was lost.
-    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "OK install 600 s");
-    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "OK install 600 s");
+    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute).text, "OK install 600 s");
+    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute).status, 0);
     EXPECT_EQ(runs, 1);
     EXPECT_EQ(stored, std::vector<uint32_t>{42});
     // A retransmission that arrives after a newer command is refused.
-    EXPECT_EQ(runOncePerCounter(counter, 43, store, execute), "OK install 600 s");
-    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "ERR replay");
+    EXPECT_EQ(runOncePerCounter(counter, 43, store, execute).text, "OK install 600 s");
+    CommandResult replay = runOncePerCounter(counter, 42, store, execute);
+    EXPECT_EQ(replay.status, static_cast<uint8_t>(CommandStatus::REPLAY));
+    EXPECT_EQ(replay.text, "");
     EXPECT_EQ(runs, 2);
+}
+
+TEST(CmdCounter, ARepeatedCounterGetsTheCachedStatusWithItsArgument) {
+    CommandCounter counter;
+    int runs = 0;
+    auto store = [](uint32_t) { return true; };
+    auto execute = [&runs]() {
+        runs++;
+        return CommandResult(131, "REFUSE_BATTERY");
+    };
+    CommandResult first = runOncePerCounter(counter, 9, store, execute);
+    CommandResult again = runOncePerCounter(counter, 9, store, execute);
+    EXPECT_EQ(first.status, 131);
+    EXPECT_EQ(again.status, 131);
+    EXPECT_EQ(again.text, "REFUSE_BATTERY");
+    EXPECT_EQ(runs, 1);
 }
 
 TEST(CmdCounter, ARetransmissionAfterARebootDoesNotRunAgain) {
@@ -155,9 +174,11 @@ TEST(CmdCounter, ARetransmissionAfterARebootDoesNotRunAgain) {
     auto store = [](uint32_t) { return true; };
     auto execute = [&runs]() {
         runs++;
-        return std::string("OK");
+        return CommandResult("OK");
     };
-    EXPECT_EQ(runOncePerCounter(counter, 42, store, execute), "OK already executed");
+    CommandResult reply = runOncePerCounter(counter, 42, store, execute);
+    EXPECT_EQ(reply.status, 0);
+    EXPECT_EQ(reply.text, "OK already executed");
     EXPECT_EQ(runs, 0);
 }
 
@@ -166,12 +187,14 @@ TEST(CmdCounter, ACommandWhoseCounterCannotBeStoredDoesNotRun) {
     int runs = 0;
     auto execute = [&runs]() {
         runs++;
-        return std::string("OK");
+        return CommandResult("OK");
     };
-    EXPECT_EQ(
-        runOncePerCounter(counter, 7, [](uint32_t) { return false; }, execute), "ERR storage");
+    EXPECT_EQ(runOncePerCounter(
+                  counter, 7, [](uint32_t) { return false; }, execute)
+                  .status,
+              static_cast<uint8_t>(CommandStatus::STORAGE));
     EXPECT_EQ(runs, 0);
-    EXPECT_EQ(runOncePerCounter(counter, 7, [](uint32_t) { return true; }, execute), "OK");
+    EXPECT_EQ(runOncePerCounter(counter, 7, [](uint32_t) { return true; }, execute).text, "OK");
     EXPECT_EQ(runs, 1);
 }
 
@@ -211,15 +234,50 @@ TEST(CmdFrame, SignedFrameCarriesCounterAndTag) {
     EXPECT_EQ(out.tag, frame.tag);
 }
 
-TEST(CmdFrame, ResponseFlag) {
+TEST(CmdFrame, ASuccessReplyCarriesStatusZeroBeforeItsText) {
     CommandFrame frame;
     frame.response = true;
-    frame.line = "OK";
+    frame.line = "OK install 600 s";
     std::vector<uint8_t> bytes = frame.encode();
-    EXPECT_EQ(bytes[0], CommandFrame::FLAG_RESPONSE);
+    EXPECT_EQ(toHex(bytes.data(), bytes.size()), "80004f4b20696e7374616c6c203630302073");
     CommandFrame out;
     ASSERT_TRUE(CommandFrame::decode(bytes.data(), bytes.size(), out));
     EXPECT_TRUE(out.response);
+    EXPECT_FALSE(out.isSigned);
+    EXPECT_EQ(out.status, 0);
+    EXPECT_EQ(out.line, "OK install 600 s");
+}
+
+TEST(CmdFrame, AnErrorReplyCarriesItsStatusAndAnOptionalArgument) {
+    CommandFrame frame;
+    frame.response = true;
+    frame.status = static_cast<uint8_t>(CommandStatus::ARG);
+    std::vector<uint8_t> bytes = frame.encode();
+    EXPECT_EQ(bytes, (std::vector<uint8_t>{0x80, 0x05}));
+    CommandFrame out;
+    ASSERT_TRUE(CommandFrame::decode(bytes.data(), bytes.size(), out));
+    EXPECT_EQ(out.status, 5);
+    EXPECT_EQ(out.line, "");
+
+    frame.status = 131;
+    frame.line = "REFUSE_BATTERY";
+    bytes = frame.encode();
+    EXPECT_EQ(toHex(bytes.data(), bytes.size()), "80835245465553455f42415454455259");
+    ASSERT_TRUE(CommandFrame::decode(bytes.data(), bytes.size(), out));
+    EXPECT_EQ(out.status, 131);
+    EXPECT_EQ(out.line, "REFUSE_BATTERY");
+}
+
+TEST(CmdFrame, ARequestCarriesNoStatusByte) {
+    CommandFrame frame;
+    frame.status = 9;
+    frame.line = "/x";
+    EXPECT_EQ(frame.encode(), (std::vector<uint8_t>{0x00, '/', 'x'}));
+    CommandFrame out;
+    out.status = 7;
+    std::vector<uint8_t> bytes = frame.encode();
+    ASSERT_TRUE(CommandFrame::decode(bytes.data(), bytes.size(), out));
+    EXPECT_EQ(out.status, 0);
 }
 
 TEST(CmdFrame, RejectsMalformedFrames) {
@@ -231,6 +289,27 @@ TEST(CmdFrame, RejectsMalformedFrames) {
     EXPECT_FALSE(CommandFrame::decode(nul, sizeof(nul), out));
     const uint8_t empty[] = {0};
     EXPECT_FALSE(CommandFrame::decode(empty, sizeof(empty), out));
+    const uint8_t replyWithoutStatus[] = {CommandFrame::FLAG_RESPONSE};
+    EXPECT_FALSE(CommandFrame::decode(replyWithoutStatus, sizeof(replyWithoutStatus), out));
+    const uint8_t signedReply[] = {CommandFrame::FLAG_RESPONSE | CommandFrame::FLAG_SIGNED,
+                                   0,
+                                   'O',
+                                   'K',
+                                   1,
+                                   2,
+                                   3,
+                                   4,
+                                   5,
+                                   6,
+                                   7,
+                                   8,
+                                   9,
+                                   10,
+                                   11,
+                                   12};
+    EXPECT_FALSE(CommandFrame::decode(signedReply, sizeof(signedReply), out));
+    const uint8_t replyWithNul[] = {CommandFrame::FLAG_RESPONSE, 0, 'O', 0};
+    EXPECT_FALSE(CommandFrame::decode(replyWithNul, sizeof(replyWithNul), out));
 }
 
 // Vectors are computed by scripts/ota_tools/lmcmd.py with Python's hmac module.

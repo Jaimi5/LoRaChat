@@ -29,7 +29,7 @@ String MonService::getJSON(DataMessage* message) {
     }
 
     // Every key is a string literal, so the document only stores its objects and arrays.
-    constexpr size_t REPORT_KEYS = 20;
+    constexpr size_t REPORT_KEYS = 21;
     constexpr size_t ROUTE_KEYS = 6;
     DynamicJsonDocument doc(JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(REPORT_KEYS) +
                             JSON_ARRAY_SIZE(report.routes.size()) +
@@ -41,6 +41,8 @@ String MonService::getJSON(DataMessage* message) {
     data["TxQ"] = report.txQueue;
     data["RxQ"] = report.rxQueue;
     data["number_of_neighbors"] = report.routes.size();
+    // The superframe of this gateway, which sizes the wait for a command reply.
+    data["sf_ms"] = LoRaMeshService::getInstance().getSuperframeDurationMs();
     if (report.version >= 2) {
         data["v"] = report.version;
         data["interval_s"] = report.intervalS;
@@ -130,17 +132,14 @@ std::vector<MonRoute> MonService::collectReportedRoutes() {
     return routes;
 }
 
-String MonService::install(const String& args) {
+CommandReply MonService::install(const String& args) {
     uint32_t seconds = 0;
-    if (!parseInstallSeconds(args.c_str(), seconds)) {
-        return String("Usage: /install [seconds] (default ") + INSTALL_DEFAULT_SECONDS +
-               ", 0 stops, up to " + INSTALL_MAX_SECONDS + ")";
-    }
+    if (!parseInstallSeconds(args.c_str(), seconds)) return CommandStatus::ARG;
     installMode_.start(seconds, clockMs());
     // The report that follows carries the new state and the new interval.
     if (sending_TaskHandle != nullptr) xTaskNotifyGive(sending_TaskHandle);
     if (seconds == 0) return "OK install off";
-    return String("OK install ") + seconds + " s";
+    return String(String("OK install ") + seconds + " s");
 }
 
 bool MonService::installActive() const {

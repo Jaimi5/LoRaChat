@@ -139,16 +139,15 @@ bool Bme280Sensor::lastReading(Bme280Reading& out, uint32_t& ageSeconds) const {
     return true;
 }
 
-std::string Bme280Sensor::describe() {
-    if (!present()) return "No sensor found (BME280 or BMP280 at I2C address 0x76 or 0x77)";
+CommandResult Bme280Sensor::describe() {
+    if (!present()) return CommandResult(SENSOR_ERR_NOT_FOUND, "");
     Bme280Reading reading;
     bool fresh = measure(reading);
     uint32_t ageSeconds = 0;
     char text[120];
     int length = snprintf(text, sizeof(text), "%s at 0x%02X: ", bme280ChipName(chip_), address_);
     if (!fresh && !lastReading(reading, ageSeconds)) {
-        snprintf(text + length, sizeof(text) - length, "no measurement");
-        return text;
+        return CommandResult(SENSOR_ERR_NO_MEASUREMENT, "");
     }
     int32_t centi = reading.tempCentiC;
     length += snprintf(text + length, sizeof(text) - length, "%s%d.%02d C", centi < 0 ? "-" : "",
@@ -182,8 +181,8 @@ bool Bme280Sensor::lastReading(Bme280Reading&, uint32_t&) const {
     return false;
 }
 
-std::string Bme280Sensor::describe() {
-    return "This firmware has no sensor support";
+CommandResult Bme280Sensor::describe() {
+    return CommandResult(SENSOR_ERR_NO_SUPPORT, "");
 }
 
 #endif

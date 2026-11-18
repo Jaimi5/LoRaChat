@@ -14,6 +14,9 @@ public:
     /** Adds @p command unless its name is already taken. @return false if it was refused. */
     bool addCommand(Command command);
 
+    /** Removes the command named @p name. @return false if there is none. */
+    bool removeCommand(const String& name);
+
     /** @return the command named @p name, or nullptr. */
     Command* find(const String& name);
 

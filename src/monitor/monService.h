@@ -34,7 +34,7 @@ public:
      *        a new end time while it is on, or stops it with 0. A report follows at once.
      * @return the reply for the command.
      */
-    String install(const String& args);
+    CommandReply install(const String& args);
 
     /** @return true while install mode is on. Any task may call it, it never blocks. */
     bool installActive() const;

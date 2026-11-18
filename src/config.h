@@ -104,8 +104,10 @@
 #define LORA_DEEP_SLEEP_MIN_MS 30000
 #define LORA_DEEP_SLEEP_BOOT_MS 1500
 // Data slots each node requests at join. More slots raise per-node throughput at the cost of
-// a longer superframe; the sum across nodes is capped by LORA_MAX_DATA_SLOTS.
-#define LORA_DEFAULT_DATA_SLOTS 1
+// a longer superframe. The network manager grants them from the pool of LORA_MAX_DATA_SLOTS
+// and refuses a node once the pool is empty, so LORA_MAX_DATA_SLOTS / LORA_DEFAULT_DATA_SLOTS
+// nodes can join.
+#define LORA_DEFAULT_DATA_SLOTS 2
 // Maximum number of nodes admitted to the network.
 #define LORA_MAX_NETWORK_NODES 50
 // Total data-slot pool shared by all nodes.

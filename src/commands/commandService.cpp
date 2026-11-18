@@ -11,6 +11,15 @@ bool CommandService::addCommand(Command command) {
     return true;
 }
 
+bool CommandService::removeCommand(const String& name) {
+    for (auto it = commands_.begin(); it != commands_.end(); ++it) {
+        if (!name.equalsIgnoreCase(it->getCommand())) continue;
+        commands_.erase(it);
+        return true;
+    }
+    return false;
+}
+
 Command* CommandService::find(const String& name) {
     for (Command& command : commands_) {
         if (name.equalsIgnoreCase(command.getCommand())) return &command;
@@ -25,6 +34,7 @@ String CommandService::help(Origin origin) const {
         if (!commandPermitted(perm, origin, true)) continue;
         text += command.getCommand();
         if (perm == Perm::SIGNED && origin != Origin::SERIAL_CONSOLE) text += " (signed)";
+        if (command.getUsage().length() > 0) text += " " + command.getUsage();
         text += " - " + command.getDescription() + "\n";
     }
     return text;

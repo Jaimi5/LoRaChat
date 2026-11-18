@@ -161,11 +161,11 @@ void MaintenanceWifi::savePlan() {
     }
 }
 
-std::string MaintenanceWifi::storeCredentials(const std::string& ssid,
-                                              const std::string& password) {
+CommandResult MaintenanceWifi::storeCredentials(const std::string& ssid,
+                                                const std::string& password) {
     bool idle = false;
     if (!busy_.compare_exchange_strong(idle, true)) {
-        return "A maintenance window is open; close it first";
+        return CommandResult(WIFI_ERR_WINDOW_OPEN, "");
     }
     wifi_config_t config = {};
     std::memcpy(config.sta.ssid, ssid.data(), std::min(ssid.size(), sizeof(config.sta.ssid)));
@@ -181,26 +181,24 @@ std::string MaintenanceWifi::storeCredentials(const std::string& ssid,
     busy_ = false;
     if (err != ESP_OK) {
         ESP_LOGE(MW_TAG, "Storing the WiFi credentials failed: %s", esp_err_to_name(err));
-        return "Could not store the WiFi credentials";
+        return CommandResult(WIFI_ERR_STORE, esp_err_to_name(err));
     }
     ESP_LOGI(MW_TAG, "WiFi credentials stored for %s", ssid.c_str());
     return "WiFi credentials stored for " + ssid;
 }
 
-std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
+CommandResult MaintenanceWifi::open(Kind kind, uint32_t durationS) {
     if (gateway_) {
-        if (kind == Kind::AP) {
-            return "Gateways keep their own WiFi; the access point is for sensors";
-        }
+        if (kind == Kind::AP) return CommandResult(MAINT_ERR_GATEWAY_AP, "");
         return checkOverGatewayWifi();
     }
     if (OtaBootGuard::getInstance().isPendingVerify()) {
-        return "The image is still being verified; try again when it is valid";
+        return CommandResult(MAINT_ERR_VERIFYING, "");
     }
     if (kind == Kind::AP) {
         DeploymentKey key;
         if (!OtaService::getInstance().deploymentKey(key)) {
-            return "No deployment key; store one with /key.set";
+            return CommandResult(MAINT_ERR_NO_KEY, "");
         }
     }
     PowerState power;
@@ -208,17 +206,17 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
     PolicyDecision resources =
         OtaPolicy::checkResources(power.batteryMv, power.externalPower, esp_get_free_heap_size());
     if (resources != PolicyDecision::INSTALL) {
-        return std::string("Refused: ") + policyDecisionName(resources);
+        return CommandResult(MAINT_ERR_POLICY, policyDecisionName(resources));
     }
 
     WindowKind windowKind = kind == Kind::AP ? WindowKind::AP : WindowKind::PULL;
-    auto refusal = [](OpenDecision decision) -> std::string {
+    auto refusal = [](OpenDecision decision) -> CommandResult {
         if (decision == OpenDecision::REFUSED_LIMIT) {
-            return "Refused: " + std::to_string(MaintWindowPlan::MAX_PER_DAY) +
-                   " windows in the last 24 h";
+            return CommandResult(MAINT_ERR_DAILY_LIMIT,
+                                 std::to_string(MaintWindowPlan::MAX_PER_DAY));
         }
-        if (decision == OpenDecision::REFUSED_DURATION) return "Refused: duration out of range";
-        return "";
+        if (decision == OpenDecision::REFUSED_DURATION) return CommandStatus::ARG;
+        return CommandResult();
     };
     // A trial copy answers refusals before anything changes; the plan itself only changes once
     // this window owns the WiFi.
@@ -228,8 +226,8 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
         MaintWindowPlan copy = plan_;
         trial = copy.open(windowKind, durationS, nodeNow());
     }
-    std::string refused = refusal(trial);
-    if (!refused.empty()) return refused;
+    CommandResult refused = refusal(trial);
+    if (!refused.ok()) return refused;
     if (trial == OpenDecision::EXTENDED && busy_ && kind_ == kind) {
         std::lock_guard<std::mutex> lock(planMutex_);
         uint32_t now = nodeNow();
@@ -247,7 +245,9 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
         for (int i = 0; busy_ && i < CLOSE_WAIT_STEPS; i++) vTaskDelay(pdMS_TO_TICKS(100));
     }
     bool idle = false;
-    if (!busy_.compare_exchange_strong(idle, true)) return "The open window did not close";
+    if (!busy_.compare_exchange_strong(idle, true)) {
+        return CommandResult(MAINT_ERR_STILL_OPEN, "");
+    }
 
     MaintWindowPlan before;
     OpenDecision decision;
@@ -260,10 +260,10 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
         decision = plan_.open(windowKind, durationS, now);
         remainingS = plan_.remaining(now);
         counted = plan_.countedInLastDay(now);
-        if (refusal(decision).empty()) savePlan();
+        if (refusal(decision).ok()) savePlan();
     }
     refused = refusal(decision);
-    if (!refused.empty()) {
+    if (!refused.ok()) {
         busy_ = false;
         return refused;
     }
@@ -274,7 +274,7 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
             savePlan();
         }
         busy_ = false;
-        return "Maintenance window task creation failed";
+        return CommandResult(MAINT_ERR_NO_TASK, "");
     }
     std::string counts = " (" + std::to_string(counted) + " of " +
                          std::to_string(MaintWindowPlan::MAX_PER_DAY) + " in 24 h)";
@@ -286,10 +286,14 @@ std::string MaintenanceWifi::open(Kind kind, uint32_t durationS) {
     return "Pull window open for " + std::to_string(remainingS) + " s" + counts;
 }
 
-std::string MaintenanceWifi::checkOverGatewayWifi() {
-    if (!WiFiServerService::getInstance().isConnected()) return "Gateway WiFi not connected";
+CommandResult MaintenanceWifi::checkOverGatewayWifi() {
+    if (!WiFiServerService::getInstance().isConnected()) {
+        return CommandResult(MAINT_ERR_GATEWAY_WIFI, "");
+    }
     bool idle = false;
-    if (!busy_.compare_exchange_strong(idle, true)) return "An update check is already running";
+    if (!busy_.compare_exchange_strong(idle, true)) {
+        return CommandResult(MAINT_ERR_CHECK_RUNNING, "");
+    }
     auto task = [](void* parameter) {
         auto* self = static_cast<MaintenanceWifi*>(parameter);
         if (self->work_) self->work_();
@@ -298,7 +302,7 @@ std::string MaintenanceWifi::checkOverGatewayWifi() {
     };
     if (xTaskCreate(task, "GatewayOta", WINDOW_TASK_STACK, this, 2, nullptr) != pdPASS) {
         busy_ = false;
-        return "Update check task creation failed";
+        return CommandResult(MAINT_ERR_NO_TASK, "");
     }
     return "Checking the OTA server over the gateway WiFi";
 }

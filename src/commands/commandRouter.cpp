@@ -26,6 +26,17 @@ static uint32_t clockMs() {
     return static_cast<uint32_t>(esp_timer_get_time() / 1000);
 }
 
+CommandRouter::CommandRouter() : MessageService(CommandApp, "Command") {
+    commandService = &commands_;
+    commands_.addCommand(Command("/help", "List the commands", Perm::OPEN, [this](String) {
+        return MessageManager::getInstance().help(runningOrigin());
+    }));
+    commands_.addCommand(
+        Command("/cmds", "List every command for programs, in pages", Perm::OPEN, [](String args) {
+            return MessageManager::getInstance().catalogue(args);
+        }).withUsage("[page]"));
+}
+
 void CommandRouter::begin() {
     if (!queue_.create(QUEUE_LENGTH) ||
         xTaskCreate(task, "Commands", TASK_STACK, this, 1, nullptr) != pdPASS) {
@@ -66,6 +77,7 @@ void CommandRouter::processReceivedMessage(messagePort port, DataMessage* messag
     request.src = message->addrSrc;
     request.requestId = message->messageId;
     request.response = frame.response;
+    request.status = frame.status;
     request.command.line = frame.line;
     request.command.isSigned = frame.isSigned;
     request.command.counter = frame.counter;
@@ -79,15 +91,13 @@ bool CommandRouter::runningCounter(uint32_t& out) const {
     return true;
 }
 
+Origin CommandRouter::runningOrigin() const {
+    return running_ != nullptr ? running_->origin : Origin::SERIAL_CONSOLE;
+}
+
 void CommandRouter::handle(const CommandRequest& request) {
     if (request.response) {
-        PendingCommand pending;
-        if (pending_.take(request.src, request.requestId, pending)) {
-            deliver(pending, request.command.line.c_str());
-        } else {
-            // Late, repeated or never asked for.
-            ESP_LOGW(CR_TAG, "Unexpected reply from %04X [%u]", request.src, request.requestId);
-        }
+        handleReply(request);
         return;
     }
 
@@ -97,39 +107,88 @@ void CommandRouter::handle(const CommandRequest& request) {
         return;
     }
     running_ = &request;
-    String text = request.command.isSigned && request.origin != Origin::SERIAL_CONSOLE
-                      ? runSigned(request)
-                      : runLocal(request);
+    CommandReply result = request.command.isSigned && request.origin != Origin::SERIAL_CONSOLE
+                              ? runSigned(request)
+                              : runLocal(request);
     running_ = nullptr;
-    reply(request, text);
+    reply(request, result);
 }
 
-String CommandRouter::runLocal(const CommandRequest& request) {
+void CommandRouter::handleReply(const CommandRequest& request) {
+    uint32_t nowMs = clockMs();
+    PendingCommand pending;
+    if (!pending_.take(request.src, request.requestId, pending)) {
+        if (!pending_.takeLate(request.src, request.requestId, nowMs, pending)) {
+            // Repeated, older than the time late replies are kept, or never asked for.
+            ESP_LOGW(CR_TAG, "Unexpected reply from %04X [%u]", request.src, request.requestId);
+            return;
+        }
+        ESP_LOGI(CR_TAG, "Late reply from %04X [%u] after %u s", request.src, request.requestId,
+                 static_cast<unsigned>(pending.waitedMs(nowMs) / 1000));
+    }
+    RttPath path;
+    path.dst = pending.dst;
+    path.hops = pending.timing.hops;
+    path.nextHop = pending.nextHop;
+    path.superframeMs = pending.timing.superframeMs;
+    rtt_.addSample(path, pending.waitedMs(nowMs), pending.timing.slotWaitMs, pending.retransmitted);
+    deliver(pending, CommandReply(request.status, request.command.line.c_str()));
+    acknowledge(pending, formatDoneAck(pending, nowMs));
+}
+
+CommandReply CommandRouter::runLocal(const CommandRequest& request) {
     return MessageManager::getInstance().executeCommand(request.command.line.c_str(),
                                                         request.origin, false);
 }
 
-String CommandRouter::runSigned(const CommandRequest& request) {
+CommandReply CommandRouter::runSigned(const CommandRequest& request) {
     DeploymentKey key;
-    if (!OtaService::getInstance().deploymentKey(key)) return "ERR auth";
+    if (!OtaService::getInstance().deploymentKey(key)) return CommandStatus::AUTH;
     KeyedHmac hmac = [&key](const uint8_t* data, size_t size) {
         return hmacSha256(key.data(), key.size(), data, size);
     };
     uint16_t local = LoRaMeshService::getInstance().getLocalAddress();
     CommandTag expected =
         commandTag(hmac, local, request.command.counter, request.command.line);
-    if (!commandTagsEqual(expected, request.command.tag)) return "ERR auth";
+    if (!commandTagsEqual(expected, request.command.tag)) return CommandStatus::AUTH;
 
-    if (!counterLoaded_ && !loadCounter()) return "ERR storage";
-    std::string text = runOncePerCounter(
+    if (!counterLoaded_ && !loadCounter()) return CommandStatus::STORAGE;
+    return runOncePerCounter(
         counter_, request.command.counter,
         [this](uint32_t counter) { return storeCounter(counter); },
         [&request]() {
-            String reply = MessageManager::getInstance().executeCommand(
-                request.command.line.c_str(), request.origin, true);
-            return std::string(reply.c_str());
+            return MessageManager::getInstance()
+                .executeCommand(request.command.line.c_str(), request.origin, true)
+                .result();
         });
-    return String(text.c_str());
+}
+
+AttemptTiming CommandRouter::currentTiming(uint16_t dst, uint32_t allowanceMs, uint16_t& nextHop) {
+    LoRaMeshService& mesh = LoRaMeshService::getInstance();
+    AttemptTiming timing;
+    timing.superframeMs = mesh.getSuperframeDurationMs();
+    timing.allowanceMs = allowanceMs;
+    timing.hops = mesh.hopsTo(dst);
+    nextHop = mesh.nextHopTo(dst);
+    if (timing.hops == 0) {
+        // The mesh then tries the node as a direct neighbour.
+        timing.hops = 1;
+        nextHop = dst;
+    }
+    // Without a known slot the wait counts as a whole superframe.
+    if (!mesh.timeToNextTxSlotMs(timing.slotWaitMs)) timing.slotWaitMs = timing.superframeMs;
+    return timing;
+}
+
+uint32_t CommandRouter::expectedIn(uint16_t dst, uint16_t nextHop, const AttemptTiming& timing) {
+    RttPath path;
+    path.dst = dst;
+    path.hops = timing.hops;
+    path.nextHop = nextHop;
+    path.superframeMs = timing.superframeMs;
+    uint32_t srttMs = 0;
+    bool measured = rtt_.estimate(path, srttMs);
+    return expectedReplyMs(timing, measured, srttMs);
 }
 
 void CommandRouter::forward(const CommandRequest& request) {
@@ -145,79 +204,144 @@ void CommandRouter::forward(const CommandRequest& request) {
     pending.originRequestId = request.requestId;
     pending.isSigned = frame.isSigned;
     pending.frame = frame.encode();
+    std::string args;
+    splitCommand(frame.line, pending.name, args);
 
     LoRaMeshService& mesh = LoRaMeshService::getInstance();
     size_t maxFrame = mesh.maxAppPayload();
     if (pending.frame.size() > maxFrame) {
-        reply(request, String("Too long for one LoRa frame (max ") + maxFrame + " B)");
+        size_t overhead = pending.frame.size() - frame.line.size();
+        reply(request, CommandReply(CommandStatus::TOO_LONG, String(maxFrame - overhead)));
         return;
     }
+    uint32_t nowMs = clockMs();
+    if (request.origin == Origin::MQTT) {
+        // The same request again while it waits: it is on its way, so it is not sent twice.
+        const PendingCommand* waiting = pending_.findRepeat(request.origin, pending.dst,
+                                                            pending.originRequestId, pending.frame);
+        if (waiting != nullptr) {
+            acknowledge(*waiting, formatQueuedAck(*waiting, nowMs));
+            return;
+        }
+    }
     if (!mesh.hasRouteTo(pending.dst)) {
-        reply(request, "ERR no route");
+        reply(request, CommandStatus::NO_ROUTE);
         return;
     }
 
-    pending.requestId = pending_.nextRequestId();
-    pending.timeoutMs = PendingCommands::timeoutMs(mesh.getSuperframeDurationMs());
+    // Read before the frame joins the queue, which the wait for the slot counts.
+    pending.timing = currentTiming(
+        pending.dst, MessageManager::getInstance().commandAllowanceMs(pending.name.c_str()),
+        pending.nextHop);
+    pending.expectedMs = expectedIn(pending.dst, pending.nextHop, pending.timing);
+    pending.requestId = pending_.nextRequestId(nowMs);
+    CommandStatus sent = sendFrame(pending.dst, pending.requestId, pending.frame);
+    if (sent != CommandStatus::OK) {
+        reply(request, sent);
+        return;
+    }
     PendingCommand evicted;
-    if (pending_.add(pending, clockMs(), evicted)) deliver(evicted, "ERR dropped");
-    sendFrame(pending.dst, pending.requestId, pending.frame);
+    if (pending_.add(pending, nowMs, evicted)) deliver(evicted, CommandStatus::DROPPED);
+    acknowledge(pending, formatQueuedAck(pending, nowMs));
     if (request.origin == Origin::SERIAL_CONSOLE) {
-        reply(request,
-              String("Sent to ") + String(pending.dst, HEX) + " [" + pending.requestId + "]");
+        reply(request, String("Sent to ") + String(pending.dst, HEX) + " [" + pending.requestId +
+                           "], reply expected in " + ceilSeconds(pending.expectedMs) +
+                           " s, given up after " + ceilSeconds(pending.giveUpMs) + " s");
     }
 }
 
-void CommandRouter::deliver(const PendingCommand& pending, const String& text) {
+void CommandRouter::deliver(const PendingCommand& pending, const CommandReply& result) {
     if (pending.origin == Origin::MQTT) {
-        MqttService::getInstance().publishCommandReply(pending.dst, pending.originRequestId, text);
+        MqttService::getInstance().publishCommandReply(
+            pending.dst, formatReplyPayload(pending.originRequestId, result.result()).c_str());
     } else {
+        String text = MessageManager::getInstance().describeReply(pending.name.c_str(), result);
         Serial.printf("< %04X [%u] %s\n", pending.dst, pending.requestId, text.c_str());
     }
 }
 
+void CommandRouter::acknowledge(const PendingCommand& pending, const std::string& line) {
+    if (pending.origin != Origin::MQTT) return;
+    MqttService::getInstance().publishCommandAck(pending.dst, line.c_str());
+}
+
 void CommandRouter::sweepPending() {
     if (pending_.size() == 0) return;
-    std::vector<PendingCommand> retransmit;
+    std::vector<PendingCommand> due;
     std::vector<PendingCommand> expired;
-    pending_.sweep(clockMs(), retransmit, expired);
-    for (const PendingCommand& pending : retransmit) {
-        ESP_LOGI(CR_TAG, "No reply from %04X [%u] yet, sending the command again", pending.dst,
-                 pending.requestId);
-        sendFrame(pending.dst, pending.requestId, pending.frame);
-    }
+    uint32_t nowMs = clockMs();
+    pending_.sweep(nowMs, due, expired);
+    for (const PendingCommand& pending : due) retransmit(pending);
     for (const PendingCommand& pending : expired) {
-        deliver(pending, String("ERR timeout ") + (pending.timeoutMs / 1000) + " s");
+        constexpr uint32_t HALF_SECOND_MS = 500;
+        uint32_t waitedS = (pending.waitedMs(nowMs) + HALF_SECOND_MS) / 1000;
+        deliver(pending, CommandReply(CommandStatus::TIMEOUT, String(waitedS)));
     }
 }
 
-void CommandRouter::reply(const CommandRequest& request, const String& text) {
+void CommandRouter::retransmit(const PendingCommand& pending) {
+    LoRaMeshService& mesh = LoRaMeshService::getInstance();
+    uint32_t nowMs = clockMs();
+    CommandStatus sent = CommandStatus::NO_ROUTE;
+    uint16_t nextHop = 0;
+    AttemptTiming timing;
+    if (mesh.hasRouteTo(pending.dst)) {
+        timing = currentTiming(pending.dst, pending.timing.allowanceMs, nextHop);
+        sent = sendFrame(pending.dst, pending.requestId, pending.frame);
+    }
+    PendingCommand updated;
+    if (sent != CommandStatus::OK) {
+        ESP_LOGW(CR_TAG, "No reply from %04X [%u] and the command cannot be sent again",
+                 pending.dst, pending.requestId);
+        if (pending_.giveUp(pending.dst, pending.requestId, nowMs, updated)) {
+            deliver(updated, sent);
+        }
+        return;
+    }
+    ESP_LOGI(CR_TAG, "No reply from %04X [%u] yet, the command was sent again", pending.dst,
+             pending.requestId);
+    if (pending_.secondAttempt(pending.dst, pending.requestId, nowMs, timing,
+                               expectedIn(pending.dst, nextHop, timing), updated)) {
+        acknowledge(updated, formatRetransmitAck(updated, nowMs));
+    }
+}
+
+void CommandRouter::reply(const CommandRequest& request, const CommandReply& result) {
+    std::string name;
+    std::string args;
+    splitCommand(request.command.line, name, args);
     if (request.origin == Origin::SERIAL_CONSOLE) {
-        const std::string name = request.command.line.substr(0, request.command.line.find(' '));
+        String text = MessageManager::getInstance().describeReply(name.c_str(), result);
         Serial.printf("> %s\n%s\n", name.c_str(), text.c_str());
         return;
     }
     if (request.origin == Origin::MQTT) {
         // The server pairs a reply with the node the command was for, also when the gateway
         // answers in its place.
-        MqttService::getInstance().publishCommandReply(request.command.dst, request.requestId,
-                                                       text);
+        MqttService::getInstance().publishCommandReply(
+            request.command.dst, formatReplyPayload(request.requestId, result.result()).c_str());
         return;
     }
     if (request.origin == Origin::LORA) {
         CommandFrame frame;
         frame.response = true;
-        frame.line = text.c_str();
-        size_t maxLine = LoRaMeshService::getInstance().maxAppPayload() - 1;
-        if (frame.line.size() > maxLine) {
-            frame.line.resize(maxLine - 1);
+        frame.status = result.status;
+        frame.line = result.text.c_str();
+        size_t maxText =
+            LoRaMeshService::getInstance().maxAppPayload() - CommandFrame::REPLY_HEADER_SIZE;
+        if (frame.line.size() > maxText) {
+            frame.line.resize(maxText - 1);
             frame.line += TRUNCATED_MARK;
         }
-        sendFrame(request.src, request.requestId, frame.encode());
+        if (sendFrame(request.src, request.requestId, frame.encode()) != CommandStatus::OK) {
+            ESP_LOGW(CR_TAG, "The reply to %04X [%u] could not be sent", request.src,
+                     request.requestId);
+        }
     }
 }
 
-void CommandRouter::sendFrame(uint16_t dst, uint8_t requestId, const std::vector<uint8_t>& bytes) {
+CommandStatus CommandRouter::sendFrame(uint16_t dst, uint8_t requestId,
+                                       const std::vector<uint8_t>& bytes) {
     std::vector<uint8_t> buffer(sizeof(DataMessage) + bytes.size());
     DataMessage* message = reinterpret_cast<DataMessage*>(buffer.data());
     message->appPortDst = CommandApp;
@@ -227,7 +351,16 @@ void CommandRouter::sendFrame(uint16_t dst, uint8_t requestId, const std::vector
     message->addrDst = dst;
     message->messageSize = bytes.size();
     std::copy(bytes.begin(), bytes.end(), message->message);
-    MessageManager::getInstance().sendMessage(LoRaMeshPort, message);
+    switch (LoRaMeshService::getInstance().send(message)) {
+        case MeshSend::SENT:
+            return CommandStatus::OK;
+        case MeshSend::QUEUE_FULL:
+            return CommandStatus::DROPPED;
+        case MeshSend::NO_ROUTE:
+        case MeshSend::FAILED:
+            break;
+    }
+    return CommandStatus::NO_ROUTE;
 }
 
 bool CommandRouter::loadCounter() {

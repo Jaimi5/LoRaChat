@@ -31,6 +31,16 @@ struct MeshStatus {
     size_t connectedNodes = 0;
 };
 
+/** What the mesh did with a message handed to it. */
+enum class MeshSend : uint8_t {
+    /** Queued for the next TX data slot. */
+    SENT,
+    NO_ROUTE,
+    QUEUE_FULL,
+    /** The mesh is not running, not synchronized or refused the message. */
+    FAILED,
+};
+
 class LoRaMeshService : public MessageService {
 public:
     static LoRaMeshService& getInstance() {
@@ -74,7 +84,8 @@ public:
 
     String getRoutingTable();
 
-    void send(DataMessage* message);
+    /** Hands @p message to the mesh. @return what the mesh did with it. */
+    MeshSend send(DataMessage* message);
 
     bool sendClosestGateway(DataMessage* message);
 
@@ -101,6 +112,21 @@ public:
      *         routing messages have been missed for long enough.
      */
     bool hasRouteTo(uint16_t dst);
+
+    /** @return the hops to @p dst in the routing table, or 0 without a valid route. */
+    uint8_t hopsTo(uint16_t dst);
+
+    /** @return the neighbour that relays toward @p dst, or 0 without a valid route. */
+    uint16_t nextHopTo(uint16_t dst);
+
+    /**
+     * @brief Tells how long a message handed to the mesh now waits before it is transmitted:
+     *        the time to this node's next TX data slot, plus one superframe for each message
+     *        already in the TX queue.
+     * @param waitMs the wait in ms.
+     * @return false if the mesh cannot say: it is not running or the node has no TX data slot.
+     */
+    bool timeToNextTxSlotMs(uint32_t& waitMs);
 
     void updateRoutingTable();
 

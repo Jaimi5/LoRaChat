@@ -14,6 +14,10 @@
  * network manager. The sleep mode decides how a sensor's MCU sleeps in the SLEEP slots; the sleep
  * fraction is the minimum share of the superframe the network sleeps, set by the network manager.
  */
+/** Errors of /role.set, /sleep.set and /sleep.fraction. */
+constexpr uint8_t NODE_ERR_VERIFYING = 128;
+constexpr uint8_t NODE_ERR_STORE = 129;
+
 class NodeService : public MessageService {
 public:
     static NodeService& getInstance() {
@@ -38,7 +42,7 @@ public:
      * @brief Stores the role named in @p text and restarts the node to apply it.
      * @return the reply to the command.
      */
-    String setRole(const String& text);
+    CommandReply setRole(const String& text);
 
     SleepMode sleepMode() const { return sleepMode_; }
 
@@ -52,20 +56,20 @@ public:
      * @brief Stores the sleep mode named in @p text and restarts the node to apply it.
      * @return the reply to the command.
      */
-    String setSleepMode(const String& text);
+    CommandReply setSleepMode(const String& text);
 
     /**
      * @brief Stores the minimum sleep fraction (whole percent, 0 to 90) and restarts the node.
      * @return the reply to the command.
      */
-    String setSleepFraction(const String& text);
+    CommandReply setSleepFraction(const String& text);
 
 private:
     NodeService() : MessageService(NodeApp, "Node") { commandService = &commands_; }
 
     NodeCommandService commands_;
     /** Stores @p value under @p key and restarts the node. @return the reply, or an error. */
-    String storeAndRestart(const char* key, uint8_t value, const String& done);
+    CommandReply storeAndRestart(const char* key, uint8_t value, const String& done);
 
     NodeRole role_ = NodeRole::SENSOR;
     bool stored_ = false;

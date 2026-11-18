@@ -65,8 +65,11 @@ public:
     /** @return the topic this gateway takes text commands on: cmd/<address in hex>. */
     static String commandTopic();
 
-    /** Publishes "<request id> <text>" on cmd-resp/<node in hex>. */
-    void publishCommandReply(uint16_t node, uint8_t requestId, const String& text);
+    /** Publishes @p payload, "<request id> <reply>", on cmd-resp/<node in hex>. */
+    void publishCommandReply(uint16_t node, const String& payload);
+
+    /** Publishes @p line, the progress of a forwarded command, on cmd-ack/<node in hex>. */
+    void publishCommandAck(uint16_t node, const String& line);
 
     String localName = "";
 

@@ -3,12 +3,18 @@
 constexpr uint8_t CommandFrame::FLAG_RESPONSE;
 constexpr uint8_t CommandFrame::FLAG_SIGNED;
 constexpr size_t CommandFrame::SIGNATURE_SIZE;
+constexpr size_t CommandFrame::REPLY_HEADER_SIZE;
 
 std::vector<uint8_t> CommandFrame::encode() const {
     std::vector<uint8_t> bytes;
-    bytes.reserve(1 + line.size() + SIGNATURE_SIZE);
+    bytes.reserve(REPLY_HEADER_SIZE + line.size() + SIGNATURE_SIZE);
     bytes.push_back(static_cast<uint8_t>((response ? FLAG_RESPONSE : 0) |
                                          (isSigned ? FLAG_SIGNED : 0)));
+    if (response) {
+        bytes.push_back(status);
+        bytes.insert(bytes.end(), line.begin(), line.end());
+        return bytes;
+    }
     bytes.insert(bytes.end(), line.begin(), line.end());
     if (isSigned) {
         for (int shift = 0; shift < 32; shift += 8) {
@@ -24,6 +30,15 @@ bool CommandFrame::decode(const uint8_t* data, size_t size, CommandFrame& out) {
     CommandFrame frame;
     frame.response = (data[0] & FLAG_RESPONSE) != 0;
     frame.isSigned = (data[0] & FLAG_SIGNED) != 0;
+    if (frame.response) {
+        if (frame.isSigned) return false;
+        frame.status = data[1];
+        frame.line.assign(reinterpret_cast<const char*>(data + REPLY_HEADER_SIZE),
+                          size - REPLY_HEADER_SIZE);
+        if (frame.line.find('\0') != std::string::npos) return false;
+        out = frame;
+        return true;
+    }
     size_t lineEnd = size;
     if (frame.isSigned) {
         if (size < 2 + SIGNATURE_SIZE) return false;

@@ -96,7 +96,7 @@ The age on the large row is the smallest of two times: the time since the last a
 There are two ways to find a good spot:
 
 - **At the node.** Press the power button and read the large row. Move the node, wait for the age to restart from a few seconds and read the verdict again. The display keeps the node awake while it is on.
-- **From the web.** Send the signed command `/install` to the node (ten minutes by default) and watch its reports arrive. In install mode the node does not sleep and sends a monitor report every two superframes, at least 10 s apart (about every 30 s with a 15.2 s superframe). The screen shows `INSTALL` and the time left. The mode ends by itself, after `/install 0` or at a reboot, and the node then reports and sleeps as before.
+- **From the web.** Send the signed command `/install` to the node (ten minutes by default) and watch its reports arrive. In install mode the node does not sleep and sends a monitor report every two superframes, at least 10 s apart (every 30.4 s with a 15.2 s superframe). The screen shows `INSTALL` and the time left. The mode ends by itself, after `/install 0` or at a reboot, and the node then reports and sleeps as before.
 
 One install report is a 57 byte packet with three neighbours, about 0.46 s on air at SF9. Every 30.4 s that is 1.5 % of the time, next to the 3.4 % of the node's own mesh traffic, so the node stays below the 10 % duty cycle of the 869.4 to 869.65 MHz band.
 
@@ -181,22 +181,66 @@ Text commands arrive from three channels and run one at a time:
 
 - **USB serial** (115200 baud, one command per line): trusted, runs every command. The reply follows a `> <command>` line; the arguments are not echoed, since they can hold keys.
 - **LoRa**: a line typed as `@<node> <command>` on a node's serial console is sent to that node; its reply arrives as `< <node> [<request>] <reply>`.
-- **MQTT** (gateway): publish `<node> <request id> <command>` on `cmd/<gateway>`; the reply is published on `cmd-resp/<node>` as `<request id> <reply>`. A command for another node is sent on over LoRa.
+- **MQTT** (gateway): publish `<node> <request id> <command>` on `cmd/<gateway>`. The reply is published on `cmd-resp/<node>` as `<request id> <reply>`. A command for another node is sent on over LoRa, and the gateway reports its progress on `cmd-ack/<node>`.
 
-Every command has a permission: **Open** commands run from any channel, **Signed** commands need a signature when they come over LoRa or MQTT, and **local** commands only run on the serial console. A signature is ` #<counter>.<tag>` at the end of the line, made with the deployment key by `scripts/ota_tools/lmcmd.py sign` (see [scripts/ota_tools/README.md](scripts/ota_tools/README.md)). A node runs each counter once: an older counter gets `ERR replay`, the same counter again gets the stored reply. Remote errors are short: `ERR unknown`, `ERR perm`, `ERR auth`, `ERR replay`, `ERR storage`. A command with a wrong argument answers with its `Usage: ...` line on every channel.
+Every command has a permission: **Open** commands run from any channel, **Signed** commands need a signature when they come over LoRa or MQTT, and **local** commands only run on the serial console. A signature is ` #<counter>.<tag>` at the end of the line, made with the deployment key by `scripts/ota_tools/lmcmd.py sign` (see [scripts/ota_tools/README.md](scripts/ota_tools/README.md)). A node runs each counter once. An older counter gets the error `replay`. The same counter again gets the stored reply with its stored status, or `OK already executed` if the node restarted in between.
 
-A gateway answers every command it sends on to another node. `ERR no route` comes at once when the mesh has no route to the node. A signed command that gets no reply is sent a second time after half the timeout, and the node still runs it once. After the timeout, 30 s or three superframes if that is longer, the operator sees `ERR timeout <n> s`. `ERR dropped` means that more than eight commands were waiting and the oldest gave up its place. All of these arrive on `cmd-resp/<node>`. A sleeping node hears a command in its next receive slot and answers in its own slot, so its reply takes one to three superframes. A reply that arrives after the timeout is discarded.
+#### Reply status
+
+Every reply carries a status. 0 is success and the reply is the text of the command. 1 to 127 are the same errors for every command. 128 to 255 are errors of the command that was sent, and `/cmds` lists their texts. An error may carry one short argument.
+
+| Code | Name | Argument | Meaning |
+|---|---|---|---|
+| 1 | unknown | | Unknown command |
+| 2 | perm | | This command needs a signature |
+| 3 | auth | | The signature is not valid |
+| 4 | replay | | An older command than the last one. Not run |
+| 5 | arg | | Bad argument |
+| 6 | storage | | The node could not store the command counter |
+| 7 | no route | | The gateway has no route to the node |
+| 8 | timeout | seconds waited | No reply within the time the gateway waited |
+| 9 | dropped | | Dropped by the gateway, too many commands waiting |
+| 10 | too long | max line bytes | The command does not fit in one LoRa frame |
+| 11 | busy | | The node cannot run this now |
+
+Codes 7 to 10 come from the gateway and never travel over LoRa. On the serial console an error prints its text, and a bad argument prints `Usage: <command> <arguments>`. On MQTT an error is `<request id> E<code>` or `<request id> E<code> <argument>` on `cmd-resp/<node>`, for example `17 E7`, `17 E8 94` or `17 E5`. No successful reply starts with `E` and a digit. On LoRa a reply frame is the flags byte, the status byte and then the text or the argument.
+
+`/cmds [page]` lists every command for programs. Ask the gateway itself over MQTT, so the answer does not cross LoRa. Each page stays under 900 bytes:
+
+```
+cmds 1 0.1.2+g2bfdeeb 1/4
+E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;10=too long;11=busy
+/addPassword|local|<password of at most 64 bytes>|
+/connectWiFi|signed||128=The WiFi did not connect
+```
+
+Line 1 holds the format version `1`, the firmware version and the page position. The `E|` line with the generic errors comes on page 1 only. Then one line per command, sorted by name: `name|perm|usage|code=text;code=text`, where perm is `open`, `signed` or `local`. A command name registered by two services is refused at boot with an error in the log.
+
+#### Commands for other nodes
+
+A gateway answers every command it sends on to another node. `E7` comes at once when the mesh has no route. Otherwise the gateway waits as long as a reply without losses can take: `A = w + (h + 1) · S + ceil(P / S) · S + 2 s`, where `S` is the superframe, `h` the hops to the node, `w` the time until the gateway's next TX data slot (plus `S` for each message already in its queue) and `P` the time the command needs to run (0 for most, the measurement time for `/sensor`). It never sends a command again before that, because the first one may still be on its way. A signed command is sent once more after `A` and given up after another `A`, and the node still runs it once. An unsigned command is given up after `A` (`E8 <seconds>`). Example: a node two hops away with a 15.2 s superframe and the gateway's slot 4.3 s away gives `A` = 4.3 + 45.6 + 2 = 51.9 s. `E9` means that more than eight commands were waiting and the oldest gave up its place. A reply that arrives up to ten minutes after its `E8` is still published.
+
+For a command from MQTT the gateway also publishes on `cmd-ack/<node>`:
+
+| Line | When |
+|---|---|
+| `<request id> Q <giveup_s> <expected_s> <hops> <superframe_ms>` | The command was sent on. `giveup_s` is the time until `E8`, `expected_s` the time until the reply is expected |
+| `<request id> R <giveup_s>` | The command was sent a second time. `giveup_s` is the time left |
+| `<request id> D <rtt_ms> <attempts>` | Right after a reply was published. `rtt_ms` is the time from the first send to the reply, `attempts` is 1 or 2 |
+
+`expected_s` comes from the replies the gateway has measured for that node (a smoothed round trip time as in RFC 6298, kept in RAM), or from `w + h · S` while it has none. The measurement never shortens a wait. The same command published again with the same request id while it waits is not sent again. The gateway answers it with a new `Q` line that holds the remaining times. Commands that the gateway runs itself and commands refused with `E7` or `E10` get no line on `cmd-ack`. The broker must let the gateway user write `cmd-ack/#`.
 
 | Command | Permission | Effect |
 |---|---|---|
 | `/help` | Open | Lists the commands the channel may run |
+| `/cmds [page]` | Open | Lists every command with its permission, arguments and errors, for programs |
 | `/version` | Open | Version, slot, image state, bootloader hash, board and address |
 | `/ota.status` | Open | Last update attempt and its outcome |
 | `/role` | Open | The role and whether it is stored or the default |
 | `/power` | Open | Power chip, supply, battery and charger state (with the AXP2101 registers) |
-| `/sensor` | Open | The environment sensor (chip and I2C address) and a new measurement, or that no sensor was found |
+| `/sensor` | Open | The environment sensor (chip and I2C address) and a new measurement. Error 128 means that no sensor was found |
 | `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10) to find the board |
-| `/install [seconds]` | Signed | Install mode for 600 s, or for the given time up to 3600 s: the node stays awake and reports every two superframes. A new `/install` sets a new end time, `/install 0` stops it. A value above 3600 is refused. Replies `OK install <n> s` or `OK install off` |
+| `/install [seconds]` | Signed | Install mode for 600 s, or for the given time up to 3600 s: the node stays awake and reports every two superframes. A new `/install` sets a new end time, `/install 0` stops it. A value above 3600 is a bad argument. Replies `OK install <n> s` or `OK install off` |
 | `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
 | `/sleep` | Open | Sleep mode and sleep fraction (stored or default) and the light and deep sleeps since power-on |
 | `/sleep.set none\|light\|deep` | Signed | Stores how a sensor's MCU sleeps through the SLEEP slots and restarts the node. Refused while a new image is being verified |
@@ -220,7 +264,7 @@ A gateway answers every command it sends on to another node. `ERR no route` come
 
 In the display commands `<addr>` is the destination node as exactly four hex digits (`0A3F`). Any other first word belongs to the text, so `/displayText add milk` shows `add milk` on this node. A text that starts with a four-digit hex word needs the node's own address in front. A node without a working display still sends display commands to other nodes. Text sent to another node takes up to 100 characters at SF9 (one LoRa packet), and longer text is refused.
 
-One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there); longer replies end in `~`.
+One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there). A reply has room for 100 characters there, and a longer one is cut and ends in `~`.
 
 Sensor nodes can let the ESP32 sleep while the mesh has nothing for them (`/sleep.set`, default `none`). The radio always sleeps in the SLEEP slots. `light` puts the MCU into light sleep through each run of SLEEP slots. `deep` deep-sleeps through runs long enough for a reboot (`LORA_DEEP_SLEEP_MIN_MS` plus `LORA_DEEP_SLEEP_BOOT_MS` in `src/config.h`) and light-sleeps through shorter ones. In deep-sleep mode the node keeps its mesh state in RTC memory and resumes its slots after the wake-up, without the display, the charger restart or the WiFi boot window, and the wake-up does not count as a boot. Long sleep runs need a gateway with a higher `/sleep.fraction`. A node stays awake while its display is on, in install mode, during a maintenance window and while a new image is being verified. The gateway never sleeps. A node also stays awake while the power chip signals an event that has not been read yet, and logs a warning if that lasts more than 5 s.
 
@@ -238,6 +282,7 @@ Messages travel as JSON on two topics:
 
 - `from-server/<gateway id>` (`MQTT_TOPIC_SUB`): messages from the server to the mesh. The `addrDst` field selects the destination node.
 - `to-server/<gateway id>` (`MQTT_TOPIC_OUT`): messages from the mesh to the server.
+- `cmd/<gateway hex>`, `cmd-resp/<node hex>` and `cmd-ack/<node hex>`: text commands, their replies and their progress (see [Commands](#commands)).
 
 Every message carries a common header followed by the payload of the application that produced it. The application ports are listed in `src/message/dataMessage.h`.
 
@@ -256,7 +301,7 @@ Every message carries a common header followed by the payload of the application
 
 The fields after the header depend on the application. Monitor reports (`appPortSrc` 16) only travel to the server; the gateway drops any it receives from the server.
 
-A monitor report carries the node's uptime, queues, report interval, battery voltage and power flags, and for each direct neighbour its RSSI and SNR (report format 2, `"v": 2` in the JSON). `interval_s` is the time until the next report: 300 s normally and two superframes in install mode, when `install` is 1. A node with an environment sensor adds `temp_c`, `hpa` and, with a BME280, `rh`. A gateway decodes both formats, but a gateway with older firmware drops format 2 reports, so flash the gateway before the other nodes.
+A monitor report carries the node's uptime, queues, report interval, battery voltage and power flags, and for each direct neighbour its RSSI and SNR (report format 2, `"v": 2` in the JSON). `interval_s` is the time until the next report: 300 s normally and two superframes in install mode, when `install` is 1. The gateway adds `sf_ms`, the duration of its superframe in ms when it builds the JSON. A node with an environment sensor adds `temp_c`, `hpa` and, with a BME280, `rh`. A gateway decodes both formats, but a gateway with older firmware drops format 2 reports, so flash the gateway before the other nodes.
 
 ## More information on the design and evaluation of LoRaChat
 Please see our open access paper ["Middleware for Distributed Applications in a LoRa Mesh Network"]([https://ieeexplore.ieee.org/document/9930341](https://dl.acm.org/doi/10.1145/3747295)) for a detailed description. If you use the LoRaChat, in academic work, please cite the following:

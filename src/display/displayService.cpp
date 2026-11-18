@@ -86,12 +86,12 @@ void DisplayService::setText(const char* text) {
     textAtUs_ = esp_timer_get_time();
 }
 
-String DisplayService::execute(DisplayCommand command, uint16_t dst, const String& text) {
-    if (command > DisplayCommand::DisplayLogo) return "Unknown display command";
+CommandReply DisplayService::execute(DisplayCommand command, uint16_t dst, const String& text) {
+    if (command > DisplayCommand::DisplayLogo) return CommandStatus::ARG;
     if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
         return sendRemote(command, dst, text);
     }
-    if (!ready_) return "Display Service not initialized";
+    if (!ready_) return CommandReply(DISPLAY_ERR_NO_DISPLAY, "");
 
     switch (command) {
         case DisplayCommand::DisplayOn:
@@ -117,12 +117,12 @@ String DisplayService::execute(DisplayCommand command, uint16_t dst, const Strin
     return String("Display ") + COMMAND_NAMES[command];
 }
 
-String DisplayService::sendRemote(DisplayCommand command, uint16_t dst, const String& text) {
+CommandReply DisplayService::sendRemote(DisplayCommand command, uint16_t dst, const String& text) {
     if (command == DisplayCommand::DisplayText && text.length() > maxRemoteTextLength()) {
-        return "Text longer than " + String(maxRemoteTextLength()) + " characters";
+        return CommandReply(DISPLAY_ERR_TEXT_TOO_LONG, String(maxRemoteTextLength()));
     }
     DataMessagePtr message = getDisplayMessage(command, dst, text);
-    if (!message) return "No memory for the message";
+    if (!message) return CommandReply(DISPLAY_ERR_NOT_SENT, "");
     MessageManager::getInstance().sendMessage(messagePort::LoRaMeshPort, message.get());
     return String("Send Display ") + COMMAND_NAMES[command];
 }

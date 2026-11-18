@@ -36,11 +36,11 @@ String NodeService::describeRole() const {
     return String(nodeRoleName(role_)) + (stored_ ? " (stored)" : " (default)");
 }
 
-String NodeService::setRole(const String& text) {
+CommandReply NodeService::setRole(const String& text) {
     NodeRole role;
     String name = text;
     name.trim();
-    if (!parseNodeRole(name.c_str(), role)) return "Usage: /role.set gateway|sensor";
+    if (!parseNodeRole(name.c_str(), role)) return CommandStatus::ARG;
     return storeAndRestart(NVS_KEY_ROLE, static_cast<uint8_t>(role),
                            String("Role set to ") + nodeRoleName(role));
 }
@@ -52,37 +52,36 @@ String NodeService::describeSleep() const {
     return text + sleepFraction_ + " % (stored)";
 }
 
-String NodeService::setSleepMode(const String& text) {
+CommandReply NodeService::setSleepMode(const String& text) {
     SleepMode mode;
     String name = text;
     name.trim();
-    if (!parseSleepMode(name.c_str(), mode)) return "Usage: /sleep.set none|light|deep";
+    if (!parseSleepMode(name.c_str(), mode)) return CommandStatus::ARG;
     return storeAndRestart(NVS_KEY_SLEEP_MODE, static_cast<uint8_t>(mode),
                            String("Sleep mode set to ") + sleepModeName(mode));
 }
 
-String NodeService::setSleepFraction(const String& text) {
+CommandReply NodeService::setSleepFraction(const String& text) {
     uint8_t percent = 0;
     String value = text;
     value.trim();
-    if (!parseSleepFraction(value.c_str(), percent)) {
-        return String("Usage: /sleep.fraction <0-") + MAX_SLEEP_FRACTION_PERCENT + ">";
-    }
+    if (!parseSleepFraction(value.c_str(), percent)) return CommandStatus::ARG;
     return storeAndRestart(NVS_KEY_SLEEP_FRACTION, percent,
                            String("Sleep fraction set to ") + percent + " %");
 }
 
-String NodeService::storeAndRestart(const char* key, uint8_t value, const String& done) {
+CommandReply NodeService::storeAndRestart(const char* key, uint8_t value, const String& done) {
     if (OtaBootGuard::getInstance().isPendingVerify()) {
-        return "The image is still being verified; try again when it is valid";
+        return CommandReply(NODE_ERR_VERIFYING, "");
     }
 
     nvs_handle_t handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return "NVS not available";
+    esp_err_t opened = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (opened != ESP_OK) return CommandReply(NODE_ERR_STORE, esp_err_to_name(opened));
     esp_err_t err = nvs_set_u8(handle, key, value);
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
-    if (err != ESP_OK) return String("Could not store it: ") + esp_err_to_name(err);
+    if (err != ESP_OK) return CommandReply(NODE_ERR_STORE, esp_err_to_name(err));
 
     esp_timer_create_args_t args = {};
     args.callback = [](void*) { esp_restart(); };
@@ -91,5 +90,5 @@ String NodeService::storeAndRestart(const char* key, uint8_t value, const String
     esp_timer_handle_t timer = nullptr;
     if (esp_timer_create(&args, &timer) == ESP_OK) esp_timer_start_once(timer, RESTART_DELAY_US);
     ESP_LOGI(NODE_TAG, "%s, restarting", done.c_str());
-    return done + ", restarting";
+    return String(done + ", restarting");
 }

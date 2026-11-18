@@ -7,9 +7,24 @@
 #include <mutex>
 #include <string>
 
+#include "cmdStatus.h"
 #include "esp_netif.h"
 #include "freertos/event_groups.h"
 #include "maintWindowPlan.h"
+
+/** Errors of /maint.open. */
+enum MaintOpenError : uint8_t {
+    MAINT_ERR_GATEWAY_AP = 128,
+    MAINT_ERR_VERIFYING = 129,
+    MAINT_ERR_NO_KEY = 130,
+    /** The argument is the name of the policy decision. */
+    MAINT_ERR_POLICY = 131,
+    MAINT_ERR_DAILY_LIMIT = 132,
+    MAINT_ERR_STILL_OPEN = 133,
+    MAINT_ERR_NO_TASK = 134,
+    MAINT_ERR_GATEWAY_WIFI = 135,
+    MAINT_ERR_CHECK_RUNNING = 136,
+};
 
 /**
  * @brief WiFi for maintenance on sensor nodes.
@@ -59,10 +74,10 @@ public:
     bool isBusy() const { return busy_; }
 
     /** Opens or extends a pull window of @p durationS seconds. @return the reply. */
-    std::string openPullWindow(uint32_t durationS) { return open(Kind::PULL, durationS); }
+    CommandResult openPullWindow(uint32_t durationS) { return open(Kind::PULL, durationS); }
 
     /** Opens or extends the access point for @p durationS seconds. @return the reply. */
-    std::string openApWindow(uint32_t durationS) { return open(Kind::AP, durationS); }
+    CommandResult openApWindow(uint32_t durationS) { return open(Kind::AP, durationS); }
 
     /** Closes the open window. @return the reply to the command. */
     std::string closeWindow();
@@ -70,9 +85,9 @@ public:
     /**
      * @brief Saves the station credentials in the WiFi driver's NVS config, where the windows
      *        (and a gateway) read them. Refused while a window is open.
-     * @return the reply to the command.
+     * @return the reply to the command, or one of MaintWifiError.
      */
-    std::string storeCredentials(const std::string& ssid, const std::string& password);
+    CommandResult storeCredentials(const std::string& ssid, const std::string& password);
 
     /** Saves the node clock. Call before a planned reboot. */
     void saveClock();
@@ -82,9 +97,9 @@ private:
 
     MaintenanceWifi() = default;
 
-    std::string open(Kind kind, uint32_t durationS);
+    CommandResult open(Kind kind, uint32_t durationS);
     /** Runs the update check now over the WiFi a gateway keeps connected. */
-    std::string checkOverGatewayWifi();
+    CommandResult checkOverGatewayWifi();
     bool startTask(Kind kind);
     static void windowTask(void* parameter);
     static void resumeTask(void* parameter);

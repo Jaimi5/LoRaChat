@@ -17,6 +17,14 @@
 
 #include "config.h"
 
+/** Errors of the display commands. */
+enum DisplayError : uint8_t {
+    DISPLAY_ERR_NO_DISPLAY = 128,
+    /** The argument is the longest text in characters. */
+    DISPLAY_ERR_TEXT_TOO_LONG = 129,
+    DISPLAY_ERR_NOT_SENT = 130,
+};
+
 /**
  * @brief SSD1306 display: one status screen, redrawn when its content changes.
  *
@@ -48,7 +56,7 @@ public:
      * @param text the line of a DisplayText command.
      * @return the reply for the command.
      */
-    String execute(DisplayCommand command, uint16_t dst, const String& text = "");
+    CommandReply execute(DisplayCommand command, uint16_t dst, const String& text = "");
 
     String getJSON(DataMessage* message) override;
 
@@ -100,7 +108,7 @@ private:
     /** Posts @p request to DisplayTask and turns the display on so it is seen. */
     void requestPanel(PanelRequest request);
     void setText(const char* text);
-    String sendRemote(DisplayCommand command, uint16_t dst, const String& text);
+    CommandReply sendRemote(DisplayCommand command, uint16_t dst, const String& text);
 
     static void displayTask(void* pvParameters);
 

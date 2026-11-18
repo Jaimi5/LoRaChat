@@ -1,42 +1,61 @@
 #include "nodeCommandService.h"
 
+#include "bme280Math.h"
 #include "devices/initDevices.h"
 #include "loramesh/loraMeshService.h"
 #include "nodeService.h"
 #include "sensor/bme280.h"
 
+namespace {
+
+/** A setting that is stored and takes effect after a restart. */
+Command storedSetting(const char* name, const char* description, const String& usage,
+                      Command::Callback callback) {
+    return Command(name, description, Perm::SIGNED, std::move(callback))
+        .withUsage(usage)
+        .withCode(NODE_ERR_VERIFYING, "The new image is still being verified. Try again later")
+        .withCode(NODE_ERR_STORE, "The setting could not be stored");
+}
+
+}  // namespace
+
 NodeCommandService::NodeCommandService() {
     addCommand(Command("/role", "Show the node role (gateway or sensor)", Perm::OPEN,
                        [](String) { return NodeService::getInstance().describeRole(); }));
-    addCommand(Command("/role.set", "Set the node role: /role.set gateway|sensor (restarts)",
-                       Perm::SIGNED,
-                       [](String args) { return NodeService::getInstance().setRole(args); }));
+    addCommand(storedSetting("/role.set", "Set the node role (restarts)", "<gateway or sensor>",
+                             [](String args) { return NodeService::getInstance().setRole(args); }));
     addCommand(Command("/sleep", "Show the sleep settings and the sleeps since power-on",
                        Perm::OPEN, [](String) {
                            return NodeService::getInstance().describeSleep() + "; " +
                                   LoRaMeshService::getInstance().sleepReport().c_str();
                        }));
-    addCommand(Command("/sleep.set", "Set the sensor sleep mode: /sleep.set none|light|deep "
-                                     "(restarts)",
-                       Perm::SIGNED,
-                       [](String args) { return NodeService::getInstance().setSleepMode(args); }));
-    addCommand(Command("/sleep.fraction",
-                       "Set the minimum sleep share of the superframe on the network manager: "
-                       "/sleep.fraction <0-90> (restarts)",
-                       Perm::SIGNED, [](String args) {
-                           return NodeService::getInstance().setSleepFraction(args);
-                       }));
+    addCommand(
+        storedSetting("/sleep.set", "Set the sensor sleep mode (restarts)", "<none, light or deep>",
+                      [](String args) { return NodeService::getInstance().setSleepMode(args); }));
+    addCommand(storedSetting(
+        "/sleep.fraction",
+        "Set the minimum sleep share of the superframe on the network manager (restarts)",
+        String("<percent from 0 to ") + MAX_SLEEP_FRACTION_PERCENT + ">",
+        [](String args) { return NodeService::getInstance().setSleepFraction(args); }));
     addCommand(Command("/power", "Show supply, battery and charger state", Perm::OPEN,
                        [](String) { return String(InitDevices::powerReport().c_str()); }));
     addCommand(
         Command("/sensor", "Show the BME280 or BMP280 sensor and a new measurement", Perm::OPEN,
-                [](String) { return String(Bme280Sensor::getInstance().describe().c_str()); }));
-    addCommand(Command("/identify", "Blink the LEDs to find the board: /identify [seconds] (10)",
-                       Perm::OPEN, [](String args) {
-                           constexpr long DEFAULT_S = 10;
-                           constexpr long MAX_S = 600;
-                           long seconds = args.length() > 0 ? args.toInt() : DEFAULT_S;
-                           if (seconds <= 0 || seconds > MAX_S) seconds = DEFAULT_S;
+                [](String) { return CommandReply(Bme280Sensor::getInstance().describe()); })
+            .withAllowance(bme280MeasureTimeMs(true))
+            .withCode(SENSOR_ERR_NOT_FOUND, "No sensor found (BME280 or BMP280 at 0x76 or 0x77)")
+            .withCode(SENSOR_ERR_NO_MEASUREMENT, "The sensor gave no measurement")
+            .withCode(SENSOR_ERR_NO_SUPPORT, "This firmware has no sensor support"));
+    constexpr long IDENTIFY_DEFAULT_S = 10;
+    constexpr long IDENTIFY_MAX_S = 600;
+    addCommand(Command("/identify", "Blink the LEDs to find the board", Perm::OPEN,
+                       [](String args) {
+                           long seconds = args.length() > 0 ? args.toInt() : IDENTIFY_DEFAULT_S;
+                           if (seconds <= 0 || seconds > IDENTIFY_MAX_S) {
+                               seconds = IDENTIFY_DEFAULT_S;
+                           }
                            return String(InitDevices::identify(seconds).c_str());
-                       }));
+                       })
+                   .withUsage(String("[seconds] (default ") + IDENTIFY_DEFAULT_S + ", up to " +
+                              IDENTIFY_MAX_S + ")"));
 }

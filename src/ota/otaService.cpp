@@ -44,23 +44,24 @@ String OtaService::describeKey() const {
     return String("Deployment key stored, fingerprint ") + keyFingerprint(key).c_str();
 }
 
-String OtaService::setKey(const String& text) {
+CommandReply OtaService::setKey(const String& text) {
     DeploymentKey key;
-    if (!parseDeploymentKey(text.c_str(), key)) return "Usage: /key.set <64 hex digits>";
+    if (!parseDeploymentKey(text.c_str(), key)) return CommandStatus::ARG;
 
     nvs_handle_t handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return "NVS not available";
-    esp_err_t err = nvs_set_blob(handle, NVS_KEY_DEPLOYMENT, key.data(), key.size());
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return CommandReply(OTA_ERR_FAILED, esp_err_to_name(err));
+    err = nvs_set_blob(handle, NVS_KEY_DEPLOYMENT, key.data(), key.size());
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
-    if (err != ESP_OK) return String("Could not store the key: ") + esp_err_to_name(err);
+    if (err != ESP_OK) return CommandReply(OTA_ERR_FAILED, esp_err_to_name(err));
 
     std::string fingerprint = keyFingerprint(key);
     ESP_LOGI(OS_TAG, "Deployment key stored, fingerprint %s", fingerprint.c_str());
     return String("Deployment key stored, fingerprint ") + fingerprint.c_str();
 }
 
-String OtaService::openWindow(const String& args) {
+CommandReply OtaService::openWindow(const String& args) {
     String text = args;
     text.trim();
     int space = text.indexOf(' ');
@@ -74,13 +75,11 @@ String OtaService::openWindow(const String& args) {
     uint32_t maxSeconds = accessPoint ? MAX_AP_WINDOW_S : MAX_PULL_WINDOW_S;
     if (seconds.isEmpty() || *end != '\0' || duration == 0 || duration > maxSeconds ||
         (!kind.isEmpty() && !accessPoint)) {
-        return String("Usage: /maint.open <seconds> [ap], up to ") + MAX_PULL_WINDOW_S +
-               " s, or " + MAX_AP_WINDOW_S + " s with ap";
+        return CommandStatus::ARG;
     }
 
     MaintenanceWifi& wifi = MaintenanceWifi::getInstance();
-    std::string reply = accessPoint ? wifi.openApWindow(duration) : wifi.openPullWindow(duration);
-    return reply.c_str();
+    return accessPoint ? wifi.openApWindow(duration) : wifi.openPullWindow(duration);
 }
 
 String OtaService::closeWindow() {
@@ -110,14 +109,14 @@ String OtaService::otaStatus() const {
     return text;
 }
 
-String OtaService::reboot() {
+CommandReply OtaService::reboot() {
     esp_timer_create_args_t args = {};
     args.callback = [](void*) { esp_restart(); };
     args.name = "reboot";
     esp_timer_handle_t timer = nullptr;
     if (esp_timer_create(&args, &timer) != ESP_OK ||
         esp_timer_start_once(timer, REBOOT_DELAY_US) != ESP_OK) {
-        return "Reboot could not be scheduled";
+        return CommandReply(OTA_ERR_FAILED, "");
     }
     MaintenanceWifi::getInstance().saveClock();
     ESP_LOGW(OS_TAG, "Reboot requested");
@@ -136,27 +135,28 @@ std::string OtaService::serverUrl() const {
     return OTA_SERVER_URL;
 }
 
-String OtaService::setServer(const String& args) {
+CommandReply OtaService::setServer(const String& args) {
     String url = args;
     url.trim();
     if (url.isEmpty()) return String("OTA server: ") + serverUrl().c_str();
     bool reset = url == "default";
     if (!reset && (!url.startsWith("http://") || url.length() > MAX_SERVER_URL)) {
-        return "Usage: /ota.server [http://host:port/folder/ | default]";
+        return CommandStatus::ARG;
     }
 
     nvs_handle_t handle;
-    if (nvs_open(NVS_OTA_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) return "NVS not available";
-    esp_err_t err = reset ? nvs_erase_key(handle, NVS_KEY_SERVER)
-                          : nvs_set_str(handle, NVS_KEY_SERVER, url.c_str());
+    esp_err_t err = nvs_open(NVS_OTA_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return CommandReply(OTA_ERR_FAILED, esp_err_to_name(err));
+    err = reset ? nvs_erase_key(handle, NVS_KEY_SERVER)
+                : nvs_set_str(handle, NVS_KEY_SERVER, url.c_str());
     if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
-    if (err != ESP_OK) return String("Could not store the server: ") + esp_err_to_name(err);
+    if (err != ESP_OK) return CommandReply(OTA_ERR_FAILED, esp_err_to_name(err));
     return String("OTA server: ") + serverUrl().c_str();
 }
 
-String OtaService::setWifi(const String& args) {
+CommandReply OtaService::setWifi(const String& args) {
     std::string ssid;
     std::string password;
     uint32_t counter = 0;
@@ -164,7 +164,7 @@ String OtaService::setWifi(const String& args) {
         std::vector<uint8_t> sealed;
         DeploymentKey key;
         if (!fromHex(args.c_str(), sealed) || !deploymentKey(key)) {
-            return "Usage: /maint.wifi <encrypted credentials> (scripts/ota_tools/lmcmd.py wifi)";
+            return CommandStatus::ARG;
         }
         Sha256 sealKey = hmacSha256(key.data(), key.size(), SEAL_LABEL, sizeof(SEAL_LABEL));
         KeyedHmac sealHmac = [&sealKey](const uint8_t* data, size_t size) {
@@ -172,19 +172,21 @@ String OtaService::setWifi(const String& args) {
         };
         uint16_t local = LoRaMeshService::getInstance().getLocalAddress();
         std::vector<uint8_t> plain = sealCommandArgs(sealHmac, local, counter, sealed);
-        if (!decodeWifiCredentials(plain, ssid, password)) return "Invalid WiFi credentials";
+        if (!decodeWifiCredentials(plain, ssid, password)) {
+            return CommandReply(WIFI_ERR_INVALID, "");
+        }
     } else {
         std::string text = args.c_str();
         size_t space = text.find(' ');
         ssid = text.substr(0, space);
         password = space == std::string::npos ? "" : text.substr(space + 1);
         if (!decodeWifiCredentials(encodeWifiCredentials(ssid, password), ssid, password)) {
-            return "Usage: /maint.wifi <ssid> [<password of 8-63 characters>]";
+            return CommandStatus::ARG;
         }
     }
 
     if (NodeService::getInstance().isGateway()) {
         return WiFiServerService::getInstance().storeCredentials(ssid.c_str(), password.c_str());
     }
-    return MaintenanceWifi::getInstance().storeCredentials(ssid, password).c_str();
+    return MaintenanceWifi::getInstance().storeCredentials(ssid, password);
 }

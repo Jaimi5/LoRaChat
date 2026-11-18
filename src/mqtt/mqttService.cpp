@@ -128,11 +128,16 @@ String MqttService::commandTopic() {
     return topic;
 }
 
-void MqttService::publishCommandReply(uint16_t node, uint8_t requestId, const String& text) {
+void MqttService::publishCommandReply(uint16_t node, const String& payload) {
     char topic[20];
     snprintf(topic, sizeof(topic), "cmd-resp/%04X", node);
-    String body = String(requestId) + " " + text;
-    mqtt_service_send(topic, body.c_str(), 0);
+    mqtt_service_send(topic, payload.c_str(), 0);
+}
+
+void MqttService::publishCommandAck(uint16_t node, const String& line) {
+    char topic[20];
+    snprintf(topic, sizeof(topic), "cmd-ack/%04X", node);
+    mqtt_service_send(topic, line.c_str(), 0);
 }
 
 void MqttService::processReceivedMessageFromMQTT(String& topic, String& payload) {

@@ -33,6 +33,16 @@
 #define DEFAULT_WIFI_PASSWORD "DEFAULT_PASSWORD"
 
 
+/** Errors of /maint.wifi. */
+enum MaintWifiError : uint8_t {
+    WIFI_ERR_INVALID = 128,
+    WIFI_ERR_WINDOW_OPEN = 129,
+    WIFI_ERR_STORE = 130,
+};
+
+/** Error of /connectWiFi, /resetWiFiData and /getIP: the command could not do its work. */
+constexpr uint8_t WIFI_ERR_FAILED = 128;
+
 class WiFiServerService : public MessageService {
 public:
     /**
@@ -66,21 +76,21 @@ public:
     static constexpr size_t MAX_PASSWORD_LENGTH = sizeof(wifi_sta_config_t::password);
 
     /** Sets the SSID used by the next connect. @return a message; rejects empty or > 32 bytes. */
-    String addSSID(String ssid);
+    CommandReply addSSID(String ssid);
 
     /** Sets the password used by the next connect. @return a message; rejects > 64 bytes. */
-    String addPassword(String password);
+    CommandReply addPassword(String password);
 
     /**
      * @brief Saves the station credentials in the WiFi driver's NVS config and reconnects
      *        with them. @return the reply to the command.
      */
-    String storeCredentials(const String& ssid, const String& password);
+    CommandReply storeCredentials(const String& ssid, const String& password);
 
-    String resetWiFiData();
+    CommandReply resetWiFiData();
 
 
-    String getIP();
+    CommandReply getIP();
 
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);

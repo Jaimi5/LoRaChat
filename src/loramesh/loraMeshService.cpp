@@ -255,18 +255,23 @@ String LoRaMeshService::getRoutingTable() {
     return routingTable;
 }
 
-void LoRaMeshService::send(DataMessage* message) {
-    if (!mesher_)
-        return;
+MeshSend LoRaMeshService::send(DataMessage* message) {
+    if (!mesher_) return MeshSend::FAILED;
 
     ESP_LOGV(LMS_TAG, "Heap size send: %d", ESP.getFreeHeap());
 
     auto result = mesher_->Send(message->addrDst, createLoRaMeshFrame(*message));
-    if (!result) {
-        ESP_LOGW(LMS_TAG, "v2 Send failed");
+    if (result) return MeshSend::SENT;
+    ESP_LOGW(LMS_TAG, "Send to %04X failed: %s", message->addrDst,
+             result.GetErrorMessage().c_str());
+    switch (result.getErrorCode()) {
+        case loramesher::LoraMesherErrorCode::kNoRoute:
+            return MeshSend::NO_ROUTE;
+        case loramesher::LoraMesherErrorCode::kQueueFull:
+            return MeshSend::QUEUE_FULL;
+        default:
+            return MeshSend::FAILED;
     }
-
-    ESP_LOGV(LMS_TAG, "Heap size send 2: %d", ESP.getFreeHeap());
 }
 
 bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
@@ -281,8 +286,7 @@ bool LoRaMeshService::sendClosestGateway(DataMessage* message) {
 
     message->addrDst = gateway->destination;
     ESP_LOGI(LMS_TAG, "Sending message to gateway %X", message->addrDst);
-    send(message);
-    return true;
+    return send(message) == MeshSend::SENT;
 }
 
 void LoRaMeshService::setGateway() {
@@ -327,6 +331,34 @@ bool LoRaMeshService::hasRouteTo(uint16_t dst) {
     // missing route is final.
     loramesher::Result ready = mesher_->IsReadyToSend(dst);
     return ready || ready.getErrorCode() != loramesher::LoraMesherErrorCode::kNoRoute;
+}
+
+uint8_t LoRaMeshService::hopsTo(uint16_t dst) {
+    for (const auto& route : getRoutingTableEntries()) {
+        if (route.destination == dst && route.is_valid) return route.hop_count;
+    }
+    return 0;
+}
+
+uint16_t LoRaMeshService::nextHopTo(uint16_t dst) {
+    for (const auto& route : getRoutingTableEntries()) {
+        if (route.destination == dst && route.is_valid) return route.next_hop;
+    }
+    return 0;
+}
+
+bool LoRaMeshService::timeToNextTxSlotMs(uint32_t& waitMs) {
+    if (!running_) return false;
+    // The library subtracts the guard from the wait and answers 0 only without a TX slot. A
+    // slot closer than the guard counts as its next turn.
+    constexpr uint32_t GUARD_MS =
+        loramesher::protocols::LoRaMeshProtocol::kDefaultDataSlotGuardTimeMs;
+    uint32_t untilSlotMs = mesher_->GetTimeUntilNextDataSlot(GUARD_MS);
+    if (untilSlotMs == 0) return false;
+    uint64_t queuedMs = uint64_t{mesher_->GetTxQueueSize()} * mesher_->GetSuperframeDuration();
+    waitMs = static_cast<uint32_t>(
+        std::min<uint64_t>(uint64_t{untilSlotMs} + GUARD_MS + queuedMs, UINT32_MAX));
+    return true;
 }
 
 void LoRaMeshService::updateRoutingTable() {

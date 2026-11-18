@@ -1,19 +1,21 @@
 #include "messageManager.h"
 
+#include "esp_ota_ops.h"
+
 static const char* MANAGER_TAG = "MANAGER";
 
 void MessageManager::init() {}
 
 void MessageManager::addMessageService(MessageService* service) {
+    // A command name belongs to the first service that registers it.
+    std::vector<String> refused;
     for (const Command& command : service->commandService->commands()) {
-        for (auto other : services) {
-            if (other->commandService->find(command.getCommand()) != nullptr) {
-                ESP_LOGE(MANAGER_TAG, "Command %s exists in services %s and %s",
-                         command.getCommand().c_str(), other->serviceName.c_str(),
-                         service->serviceName.c_str());
-            }
-        }
+        if (catalogue_.add(command.spec())) continue;
+        ESP_LOGE(MANAGER_TAG, "Command %s of service %s refused: name taken or bad error codes",
+                 command.getCommand().c_str(), service->serviceName.c_str());
+        refused.push_back(command.getCommand());
     }
+    for (const String& name : refused) service->commandService->removeCommand(name);
 
     // Add ordered by serviceId
     bool added = false;
@@ -29,31 +31,57 @@ void MessageManager::addMessageService(MessageService* service) {
     }
 }
 
-String MessageManager::executeCommand(const String& line, Origin origin, bool signedValid) {
+CommandReply MessageManager::executeCommand(const String& line, Origin origin, bool signedValid) {
     String text = line;
     text.trim();
     int space = text.indexOf(' ');
     String name = space < 0 ? text : text.substring(0, space);
     String args = space < 0 ? "" : text.substring(space + 1);
     args.trim();
-    bool local = origin == Origin::SERIAL_CONSOLE;
 
-    if (name.equalsIgnoreCase("/help")) return help(origin);
     for (auto service : services) {
         Command* command = service->commandService->find(name);
         if (command == nullptr) continue;
         if (!commandPermitted(command->getPerm(), origin, signedValid)) {
-            return local ? "Not allowed" : "ERR perm";
+            return CommandStatus::PERM;
         }
         return command->execute(args);
     }
-    return local ? "Unknown command; /help lists them" : "ERR unknown";
+    return CommandStatus::UNKNOWN;
 }
 
 String MessageManager::help(Origin origin) const {
-    String text = "/help - List the commands\n";
+    String text;
     for (auto service : services) text += service->commandService->help(origin);
     return text;
+}
+
+CommandReply MessageManager::catalogue(const String& args) const {
+    std::vector<std::string> pages = catalogue_.pages(esp_ota_get_app_description()->version);
+    size_t page = 0;
+    if (!parseCataloguePage(args.c_str(), pages.size(), page)) return CommandStatus::ARG;
+    return String(pages[page - 1].c_str());
+}
+
+uint32_t MessageManager::commandAllowanceMs(const String& name) const {
+    const CommandSpec* spec = catalogue_.find(name.c_str());
+    return spec != nullptr ? spec->allowanceMs : 0;
+}
+
+String MessageManager::describeReply(const String& name, const CommandReply& reply) const {
+    if (reply.ok()) return reply.text;
+    const CommandSpec* spec = catalogue_.find(name.c_str());
+    if (reply.status == static_cast<uint8_t>(CommandStatus::ARG) && spec != nullptr) {
+        std::string usage = "Usage: " + spec->name;
+        if (!spec->usage.empty()) usage += " " + spec->usage;
+        return String(usage.c_str());
+    }
+    std::string text = describeCommandStatus(reply.status, reply.text.c_str());
+    if (!text.empty()) return String(text.c_str());
+    text = catalogue_.codeText(name.c_str(), reply.status);
+    if (text.empty()) text = "Error " + std::to_string(static_cast<unsigned>(reply.status));
+    if (reply.text.length() > 0) text += std::string(" (") + reply.text.c_str() + ")";
+    return String(text.c_str());
 }
 
 String MessageManager::getJSON(DataMessage* message) {

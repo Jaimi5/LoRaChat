@@ -6,6 +6,9 @@
 #include "message/messageService.h"
 #include "otaCommandService.h"
 
+/** Error of /key.set, /ota.server and /reboot: the command could not do its work. */
+constexpr uint8_t OTA_ERR_FAILED = 128;
+
 /**
  * @brief OTA settings and maintenance windows on request.
  *
@@ -26,10 +29,10 @@ public:
     String describeKey() const;
 
     /** Stores the key given as 64 hex digits. @return the reply to the command. */
-    String setKey(const String& text);
+    CommandReply setKey(const String& text);
 
     /** Opens a window as "<seconds> [ap]". @return the reply to the command. */
-    String openWindow(const String& args);
+    CommandReply openWindow(const String& args);
 
     /** @return the reply to the command. */
     String closeWindow();
@@ -41,13 +44,13 @@ public:
     String otaStatus() const;
 
     /** Restarts the node after a short delay. @return the reply to the command. */
-    String reboot();
+    CommandReply reboot();
 
     /**
      * @brief Shows or sets the OTA server: no argument shows it, "default" goes back to
      *        OTA_SERVER_URL, an http:// URL is stored in NVS. @return the reply.
      */
-    String setServer(const String& args);
+    CommandReply setServer(const String& args);
 
     /** @return the OTA server folder: the one stored with /ota.server, else OTA_SERVER_URL. */
     std::string serverUrl() const;
@@ -59,7 +62,7 @@ public:
      * (scripts/ota_tools/lmcmd.py wifi); on the serial console they may be typed as
      * "<ssid> [<password>]". @return the reply.
      */
-    String setWifi(const String& args);
+    CommandReply setWifi(const String& args);
 
 private:
     OtaService() : MessageService(OTAApp, "Ota") { commandService = &commands_; }

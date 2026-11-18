@@ -36,29 +36,29 @@ CounterDecision CommandCounter::decide(uint32_t counter) const {
 void CommandCounter::accept(uint32_t counter) {
     last_ = counter;
     any_ = true;
-    reply_.clear();
+    reply_ = CommandResult();
     hasReply_ = false;
 }
 
-std::string CommandCounter::lastReply() const {
-    return hasReply_ ? reply_ : "OK already executed";
+CommandResult CommandCounter::lastReply() const {
+    return hasReply_ ? reply_ : CommandResult("OK already executed");
 }
 
-std::string runOncePerCounter(CommandCounter& counter, uint32_t value,
-                              const std::function<bool(uint32_t)>& store,
-                              const std::function<std::string()>& execute) {
+CommandResult runOncePerCounter(CommandCounter& counter, uint32_t value,
+                                const std::function<bool(uint32_t)>& store,
+                                const std::function<CommandResult()>& execute) {
     switch (counter.decide(value)) {
         case CounterDecision::REPLAY:
-            return "ERR replay";
+            return CommandStatus::REPLAY;
         case CounterDecision::REPEAT:
             return counter.lastReply();
         case CounterDecision::EXECUTE:
             break;
     }
     // The counter is stored before the command runs, so it never runs twice.
-    if (!store(value)) return "ERR storage";
+    if (!store(value)) return CommandStatus::STORAGE;
     counter.accept(value);
-    std::string reply = execute();
+    CommandResult reply = execute();
     counter.setReply(reply);
     return reply;
 }
