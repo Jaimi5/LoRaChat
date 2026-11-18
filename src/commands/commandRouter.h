@@ -8,6 +8,7 @@
 #include "cmdFrame.h"
 #include "cmdPending.h"
 #include "cmdPerm.h"
+#include "cmdRoute.h"
 #include "cmdRtt.h"
 #include "cmdStatus.h"
 #include "cmdText.h"
@@ -40,7 +41,8 @@ struct CommandRequest {
  * LoRa; its reply is printed on serial or published on cmd-resp/<dst> when it arrives.
  *
  * A forwarded command always gets an answer, a status of CommandStatus. NO_ROUTE comes at once
- * when the mesh has no route. The gateway waits for the reply as long as a lossless one can
+ * when the routing table has no route to the node (commandRoute()), and nothing is sent then.
+ * The gateway waits for the reply as long as a lossless one can
  * take (attemptTimeMs()) and never sends a command again before that. A signed command is then
  * sent once more. TIMEOUT follows when the wait ends, and a command pushed out of the full
  * table of waiting commands gets DROPPED. A reply that arrives up to ten minutes after its
@@ -93,8 +95,8 @@ private:
     void sweepPending();
     /** Sends the due command once more, or gives it up if the mesh refuses it. */
     void retransmit(const PendingCommand& pending);
-    /** @return what the wait for a transmission to @p dst depends on, read from the mesh now. */
-    AttemptTiming currentTiming(uint16_t dst, uint32_t allowanceMs, uint16_t& nextHop);
+    /** @return what the wait for a transmission over @p route depends on, read from the mesh. */
+    AttemptTiming currentTiming(const CommandRoute& route, uint32_t allowanceMs);
     /** @return the time until the reply to a transmission with @p timing is expected. */
     uint32_t expectedIn(uint16_t dst, uint16_t nextHop, const AttemptTiming& timing);
     /** @return the status of the failure, or OK if the mesh took the frame. */

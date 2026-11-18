@@ -232,9 +232,10 @@ void setup() {
     bootGuard.reportCheck(SelfTestCheck::RADIO, loraMeshService.isRunning());
 
 #ifdef WIFI_ENABLED
-    // A WiFi connection made before LoRaMesher started is announced to the mesh here.
-    if (gateway && wiFiService.isConnected()) {
-        ESP_LOGI(TAG, "WiFi already connected at LoRaMesher init — setting gateway");
+    // An IP address obtained before LoRaMesher started is announced to the mesh here. One that
+    // arrives later is announced by the WiFi task.
+    if (gateway && wiFiService.hasIp()) {
+        ESP_LOGI(TAG, "WiFi already has an IP address at LoRaMesher init, announcing the gateway");
         loraMeshService.setGateway();
     }
 #endif

@@ -15,6 +15,8 @@
 
 #include "loraMeshCommandService.h"
 
+#include "cmdPending.h"
+#include "cmdRoute.h"
 #include "sleepMode.h"
 #include "statusScreen.h"
 
@@ -107,22 +109,17 @@ public:
     bool hasGateway();
 
     /**
-     * @return false if the mesh is not running or its routing table has no active route to
-     *         @p dst. A route to a node that sleeps or moved away stays active until its
-     *         routing messages have been missed for long enough.
+     * @return what the routing table says about @p dst now. Nothing is listed while the mesh
+     *         is not running. An entry stops being active when the mesh has missed the routing
+     *         messages of the node, or of its relay, for long enough. It leaves the table some
+     *         minutes later.
      */
-    bool hasRouteTo(uint16_t dst);
-
-    /** @return the hops to @p dst in the routing table, or 0 without a valid route. */
-    uint8_t hopsTo(uint16_t dst);
-
-    /** @return the neighbour that relays toward @p dst, or 0 without a valid route. */
-    uint16_t nextHopTo(uint16_t dst);
+    RouteState routeStateOf(uint16_t dst);
 
     /**
      * @brief Tells how long a message handed to the mesh now waits before it is transmitted:
-     *        the time to this node's next TX data slot, plus one superframe for each message
-     *        already in the TX queue.
+     *        the time to this node's next TX data slot, and the slots that the messages
+     *        already in the TX queue take first (queuedSlotWaitMs()).
      * @param waitMs the wait in ms.
      * @return false if the mesh cannot say: it is not running or the node has no TX data slot.
      */

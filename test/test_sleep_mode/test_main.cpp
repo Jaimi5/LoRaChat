@@ -42,7 +42,8 @@ TEST(SleepFraction, ParsesWholePercentUpToTheMaximum) {
     EXPECT_EQ(percent, 0);
     EXPECT_TRUE(parseSleepFraction("90", percent));
     EXPECT_EQ(percent, 90);
-    for (const char* bad : {"", "91", "100", "-1", "50%", "0.5", "abc", " 5"}) {
+    for (const char* bad :
+         {"", "91", "100", "-1", "+5", "50%", "0.5", "abc", "5x", " 5", "4294967301"}) {
         EXPECT_FALSE(parseSleepFraction(bad, percent)) << bad;
     }
     EXPECT_EQ(percent, 90);

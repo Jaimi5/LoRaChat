@@ -1,6 +1,7 @@
 #include "nodeCommandService.h"
 
 #include "bme280Math.h"
+#include "cmdText.h"
 #include "devices/initDevices.h"
 #include "loramesh/loraMeshService.h"
 #include "nodeService.h"
@@ -46,16 +47,18 @@ NodeCommandService::NodeCommandService() {
             .withCode(SENSOR_ERR_NOT_FOUND, "No sensor found (BME280 or BMP280 at 0x76 or 0x77)")
             .withCode(SENSOR_ERR_NO_MEASUREMENT, "The sensor gave no measurement")
             .withCode(SENSOR_ERR_NO_SUPPORT, "This firmware has no sensor support"));
-    constexpr long IDENTIFY_DEFAULT_S = 10;
-    constexpr long IDENTIFY_MAX_S = 600;
-    addCommand(Command("/identify", "Blink the LEDs to find the board", Perm::OPEN,
-                       [](String args) {
-                           long seconds = args.length() > 0 ? args.toInt() : IDENTIFY_DEFAULT_S;
-                           if (seconds <= 0 || seconds > IDENTIFY_MAX_S) {
-                               seconds = IDENTIFY_DEFAULT_S;
-                           }
-                           return String(InitDevices::identify(seconds).c_str());
-                       })
-                   .withUsage(String("[seconds] (default ") + IDENTIFY_DEFAULT_S + ", up to " +
-                              IDENTIFY_MAX_S + ")"));
+    constexpr uint32_t IDENTIFY_DEFAULT_S = 10;
+    constexpr uint32_t IDENTIFY_MAX_S = 600;
+    addCommand(
+        Command("/identify", "Blink the LEDs to find the board", Perm::OPEN,
+                [](String args) -> CommandReply {
+                    uint32_t seconds = IDENTIFY_DEFAULT_S;
+                    if (args.length() > 0 &&
+                        (!parseDecimal(args.c_str(), IDENTIFY_MAX_S, seconds) || seconds == 0)) {
+                        return CommandStatus::ARG;
+                    }
+                    return String(InitDevices::identify(seconds).c_str());
+                })
+            .withUsage(String("[seconds] (default ") + IDENTIFY_DEFAULT_S + ", up to " +
+                       IDENTIFY_MAX_S + ")"));
 }

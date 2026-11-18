@@ -3,12 +3,14 @@
 #include <algorithm>
 
 #include "cmdStatus.h"
+#include "cmdText.h"
 
 namespace {
 
 /** Room kept in the first line for the page position, enough for "999/999". */
 constexpr size_t POSITION_ROOM = 7;
 constexpr size_t MAX_PAGE_DIGITS = 3;
+constexpr uint32_t MAX_PAGE = 999;
 
 char lower(char c) {
     return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
@@ -134,12 +136,8 @@ bool parseCataloguePage(const std::string& args, size_t pages, size_t& page) {
         page = 1;
         return pages >= 1;
     }
-    if (args.size() > MAX_PAGE_DIGITS) return false;
-    size_t value = 0;
-    for (char c : args) {
-        if (c < '0' || c > '9') return false;
-        value = value * 10 + static_cast<size_t>(c - '0');
-    }
+    uint32_t value = 0;
+    if (args.size() > MAX_PAGE_DIGITS || !parseDecimal(args, MAX_PAGE, value)) return false;
     if (value < 1 || value > pages) return false;
     page = value;
     return true;

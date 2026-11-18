@@ -298,7 +298,8 @@ TEST(CmdCatalogue, ReadsThePageArgument) {
     EXPECT_TRUE(parseCataloguePage("3", 3, page));
     EXPECT_EQ(page, 3U);
     page = 99;
-    for (const char* bad : {"0", "4", "-1", "x", "1 2", "1.0", " 2", "0002", "9999999999"}) {
+    for (const char* bad :
+         {"0", "4", "-1", "+1", "x", "2x", "1 2", "1.0", " 2", "0002", "9999999999"}) {
         EXPECT_FALSE(parseCataloguePage(bad, 3, page)) << bad;
     }
     EXPECT_EQ(page, 99U);

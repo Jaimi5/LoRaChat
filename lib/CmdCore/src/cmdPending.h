@@ -26,6 +26,33 @@ struct AttemptTiming {
     uint32_t allowanceMs = 0;
 };
 
+/** The TX data slots a node has in every superframe. */
+struct TxSlots {
+    /** Duration of the superframe (S), 0 when unknown. */
+    uint32_t superframeMs = 0;
+    /** Start of each TX data slot, counted from the start of the superframe. */
+    std::vector<uint32_t> startsMs;
+};
+
+/**
+ * @brief Tells how long a message handed to the mesh waits for its transmission (w). The mesh
+ *        sends one message in each TX data slot, the oldest first.
+ *
+ * With n slots and q messages already queued, the message waits floor(q / n) whole superframes
+ * and then leaves in slot (q mod n) + 1 from now. Which slot comes next is read from
+ * @p untilSlotMs: a slot can be next only if the gap in front of it is that long. When several
+ * slots fit, the longest wait counts. Without a slot table every queued message costs one
+ * superframe.
+ *
+ * @param untilSlotMs time until the next TX data slot of the node starts.
+ * @param queued messages in the TX queue of the node.
+ * @param toleranceMs how much @p untilSlotMs may exceed the gap in front of the next slot.
+ * @return the wait, never shorter than the real one and never longer than one superframe for
+ *         each queued message.
+ */
+uint32_t queuedSlotWaitMs(uint32_t untilSlotMs, size_t queued, const TxSlots& slots,
+                          uint32_t toleranceMs);
+
 /**
  * @return the time to wait for the reply to one transmission:
  *         A = w + (h + 1) * S + ceil(P / S) * S + g. A lossless reply never takes longer.

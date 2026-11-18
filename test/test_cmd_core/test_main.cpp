@@ -416,6 +416,48 @@ TEST(CmdText, ParsesMqttCommands) {
     EXPECT_FALSE(parseMqttCommand("xyz 1 /version", command));
 }
 
+TEST(CmdText, AnMqttRequestIdIsAPlainNumberUpTo255) {
+    MqttCommand command;
+    ASSERT_TRUE(parseMqttCommand("7680 255 /version", command));
+    EXPECT_EQ(command.requestId, 255);
+    ASSERT_TRUE(parseMqttCommand("7680 0 /version", command));
+    EXPECT_EQ(command.requestId, 0);
+    for (const char* bad : {"7680 256 /version", "7680 +5 /version", "7680 -0 /version",
+                            "7680 5x /version", "7680 0x5 /version", "7680 99999999999 /version"}) {
+        EXPECT_FALSE(parseMqttCommand(bad, command)) << bad;
+    }
+}
+
+TEST(ParseDecimal, ReadsWholeNumbersUpToTheMaximum) {
+    uint32_t value = 7;
+    EXPECT_TRUE(parseDecimal("0", 600, value));
+    EXPECT_EQ(value, 0U);
+    EXPECT_TRUE(parseDecimal("10", 600, value));
+    EXPECT_EQ(value, 10U);
+    EXPECT_TRUE(parseDecimal("600", 600, value));
+    EXPECT_EQ(value, 600U);
+    EXPECT_TRUE(parseDecimal("0045", 600, value));
+    EXPECT_EQ(value, 45U);
+    EXPECT_TRUE(parseDecimal("4294967295", UINT32_MAX, value));
+    EXPECT_EQ(value, UINT32_MAX);
+}
+
+TEST(ParseDecimal, RefusesEverythingElseAndKeepsTheOutput) {
+    uint32_t value = 7;
+    for (const char* bad :
+         {"", "abc", "12abc", "abc12", "1 2", " 12", "12 ", "-1", "-0", "+5", "1.5", "1e3", "0x10",
+          "601", "4294967296", "99999999999999999999", "18446744073709551626", "\t5", "5\n"}) {
+        EXPECT_FALSE(parseDecimal(bad, 600, value)) << bad;
+        EXPECT_EQ(value, 7U);
+    }
+    for (const char* bad : {"4294967296", "4294967300", "99999999999999999999"}) {
+        EXPECT_FALSE(parseDecimal(bad, UINT32_MAX, value)) << bad;
+        EXPECT_EQ(value, 7U);
+    }
+    EXPECT_FALSE(parseDecimal(std::string("5\0", 2), 600, value));
+    EXPECT_EQ(value, 7U);
+}
+
 TEST(CmdText, HexRoundTrips) {
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(fromHex("00ff10Ab", bytes));

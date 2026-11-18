@@ -1,11 +1,10 @@
 #include "cmdText.h"
 
-#include <cstdlib>
-
 namespace {
 
 constexpr size_t ADDRESS_DIGITS = 4;
 constexpr size_t COUNTER_DIGITS = 8;
+constexpr uint32_t MAX_REQUEST_ID = 0xFF;
 constexpr char SPACES[] = " \t";
 
 int hexValue(char c) {
@@ -116,9 +115,8 @@ bool parseMqttCommand(const std::string& text, MqttCommand& out) {
                         ADDRESS_DIGITS, dst)) {
         return false;
     }
-    char* end = nullptr;
-    unsigned long requestId = std::strtoul(idText.c_str(), &end, 10);
-    if (idText.empty() || *end != '\0' || requestId > 0xFF) return false;
+    uint32_t requestId = 0;
+    if (!parseDecimal(idText, MAX_REQUEST_ID, requestId)) return false;
 
     MqttCommand parsed;
     if (!parseCommandLine(rest.substr(second + 1), parsed.command) || parsed.command.remote) {
@@ -127,6 +125,19 @@ bool parseMqttCommand(const std::string& text, MqttCommand& out) {
     parsed.dst = static_cast<uint16_t>(dst);
     parsed.requestId = static_cast<uint8_t>(requestId);
     out = parsed;
+    return true;
+}
+
+bool parseDecimal(const std::string& text, uint32_t max, uint32_t& out) {
+    if (text.empty()) return false;
+    uint64_t value = 0;
+    for (char c : text) {
+        if (c < '0' || c > '9') return false;
+        value = value * 10 + static_cast<uint64_t>(c - '0');
+        // Checked at every digit, so a long text cannot overflow the sum.
+        if (value > max) return false;
+    }
+    out = static_cast<uint32_t>(value);
     return true;
 }
 

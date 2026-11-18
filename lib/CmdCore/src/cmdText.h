@@ -51,6 +51,15 @@ struct MqttCommand {
 /** @return false if @p text is not an MQTT command. A target prefix in the line is refused. */
 bool parseMqttCommand(const std::string& text, MqttCommand& out);
 
+/**
+ * @brief Reads a whole decimal number. Only the digits 0 to 9 count: a sign, a space, a
+ *        fraction or any text after the number makes it invalid. Leading zeros are allowed.
+ * @param max the largest value accepted.
+ * @return false, leaving @p out unchanged, if @p text is empty, is not such a number or is
+ *         above @p max.
+ */
+bool parseDecimal(const std::string& text, uint32_t max, uint32_t& out);
+
 /** @return @p data as lowercase hex. */
 std::string toHex(const uint8_t* data, size_t size);
 

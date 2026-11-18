@@ -88,8 +88,8 @@ TEST(ParseInstallSeconds, DefaultAndRange) {
 
 TEST(ParseInstallSeconds, RefusesEverythingElse) {
     uint32_t seconds = 7;
-    for (const char* text :
-         {"3601", "9999", "10000", "-1", "+5", "1.5", "10 s", " 10", "ten", "0x10", "4294967297"}) {
+    for (const char* text : {"3601", "9999", "10000", "-1", "+5", "1.5", "10 s", " 10", "ten",
+                             "0x10", "12ab", "60x", "4294967297"}) {
         EXPECT_FALSE(parseInstallSeconds(text, seconds)) << text;
         EXPECT_EQ(seconds, 7U);
     }

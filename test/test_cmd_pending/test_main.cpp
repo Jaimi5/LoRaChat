@@ -100,6 +100,105 @@ TEST(ExpectedReply, UsesTheModelWithoutSamplesAndTheEstimateWithThem) {
     EXPECT_EQ(expectedReplyMs(timing(0xFFFFFFFF, 2, 15000), true, 21000), 0xFFFFFFFFU);
 }
 
+/** The slots of the bench gateway: 81 slots of 950 ms, TX data in slots 2 and 3. */
+constexpr uint32_t BENCH_SLOT_MS = 950;
+constexpr uint32_t BENCH_SUPERFRAME_MS = 81 * BENCH_SLOT_MS;
+/** Time before a slot start within which the mesh already counts the slot after it. */
+constexpr uint32_t TOLERANCE_MS = 200;
+
+TxSlots txSlots(uint32_t superframeMs, std::vector<uint32_t> startsMs) {
+    TxSlots slots;
+    slots.superframeMs = superframeMs;
+    slots.startsMs = std::move(startsMs);
+    return slots;
+}
+
+const TxSlots BENCH_SLOTS = txSlots(BENCH_SUPERFRAME_MS, {2 * BENCH_SLOT_MS, 3 * BENCH_SLOT_MS});
+
+TEST(QueuedSlotWait, AnEmptyQueueWaitsForTheNextSlotOnly) {
+    EXPECT_EQ(queuedSlotWaitMs(4300, 0, txSlots(15200, {1900}), TOLERANCE_MS), 4300U);
+    EXPECT_EQ(queuedSlotWaitMs(57500, 0, BENCH_SLOTS, TOLERANCE_MS), 57500U);
+}
+
+TEST(QueuedSlotWait, WithOneSlotEachQueuedMessageCostsASuperframe) {
+    TxSlots one = txSlots(15200, {1900});
+    EXPECT_EQ(queuedSlotWaitMs(4300, 1, one, TOLERANCE_MS), 4300U + 15200U);
+    EXPECT_EQ(queuedSlotWaitMs(4300, 3, one, TOLERANCE_MS), 4300U + 3 * 15200U);
+    // Right before the slot the mesh already answers with its next turn.
+    EXPECT_EQ(queuedSlotWaitMs(15300, 2, one, TOLERANCE_MS), 15300U + 2 * 15200U);
+}
+
+TEST(QueuedSlotWait, WithTwoSlotsTwoMessagesLeaveInOneSuperframe) {
+    // The next slot is the first of the pair: the queued message takes it, this one the second.
+    EXPECT_EQ(queuedSlotWaitMs(57500, 1, BENCH_SLOTS, TOLERANCE_MS), 57500U + BENCH_SLOT_MS);
+    EXPECT_EQ(queuedSlotWaitMs(57500, 2, BENCH_SLOTS, TOLERANCE_MS), 57500U + BENCH_SUPERFRAME_MS);
+    EXPECT_EQ(queuedSlotWaitMs(57500, 3, BENCH_SLOTS, TOLERANCE_MS),
+              57500U + BENCH_SUPERFRAME_MS + BENCH_SLOT_MS);
+    EXPECT_EQ(queuedSlotWaitMs(57500, 5, BENCH_SLOTS, TOLERANCE_MS),
+              57500U + 2 * BENCH_SUPERFRAME_MS + BENCH_SLOT_MS);
+}
+
+TEST(QueuedSlotWait, ANextSlotThatMayBeTheLastOfTheSuperframeCostsTheLongGap) {
+    // Less than a slot away, the next slot can be the second of the pair. The queued message
+    // then takes it and this one waits for the first slot of the next superframe.
+    const uint32_t longGap = BENCH_SUPERFRAME_MS - BENCH_SLOT_MS;
+    EXPECT_EQ(queuedSlotWaitMs(600, 1, BENCH_SLOTS, TOLERANCE_MS), 600U + longGap);
+    EXPECT_EQ(queuedSlotWaitMs(BENCH_SLOT_MS + TOLERANCE_MS, 1, BENCH_SLOTS, TOLERANCE_MS),
+              BENCH_SLOT_MS + TOLERANCE_MS + longGap);
+    EXPECT_EQ(queuedSlotWaitMs(BENCH_SLOT_MS + TOLERANCE_MS + 1, 1, BENCH_SLOTS, TOLERANCE_MS),
+              2 * BENCH_SLOT_MS + TOLERANCE_MS + 1);
+    EXPECT_EQ(queuedSlotWaitMs(600, 3, BENCH_SLOTS, TOLERANCE_MS),
+              600U + BENCH_SUPERFRAME_MS + longGap);
+}
+
+TEST(QueuedSlotWait, SlotsSpreadOverTheSuperframeCostTheirLongestRun) {
+    TxSlots spread = txSlots(60000, {30000, 0});
+    EXPECT_EQ(queuedSlotWaitMs(10000, 1, spread, TOLERANCE_MS), 10000U + 30000U);
+    TxSlots three = txSlots(60000, {1000, 2000, 40000});
+    // 10 s away the next slot is the one at 40 s or the one at 1 s.
+    EXPECT_EQ(queuedSlotWaitMs(10000, 1, three, TOLERANCE_MS), 10000U + 21000U);
+    EXPECT_EQ(queuedSlotWaitMs(10000, 2, three, TOLERANCE_MS), 10000U + 39000U);
+    // 30 s away it can only be the one at 40 s.
+    EXPECT_EQ(queuedSlotWaitMs(30000, 1, three, TOLERANCE_MS), 30000U + 21000U);
+    EXPECT_EQ(queuedSlotWaitMs(30000, 2, three, TOLERANCE_MS), 30000U + 22000U);
+    EXPECT_EQ(queuedSlotWaitMs(30000, 4, three, TOLERANCE_MS), 30000U + 60000U + 21000U);
+}
+
+TEST(QueuedSlotWait, UnknownSlotsCostASuperframePerQueuedMessage) {
+    EXPECT_EQ(queuedSlotWaitMs(4300, 2, txSlots(15200, {}), TOLERANCE_MS), 4300U + 2 * 15200U);
+    EXPECT_EQ(queuedSlotWaitMs(4300, 2, txSlots(0, {1900}), TOLERANCE_MS), 4300U);
+    // A wait that fits no slot of the table is not trusted to say which slot comes next.
+    EXPECT_EQ(queuedSlotWaitMs(90000, 1, BENCH_SLOTS, TOLERANCE_MS),
+              90000U + BENCH_SUPERFRAME_MS - BENCH_SLOT_MS);
+    // Two slots at the same place count as a whole superframe apart.
+    EXPECT_EQ(queuedSlotWaitMs(4300, 1, txSlots(15200, {1900, 1900}), TOLERANCE_MS),
+              4300U + 15200U);
+}
+
+TEST(QueuedSlotWait, StaysBetweenTheSlotShareAndASuperframePerMessage) {
+    const std::vector<TxSlots> tables = {txSlots(15200, {1900}), BENCH_SLOTS,
+                                         txSlots(60000, {0, 30000}),
+                                         txSlots(60000, {1000, 2000, 40000})};
+    for (const TxSlots& slots : tables) {
+        const size_t count = slots.startsMs.size();
+        for (uint32_t untilMs : {1U, 500U, 1100U, 5000U, 29000U, 59000U}) {
+            for (size_t queued = 0; queued <= 7; queued++) {
+                uint32_t wait = queuedSlotWaitMs(untilMs, queued, slots, TOLERANCE_MS);
+                EXPECT_GE(wait, untilMs + (queued / count) * slots.superframeMs);
+                EXPECT_LE(wait, untilMs + queued * slots.superframeMs);
+                if (queued > 0) {
+                    EXPECT_GE(wait, queuedSlotWaitMs(untilMs, queued - 1, slots, TOLERANCE_MS));
+                }
+            }
+        }
+    }
+}
+
+TEST(QueuedSlotWait, Saturates) {
+    EXPECT_EQ(queuedSlotWaitMs(UINT32_MAX - 5, 3, BENCH_SLOTS, TOLERANCE_MS), UINT32_MAX);
+    EXPECT_EQ(queuedSlotWaitMs(1000, 100000, txSlots(90000, {0}), TOLERANCE_MS), UINT32_MAX);
+}
+
 TEST(CeilSeconds, RoundsUp) {
     EXPECT_EQ(ceilSeconds(0), 0U);
     EXPECT_EQ(ceilSeconds(1), 1U);

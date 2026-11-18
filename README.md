@@ -96,9 +96,9 @@ The age on the large row is the smallest of two times: the time since the last a
 There are two ways to find a good spot:
 
 - **At the node.** Press the power button and read the large row. Move the node, wait for the age to restart from a few seconds and read the verdict again. The display keeps the node awake while it is on.
-- **From the web.** Send the signed command `/install` to the node (ten minutes by default) and watch its reports arrive. In install mode the node does not sleep and sends a monitor report every two superframes, at least 10 s apart (every 30.4 s with a 15.2 s superframe). The screen shows `INSTALL` and the time left. The mode ends by itself, after `/install 0` or at a reboot, and the node then reports and sleeps as before.
+- **From the web.** Send the signed command `/install` to the node (ten minutes by default) and watch its reports arrive. In install mode the node does not sleep and sends a monitor report every two superframes, at least 10 s apart. The superframe depends on the network (see [Commands for other nodes](#commands-for-other-nodes)). On a bench with 2 nodes, 2 data slots per node and a sleep fraction of 85 % it lasted 76.95 s, so the reports came every 153.9 s. The screen shows `INSTALL` and the time left. The mode ends by itself, after `/install 0` or at a reboot, and the node then reports and sleeps as before.
 
-One install report is a 57 byte packet with three neighbours, about 0.46 s on air at SF9. Every 30.4 s that is 1.5 % of the time, next to the 3.4 % of the node's own mesh traffic, so the node stays below the 10 % duty cycle of the 869.4 to 869.65 MHz band.
+One install report is a 57 byte packet with three neighbours, about 0.46 s on air at SF9. With a short superframe of 15.2 s (2 nodes, one data slot each, no sleep fraction) a report leaves every 30.4 s. That is 1.5 % of the time, next to the 3.4 % of the node's own mesh traffic. A longer superframe sends fewer reports, so the node stays below the 10 % duty cycle of the 869.4 to 869.65 MHz band.
 
 ## Building
 
@@ -218,7 +218,13 @@ Line 1 holds the format version `1`, the firmware version and the page position.
 
 #### Commands for other nodes
 
-A gateway answers every command it sends on to another node. `E7` comes at once when the mesh has no route. Otherwise the gateway waits as long as a reply without losses can take: `A = w + (h + 1) · S + ceil(P / S) · S + 2 s`, where `S` is the superframe, `h` the hops to the node, `w` the time until the gateway's next TX data slot (plus `S` for each message already in its queue) and `P` the time the command needs to run (0 for most, the measurement time for `/sensor`). It never sends a command again before that, because the first one may still be on its way. A signed command is sent once more after `A` and given up after another `A`, and the node still runs it once. An unsigned command is given up after `A` (`E8 <seconds>`). Example: a node two hops away with a 15.2 s superframe and the gateway's slot 4.3 s away gives `A` = 4.3 + 45.6 + 2 = 51.9 s. `E9` means that more than eight commands were waiting and the oldest gave up its place. A reply that arrives up to ten minutes after its `E8` is still published.
+A gateway answers every command it sends on to another node. `E7` comes at once when the routing table of the gateway has no route to the node, and nothing is sent over LoRa then. A route is an entry that the mesh still uses. A direct neighbour that went silent is still tried while the mesh lists it, which lasts a few minutes. A silent node behind a relay has no route.
+
+Otherwise the gateway waits as long as a reply without losses can take: `A = w + (h + 1) · S + ceil(P / S) · S + 2 s`. `S` is the superframe, `h` the hops to the node and `P` the time the command needs to run (0 for most, the measurement time for `/sensor`). `w` is the time until the gateway transmits the command. The gateway sends one message in each of its TX data slots. With `n` slots per superframe and `q` messages already in its queue, the command waits `floor(q / n)` superframes and then for the slot that is left to it. When the gateway cannot tell which of its slots comes next, the longer wait counts.
+
+The gateway never sends a command again before `A`, because the first one may still be on its way. A signed command is sent once more after `A` and given up after another `A`, and the node still runs it once. An unsigned command is given up after `A` (`E8 <seconds>`). `E9` means that more than eight commands were waiting and the oldest gave up its place. A reply that arrives up to ten minutes after its `E8` is still published.
+
+The superframe depends on the network: the number of nodes, the data slots per node (2 by default) and the sleep fraction stored on the gateway. Two measured cases, both with 2 nodes and slots of 950 ms: 15.2 s (16 slots) with one data slot per node and no sleep fraction, and 76.95 s (81 slots) with 2 data slots per node and a sleep fraction of 85 %. The current value is `superframe_ms` in every `Q` line and `sf_ms` in the monitor report. Example with the second case: a node one hop away and the gateway's slot 54 s away give `A` = 54 + 2 · 76.95 + 2 = 209.9 s. `A` is the limit. On that bench the reply came back in the same superframe, 2 to 3 s after the gateway's slot, so it arrived about `w` + 3 s after the command was published.
 
 For a command from MQTT the gateway also publishes on `cmd-ack/<node>`:
 
@@ -239,7 +245,7 @@ For a command from MQTT the gateway also publishes on `cmd-ack/<node>`:
 | `/role` | Open | The role and whether it is stored or the default |
 | `/power` | Open | Power chip, supply, battery and charger state (with the AXP2101 registers) |
 | `/sensor` | Open | The environment sensor (chip and I2C address) and a new measurement. Error 128 means that no sensor was found |
-| `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10) to find the board |
+| `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10, from 1 to 600) to find the board. Any other value is a bad argument |
 | `/install [seconds]` | Signed | Install mode for 600 s, or for the given time up to 3600 s: the node stays awake and reports every two superframes. A new `/install` sets a new end time, `/install 0` stops it. A value above 3600 is a bad argument. Replies `OK install <n> s` or `OK install off` |
 | `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
 | `/sleep` | Open | Sleep mode and sleep fraction (stored or default) and the light and deep sleeps since power-on |

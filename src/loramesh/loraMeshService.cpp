@@ -325,26 +325,17 @@ bool LoRaMeshService::hasGateway() {
     return mesher_->GetClosestGateway().has_value();
 }
 
-bool LoRaMeshService::hasRouteTo(uint16_t dst) {
-    if (!running_) return false;
-    // The mesh can also be unready for a reason that passes, such as a full queue. Only a
-    // missing route is final.
-    loramesher::Result ready = mesher_->IsReadyToSend(dst);
-    return ready || ready.getErrorCode() != loramesher::LoraMesherErrorCode::kNoRoute;
-}
-
-uint8_t LoRaMeshService::hopsTo(uint16_t dst) {
+RouteState LoRaMeshService::routeStateOf(uint16_t dst) {
+    RouteState state;
     for (const auto& route : getRoutingTableEntries()) {
-        if (route.destination == dst && route.is_valid) return route.hop_count;
+        if (route.destination != dst) continue;
+        state.listed = true;
+        state.active = route.is_valid;
+        state.hops = route.hop_count;
+        state.nextHop = route.next_hop;
+        break;
     }
-    return 0;
-}
-
-uint16_t LoRaMeshService::nextHopTo(uint16_t dst) {
-    for (const auto& route : getRoutingTableEntries()) {
-        if (route.destination == dst && route.is_valid) return route.next_hop;
-    }
-    return 0;
+    return state;
 }
 
 bool LoRaMeshService::timeToNextTxSlotMs(uint32_t& waitMs) {
@@ -355,9 +346,21 @@ bool LoRaMeshService::timeToNextTxSlotMs(uint32_t& waitMs) {
         loramesher::protocols::LoRaMeshProtocol::kDefaultDataSlotGuardTimeMs;
     uint32_t untilSlotMs = mesher_->GetTimeUntilNextDataSlot(GUARD_MS);
     if (untilSlotMs == 0) return false;
-    uint64_t queuedMs = uint64_t{mesher_->GetTxQueueSize()} * mesher_->GetSuperframeDuration();
-    waitMs = static_cast<uint32_t>(
-        std::min<uint64_t>(uint64_t{untilSlotMs} + GUARD_MS + queuedMs, UINT32_MAX));
+
+    using loramesher::types::protocols::lora_mesh::SlotAllocation;
+    TxSlots slots;
+    slots.superframeMs = mesher_->GetSuperframeDuration();
+    // The table lists every slot of the superframe, all of the same duration.
+    std::vector<SlotAllocation> table = mesher_->GetSlotTable();
+    uint32_t slotMs = table.empty() ? 0 : slots.superframeMs / static_cast<uint32_t>(table.size());
+    for (const SlotAllocation& slot : table) {
+        if (slot.type == SlotAllocation::SlotType::TX) {
+            slots.startsMs.push_back(slot.slot_number * slotMs);
+        }
+    }
+    waitMs = queuedSlotWaitMs(
+        static_cast<uint32_t>(std::min<uint64_t>(uint64_t{untilSlotMs} + GUARD_MS, UINT32_MAX)),
+        mesher_->GetTxQueueSize(), slots, GUARD_MS);
     return true;
 }
 

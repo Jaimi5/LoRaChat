@@ -163,18 +163,12 @@ CommandReply CommandRouter::runSigned(const CommandRequest& request) {
         });
 }
 
-AttemptTiming CommandRouter::currentTiming(uint16_t dst, uint32_t allowanceMs, uint16_t& nextHop) {
+AttemptTiming CommandRouter::currentTiming(const CommandRoute& route, uint32_t allowanceMs) {
     LoRaMeshService& mesh = LoRaMeshService::getInstance();
     AttemptTiming timing;
     timing.superframeMs = mesh.getSuperframeDurationMs();
     timing.allowanceMs = allowanceMs;
-    timing.hops = mesh.hopsTo(dst);
-    nextHop = mesh.nextHopTo(dst);
-    if (timing.hops == 0) {
-        // The mesh then tries the node as a direct neighbour.
-        timing.hops = 1;
-        nextHop = dst;
-    }
+    timing.hops = route.hops;
     // Without a known slot the wait counts as a whole superframe.
     if (!mesh.timeToNextTxSlotMs(timing.slotWaitMs)) timing.slotWaitMs = timing.superframeMs;
     return timing;
@@ -224,15 +218,16 @@ void CommandRouter::forward(const CommandRequest& request) {
             return;
         }
     }
-    if (!mesh.hasRouteTo(pending.dst)) {
+    CommandRoute route;
+    if (!commandRoute(pending.dst, mesh.routeStateOf(pending.dst), route)) {
         reply(request, CommandStatus::NO_ROUTE);
         return;
     }
 
     // Read before the frame joins the queue, which the wait for the slot counts.
+    pending.nextHop = route.nextHop;
     pending.timing = currentTiming(
-        pending.dst, MessageManager::getInstance().commandAllowanceMs(pending.name.c_str()),
-        pending.nextHop);
+        route, MessageManager::getInstance().commandAllowanceMs(pending.name.c_str()));
     pending.expectedMs = expectedIn(pending.dst, pending.nextHop, pending.timing);
     pending.requestId = pending_.nextRequestId(nowMs);
     CommandStatus sent = sendFrame(pending.dst, pending.requestId, pending.frame);
@@ -283,10 +278,10 @@ void CommandRouter::retransmit(const PendingCommand& pending) {
     LoRaMeshService& mesh = LoRaMeshService::getInstance();
     uint32_t nowMs = clockMs();
     CommandStatus sent = CommandStatus::NO_ROUTE;
-    uint16_t nextHop = 0;
+    CommandRoute route;
     AttemptTiming timing;
-    if (mesh.hasRouteTo(pending.dst)) {
-        timing = currentTiming(pending.dst, pending.timing.allowanceMs, nextHop);
+    if (commandRoute(pending.dst, mesh.routeStateOf(pending.dst), route)) {
+        timing = currentTiming(route, pending.timing.allowanceMs);
         sent = sendFrame(pending.dst, pending.requestId, pending.frame);
     }
     PendingCommand updated;
@@ -301,7 +296,7 @@ void CommandRouter::retransmit(const PendingCommand& pending) {
     ESP_LOGI(CR_TAG, "No reply from %04X [%u] yet, the command was sent again", pending.dst,
              pending.requestId);
     if (pending_.secondAttempt(pending.dst, pending.requestId, nowMs, timing,
-                               expectedIn(pending.dst, nextHop, timing), updated)) {
+                               expectedIn(pending.dst, route.nextHop, timing), updated)) {
         acknowledge(updated, formatRetransmitAck(updated, nowMs));
     }
 }

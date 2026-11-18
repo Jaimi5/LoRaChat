@@ -21,6 +21,41 @@ std::string number(uint32_t value) {
 
 }  // namespace
 
+uint32_t queuedSlotWaitMs(uint32_t untilSlotMs, size_t queued, const TxSlots& slots,
+                          uint32_t toleranceMs) {
+    const uint64_t superframe = slots.superframeMs;
+    const size_t count = slots.startsMs.size();
+    if (count == 0 || superframe == 0) return saturate(untilSlotMs + queued * superframe);
+
+    std::vector<uint64_t> starts;
+    starts.reserve(count);
+    for (uint32_t start : slots.startsMs) starts.push_back(start % superframe);
+    std::sort(starts.begin(), starts.end());
+    // Time from slot `from` to slot `to` later in the cycle. The same place is a superframe away.
+    auto ahead = [&starts, superframe, count](size_t from, size_t to) {
+        uint64_t distance = (starts[to % count] + superframe - starts[from % count]) % superframe;
+        return distance == 0 ? superframe : distance;
+    };
+
+    uint64_t wait = untilSlotMs + queued / count * superframe;
+    const size_t skipped = queued % count;
+    if (skipped == 0) return saturate(wait);
+
+    // The messages queued first take the next slots. Every slot that can be the next one gives
+    // a wait for the slot left to this message, and the longest counts.
+    uint64_t longestFitting = 0;
+    uint64_t longest = 0;
+    for (size_t next = 0; next < count; next++) {
+        uint64_t extra = 0;
+        for (size_t step = 0; step < skipped; step++) extra += ahead(next + step, next + step + 1);
+        longest = std::max(longest, extra);
+        bool fits = untilSlotMs <= ahead(next + count - 1, next) + toleranceMs;
+        if (fits) longestFitting = std::max(longestFitting, extra);
+    }
+    wait += longestFitting > 0 ? longestFitting : longest;
+    return saturate(wait);
+}
+
 uint32_t attemptTimeMs(const AttemptTiming& timing) {
     const uint64_t superframe = timing.superframeMs;
     uint64_t total =

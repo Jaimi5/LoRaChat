@@ -1,6 +1,5 @@
 #include "otaService.h"
 
-#include <cstdlib>
 #include <vector>
 
 #include "cmdSeal.h"
@@ -69,11 +68,10 @@ CommandReply OtaService::openWindow(const String& args) {
     String kind = space < 0 ? "" : text.substring(space + 1);
     kind.trim();
 
-    char* end = nullptr;
-    unsigned long duration = strtoul(seconds.c_str(), &end, 10);
+    uint32_t duration = 0;
     bool accessPoint = kind == "ap";
     uint32_t maxSeconds = accessPoint ? MAX_AP_WINDOW_S : MAX_PULL_WINDOW_S;
-    if (seconds.isEmpty() || *end != '\0' || duration == 0 || duration > maxSeconds ||
+    if (!parseDecimal(seconds.c_str(), maxSeconds, duration) || duration == 0 ||
         (!kind.isEmpty() && !accessPoint)) {
         return CommandStatus::ARG;
     }
