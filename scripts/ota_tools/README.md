@@ -28,8 +28,8 @@ python3 -m pytest scripts/ota_tools/tests test/host # tests of these tools
 
 `version.txt` holds the version as `MAJOR.MINOR.PATCH`, each part 0-255. `version_hook.py` runs before every `tbeam` build and writes it into the image (`esp_app_desc_t.version`) with git metadata:
 
-- `0.1.0+gabc1234`: built from commit `abc1234`
-- `0.1.0+gabc1234.dirty`: tracked files had uncommitted changes
+- `0.1.0+gabc12345`: built from commit `abc12345` (the first eight hex digits)
+- `0.1.0+gabc12345.dirty`: tracked files had uncommitted changes
 
 The node prints it on its `BOOT ...` line. `FW_VERSION=0.1.1` in the environment overrides `version.txt` for one build (used for test images). The manifest carries the version packed as `0xMMmmpp00`; build metadata after `+` is ignored when versions are compared.
 

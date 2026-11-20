@@ -1,10 +1,10 @@
 """PlatformIO pre-build hook that sets the firmware version (esp_app_desc_t.version).
 
 The version is FW_VERSION from the environment or version.txt (MAJOR.MINOR.PATCH, each 0-255),
-followed by git build metadata: +g<short sha>, plus .dirty when tracked files have uncommitted
-changes. It reaches ESP-IDF as PROJECT_VER. ESP-IDF only reads PROJECT_VER when CMake runs, so
-the CMake cache is removed whenever it holds a different version, which makes PlatformIO
-reconfigure.
+followed by git build metadata: +g<first eight hex digits of the commit>, plus .dirty when tracked
+files have uncommitted changes. The reply of /version carries those eight digits as four bytes.
+It reaches ESP-IDF as PROJECT_VER. ESP-IDF only reads PROJECT_VER when CMake runs, so the CMake
+cache is removed whenever it holds a different version, which makes PlatformIO reconfigure.
 """
 import os
 import re
@@ -30,7 +30,7 @@ def git_metadata(project_dir: Path) -> str:
                               check=True).stdout.strip()
 
     try:
-        sha = git("rev-parse", "--short=7", "HEAD")
+        sha = git("rev-parse", "--short=8", "HEAD")
         dirty = git("status", "--porcelain", "--untracked-files=no")
     except (OSError, subprocess.CalledProcessError):
         return ""
