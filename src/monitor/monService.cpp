@@ -224,6 +224,29 @@ void MonService::sendReport(const std::vector<MonRoute>& routes) {
     }
 }
 
+/** Longest tick wait between two looks at the real clock. */
+static constexpr uint32_t WAIT_STEP_MS = 500;
+
+/**
+ * @brief Waits @p ms of real time, or until the task is notified.
+ *
+ * The RTOS tick stands still while the MCU is in light sleep, so a tick timeout grows by the
+ * time slept: with 85 % of sleep a 5 minute wait took over half an hour. The wait is cut into
+ * short tick waits and the deadline is read from the esp_timer clock, which keeps counting
+ * through light sleep.
+ *
+ * @return true if a notification ended the wait.
+ */
+static bool waitRealTime(uint32_t ms) {
+    const int64_t deadlineUs = esp_timer_get_time() + int64_t{ms} * 1000;
+    while (true) {
+        const int64_t leftMs = (deadlineUs - esp_timer_get_time()) / 1000;
+        if (leftMs <= 0) return false;
+        const auto stepMs = static_cast<uint32_t>(std::min<int64_t>(leftMs + 1, WAIT_STEP_MS));
+        if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(stepMs)) != 0) return true;
+    }
+}
+
 void MonService::sendingLoopOneMessage(void* parameter) {
     MonService& monService = MonService::getInstance();
     ESP_LOGI(MON_TAG, "entering sendingLoop");
@@ -241,7 +264,7 @@ void MonService::sendingLoopOneMessage(void* parameter) {
             // Static pacing: the offered load is exactly MON_SENDING_EVERY and reproducible
             // (see docs/paper/sf_offered_load_capacity.md). Install mode shortens the wait,
             // and a change of the mode ends it at once.
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(monService.nextReportDelayMs()));
+            waitRealTime(monService.nextReportDelayMs());
             // Print the free heap memory
             ESP_LOGD(MON_TAG, "Free heap: %d", esp_get_free_heap_size());
         }
