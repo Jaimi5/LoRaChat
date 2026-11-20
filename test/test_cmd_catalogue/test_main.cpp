@@ -8,6 +8,7 @@
 #include "cmdStatus.h"
 #include "installMode.h"
 #include "maintWindowPlan.h"
+#include "reportInterval.h"
 #include "sleepMode.h"
 
 namespace {
@@ -115,6 +116,11 @@ CommandCatalogue firmwareCatalogue() {
         spec("/install", Perm::SIGNED,
              "[seconds] (default " + n + ", 0 stops, up to " + std::to_string(INSTALL_MAX_SECONDS) +
                  ")"),
+        spec("/report", Perm::OPEN),
+        spec("/report.set", Perm::SIGNED,
+             "<seconds from " + std::to_string(REPORT_INTERVAL_MIN_S) + " to " +
+                 std::to_string(REPORT_INTERVAL_MAX_S) + ", or default>",
+             {{128, "The interval could not be stored"}}),
         spec("/displayOn", Perm::OPEN, "[<addr>]", display),
         spec("/displayOff", Perm::OPEN, "[<addr>]", display),
         spec("/displayBlink", Perm::OPEN, "[<addr>]", display),

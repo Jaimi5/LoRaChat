@@ -6,9 +6,12 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "loramesh/loraMeshService.h"
+#include "nvs.h"
 #include "sensor/bme280.h"
 
 static const char* MON_TAG = "MonOMService";
+static const char* NVS_NAMESPACE = "lmmon";
+static const char* NVS_KEY_REPORT_INTERVAL = "interval";
 
 /** @return milliseconds since boot. The clock does not wrap. */
 static uint64_t clockMs() {
@@ -17,6 +20,8 @@ static uint64_t clockMs() {
 
 void MonService::init() {
     ESP_LOGI(MON_TAG, "Initializing mqtt_mon");
+    loadReportInterval();
+    ESP_LOGI(MON_TAG, "%s", describeReportPacing(reportPacing(), 0).c_str());
     createSendingTask();
 }
 
@@ -150,11 +155,70 @@ uint32_t MonService::installRemainingS() const {
     return installMode_.remainingS(clockMs());
 }
 
+void MonService::loadReportInterval() {
+    nvs_handle_t handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) return;
+    uint32_t seconds = 0;
+    if (nvs_get_u32(handle, NVS_KEY_REPORT_INTERVAL, &seconds) == ESP_OK &&
+        reportIntervalValid(seconds)) {
+        reportIntervalS_ = seconds;
+    }
+    nvs_close(handle);
+}
+
+/**
+ * Stores @p seconds as the report interval, or removes the stored one for REPORT_INTERVAL_NONE.
+ */
+static esp_err_t storeReportInterval(uint32_t seconds) {
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return err;
+    if (seconds == REPORT_INTERVAL_NONE) {
+        err = nvs_erase_key(handle, NVS_KEY_REPORT_INTERVAL);
+        if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+    } else {
+        err = nvs_set_u32(handle, NVS_KEY_REPORT_INTERVAL, seconds);
+    }
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err;
+}
+
+CommandReply MonService::setReportInterval(const String& args) {
+    uint32_t seconds = 0;
+    if (!parseReportInterval(args.c_str(), seconds)) return CommandStatus::ARG;
+    esp_err_t err = storeReportInterval(seconds);
+    if (err != ESP_OK) return CommandReply(MON_ERR_STORE, esp_err_to_name(err));
+    reportIntervalS_ = seconds;
+    // The report that follows carries the new interval, and the next wait lasts that long.
+    if (sending_TaskHandle != nullptr) xTaskNotifyGive(sending_TaskHandle);
+    ESP_LOGI(MON_TAG, "Report interval set to %u s (0 is the default)",
+             static_cast<unsigned>(seconds));
+    if (seconds == REPORT_INTERVAL_NONE) {
+        return String(String("Report interval set to default (") + MON_SENDING_EVERY / 1000 +
+                      " s)");
+    }
+    return String(String("Report interval set to ") + seconds + " s");
+}
+
+String MonService::describeReport() const {
+    uint64_t nowMs = clockMs();
+    uint64_t nextAtMs = nextReportAtMs_;
+    uint64_t nextInMs = nextAtMs > nowMs ? nextAtMs - nowMs : 0;
+    return describeReportPacing(reportPacing(), static_cast<uint32_t>((nextInMs + 999) / 1000))
+        .c_str();
+}
+
+ReportPacing MonService::reportPacing() const {
+    return chooseReportPacing(
+        MON_SENDING_EVERY, reportIntervalS_, installActive(),
+        InstallMode::reportIntervalMs(LoRaMeshService::getInstance().getSuperframeDurationMs()));
+}
+
 uint32_t MonService::nextReportDelayMs() const {
+    uint32_t intervalMs = reportPacing().intervalMs;
     uint64_t remainingMs = installMode_.remainingMs(clockMs());
-    if (remainingMs == 0) return MON_SENDING_EVERY;
-    uint32_t intervalMs =
-        InstallMode::reportIntervalMs(LoRaMeshService::getInstance().getSuperframeDurationMs());
+    if (remainingMs == 0) return intervalMs;
     // A report goes out just after the mode ends, so the server sees the normal interval again.
     constexpr uint64_t AFTER_END_MS = 100;
     return static_cast<uint32_t>(std::min<uint64_t>(intervalMs, remainingMs + AFTER_END_MS));
@@ -169,11 +233,9 @@ MonReport MonService::collectState() const {
     report.rxQueue = static_cast<uint16_t>(
         std::min<size_t>(mesh.GetRxQueueSize(), std::numeric_limits<uint16_t>::max()));
     report.installMode = installActive();
-    uint32_t intervalMs = report.installMode
-                              ? InstallMode::reportIntervalMs(mesh.getSuperframeDurationMs())
-                              : MON_SENDING_EVERY;
+    // The report holds the interval in 16 bits, so a longer one is sent as 65535 s.
     report.intervalS = static_cast<uint16_t>(
-        std::min<uint32_t>(intervalMs / 1000, std::numeric_limits<uint16_t>::max()));
+        std::min<uint32_t>(reportPacing().intervalMs / 1000, std::numeric_limits<uint16_t>::max()));
     Bme280Reading reading;
     if (Bme280Sensor::getInstance().measure(reading)) {
         report.hasSensor = true;
@@ -261,10 +323,12 @@ void MonService::sendingLoopOneMessage(void* parameter) {
                      static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
             LoRaMeshService::getInstance().updateRoutingTable();
             monService.sendReport(collectReportedRoutes());
-            // Static pacing: the offered load is exactly MON_SENDING_EVERY and reproducible
+            // Static pacing: the offered load is exactly the report interval and reproducible
             // (see docs/paper/sf_offered_load_capacity.md). Install mode shortens the wait,
-            // and a change of the mode ends it at once.
-            waitRealTime(monService.nextReportDelayMs());
+            // and a change of the mode or of the stored interval ends it at once.
+            const uint32_t delayMs = monService.nextReportDelayMs();
+            monService.nextReportAtMs_ = clockMs() + delayMs;
+            waitRealTime(delayMs);
             // Print the free heap memory
             ESP_LOGD(MON_TAG, "Free heap: %d", esp_get_free_heap_size());
         }

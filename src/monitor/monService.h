@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 #include "config.h"
@@ -11,10 +12,15 @@
 #include "message/messageService.h"
 #include "monCommandService.h"
 #include "monReport.h"
+#include "reportInterval.h"
+
+/** Error of /report.set: the interval could not be stored. */
+constexpr uint8_t MON_ERR_STORE = 128;
 
 /**
  * @brief Sends this node's state and routes to the MQTT server (MonApp): every
- *        MON_SENDING_EVERY ms, and every two superframes while install mode is on.
+ *        MON_SENDING_EVERY ms or the interval stored with /report.set, and every two
+ *        superframes while install mode is on and that is shorter.
  */
 class MonService : public MessageService {
 public:
@@ -22,6 +28,7 @@ public:
         static MonService instance;
         return instance;
     }
+    /** Loads the stored report interval and starts the sending task. NVS must be ready. */
     void init();
     /** Turns a report received from any node into its JSON for the server. */
     String getJSON(DataMessage* message) override;
@@ -42,6 +49,19 @@ public:
     /** @return the seconds of install mode left, 0 when it is off. Any task may call it. */
     uint32_t installRemainingS() const;
 
+    /**
+     * @return the report interval in force, whether it is stored or the default, whether
+     *         install mode shortens it, and the time until the next report.
+     */
+    String describeReport() const;
+
+    /**
+     * @brief Runs /report.set: stores the interval in @p args (seconds), or removes the stored
+     *        one with "default" or 0. The new interval applies at once and a report follows.
+     * @return the reply for the command.
+     */
+    CommandReply setReportInterval(const String& args);
+
 private:
     MonService() : MessageService(MonApp, "Mon") { commandService = &commands_; }
     monCommandService commands_;
@@ -56,8 +76,14 @@ private:
      */
     MonReport collectState() const;
 
+    /** @return the report interval in force and where it comes from. */
+    ReportPacing reportPacing() const;
+
     /** @return the time until the next report in ms. */
     uint32_t nextReportDelayMs() const;
+
+    /** Reads the stored report interval from NVS. Without one the default stays in force. */
+    void loadReportInterval();
 
     /**
      * Sends the node state with @p routes to MQTT in as many messages as one LoRa frame each
@@ -68,4 +94,8 @@ private:
     bool running = false;
     uint8_t monMessageId = 0;
     InstallMode installMode_;
+    /** Report interval stored by the operator in seconds, REPORT_INTERVAL_NONE without one. */
+    std::atomic<uint32_t> reportIntervalS_{REPORT_INTERVAL_NONE};
+    /** Clock value at which the sending task sends its next report. */
+    std::atomic<uint64_t> nextReportAtMs_{0};
 };
