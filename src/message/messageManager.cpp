@@ -9,8 +9,9 @@ void MessageManager::init() {}
 void MessageManager::addMessageService(MessageService* service) {
     // A command name belongs to the first service that registers it.
     std::vector<String> refused;
+    CommandCatalogue catalogue = buildCatalogue();
     for (const Command& command : service->commandService->commands()) {
-        if (catalogue_.add(command.spec())) continue;
+        if (catalogue.add(command.spec())) continue;
         ESP_LOGE(MANAGER_TAG,
                  "Command %s of service %s refused: name or id taken, bad error codes or a typed "
                  "declaration that is not valid",
@@ -41,15 +42,36 @@ CommandReply MessageManager::executeCommand(const String& line, Origin origin, b
     String args = space < 0 ? "" : text.substring(space + 1);
     args.trim();
 
+    const Command* command = findCommand(name);
+    if (command == nullptr) return CommandStatus::UNKNOWN;
+    if (!commandPermitted(command->getPerm(), origin, signedValid)) return CommandStatus::PERM;
+    return command->execute(args);
+}
+
+const Command* MessageManager::findCommand(const String& name) const {
     for (auto service : services) {
-        Command* command = service->commandService->find(name);
-        if (command == nullptr) continue;
-        if (!commandPermitted(command->getPerm(), origin, signedValid)) {
-            return CommandStatus::PERM;
-        }
-        return command->execute(args);
+        const Command* command = service->commandService->find(name);
+        if (command != nullptr) return command;
     }
-    return CommandStatus::UNKNOWN;
+    return nullptr;
+}
+
+const Command* MessageManager::findCommandById(uint8_t id) const {
+    for (auto service : services) {
+        const Command* command = service->commandService->findById(id);
+        if (command != nullptr) return command;
+    }
+    return nullptr;
+}
+
+CommandCatalogue MessageManager::buildCatalogue() const {
+    CommandCatalogue catalogue;
+    for (auto service : services) {
+        for (const Command& command : service->commandService->commands()) {
+            catalogue.add(command.spec());
+        }
+    }
+    return catalogue;
 }
 
 String MessageManager::help(Origin origin) const {
@@ -59,29 +81,30 @@ String MessageManager::help(Origin origin) const {
 }
 
 CommandReply MessageManager::catalogue(const String& args) const {
-    std::vector<std::string> pages = catalogue_.pages(esp_ota_get_app_description()->version);
+    std::vector<std::string> pages = buildCatalogue().pages(esp_ota_get_app_description()->version);
     size_t page = 0;
     if (!parseCataloguePage(args.c_str(), pages.size(), page)) return CommandStatus::ARG;
     return String(pages[page - 1].c_str());
 }
 
 uint32_t MessageManager::commandAllowanceMs(const String& name) const {
-    const CommandSpec* spec = catalogue_.find(name.c_str());
-    return spec != nullptr ? spec->allowanceMs : 0;
+    const Command* command = findCommand(name);
+    return command != nullptr ? command->getAllowanceMs() : 0;
 }
 
 String MessageManager::describeReply(const String& name, const CommandReply& reply) const {
     if (reply.ok()) return reply.text;
-    const CommandSpec* spec = catalogue_.find(name.c_str());
-    if (reply.status == static_cast<uint8_t>(CommandStatus::ARG) && spec != nullptr) {
-        std::string usage = "Usage: " + spec->name;
-        if (!spec->usage.empty()) usage += " " + spec->usage;
-        return String(usage.c_str());
+    const Command* command = findCommand(name);
+    if (reply.status == static_cast<uint8_t>(CommandStatus::ARG) && command != nullptr) {
+        String usage = "Usage: " + command->getCommand();
+        if (command->getUsage().length() > 0) usage += " " + command->getUsage();
+        return usage;
     }
     std::string text = describeCommandStatus(reply.status, reply.text.c_str());
     if (!text.empty()) return String(text.c_str());
-    text = catalogue_.codeText(name.c_str(), reply.status);
-    if (text.empty()) text = "Error " + std::to_string(static_cast<unsigned>(reply.status));
+    const char* specific = command != nullptr ? command->codeText(reply.status) : nullptr;
+    text = specific != nullptr ? specific
+                               : "Error " + std::to_string(static_cast<unsigned>(reply.status));
     if (reply.text.length() > 0) text += std::string(" (") + reply.text.c_str() + ")";
     return String(text.c_str());
 }

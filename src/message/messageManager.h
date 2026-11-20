@@ -47,6 +47,12 @@ public:
     /** @return the page of /cmds that @p args asks for, or ARG for a page that does not exist. */
     CommandReply catalogue(const String& args) const;
 
+    /** @return the command named @p name of any service, or nullptr. */
+    const Command* findCommand(const String& name) const;
+
+    /** @return the command with id @p id in a binary frame, or nullptr. */
+    const Command* findCommandById(uint8_t id) const;
+
     /** @return the time command @p name may take to run in ms, 0 if it declares none. */
     uint32_t commandAllowanceMs(const String& name) const;
 
@@ -68,8 +74,11 @@ private:
 
     std::vector<MessageService*> services;
 
-    /** Every command of every service, each name once. Filled while the services register. */
-    CommandCatalogue catalogue_;
+    /**
+     * @return every command of every service. It is built when it is asked for, so the texts
+     *         of the commands are held once, in the program image.
+     */
+    CommandCatalogue buildCatalogue() const;
 
     static void sendMessageLoRaMesher(DataMessage* message);
 

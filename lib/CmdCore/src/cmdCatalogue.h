@@ -86,6 +86,9 @@ public:
 
     size_t size() const { return specs_.size(); }
 
+    /** @return the commands in the order they were added. */
+    const std::vector<CommandSpec>& specs() const { return specs_; }
+
     /**
      * @brief Writes every page of /cmds, commands sorted by name.
      *

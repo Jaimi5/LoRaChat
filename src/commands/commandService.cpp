@@ -25,16 +25,16 @@ bool CommandService::removeCommand(const String& name) {
     return false;
 }
 
-Command* CommandService::find(const String& name) {
-    for (Command& command : commands_) {
+const Command* CommandService::find(const String& name) const {
+    for (const Command& command : commands_) {
         if (name.equalsIgnoreCase(command.getCommand())) return &command;
     }
     return nullptr;
 }
 
-Command* CommandService::findById(uint8_t id) {
+const Command* CommandService::findById(uint8_t id) const {
     if (id == 0) return nullptr;
-    for (Command& command : commands_) {
+    for (const Command& command : commands_) {
         if (command.getId() == id) return &command;
     }
     return nullptr;
@@ -48,7 +48,9 @@ String CommandService::help(Origin origin) const {
         text += command.getCommand();
         if (perm == Perm::SIGNED && origin != Origin::SERIAL_CONSOLE) text += " (signed)";
         if (command.getUsage().length() > 0) text += " " + command.getUsage();
-        text += " - " + command.getDescription() + "\n";
+        text += " - ";
+        text += command.getDescription();
+        text += "\n";
     }
     return text;
 }

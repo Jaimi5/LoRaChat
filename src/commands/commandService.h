@@ -18,10 +18,10 @@ public:
     bool removeCommand(const String& name);
 
     /** @return the command named @p name, or nullptr. */
-    Command* find(const String& name);
+    const Command* find(const String& name) const;
 
     /** @return the command with id @p id in a binary frame, or nullptr. Id 0 finds nothing. */
-    Command* findById(uint8_t id);
+    const Command* findById(uint8_t id) const;
 
     /** @return one help line per command that may run when it arrives on @p origin. */
     String help(Origin origin) const;

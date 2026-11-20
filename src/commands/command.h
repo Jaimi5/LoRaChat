@@ -3,8 +3,8 @@
 #include "Arduino.h"
 
 #include <functional>
-#include <memory>
 #include <utility>
+#include <vector>
 
 #include "cmdCatalogue.h"
 #include "cmdPerm.h"
@@ -52,6 +52,10 @@ struct CommandReply {
  *
  * A reply field of type "e(word)?" works as a marker: the handler sets it or leaves it absent,
  * and the template shows the bracket that names it. This gives one command several reply texts.
+ *
+ * The description, the schemas, the template and the error texts are string literals, which the
+ * command points at. The schemas are read each time they are needed, so a command holds no
+ * parsed form of them.
  */
 class Command {
 public:
@@ -59,52 +63,68 @@ public:
     using TypedCallback = TypedHandler;
     /** The text handler of a typed command. It gets the arguments as typed and the command. */
     using TextCallback = std::function<CommandReply(String, const Command&)>;
+    /** Turns arguments a person may type into the typed ones. */
+    using TextAlias = String (*)(const String&);
 
     Command() = default;
 
-    Command(String command, String description, Perm perm, Callback callback)
+    /** @param description a string literal, or a text that lives as long as the command. */
+    Command(String command, const char* description, Perm perm, Callback callback)
         : command(std::move(command)),
-          description(std::move(description)),
+          description(description),
           callback(std::move(callback)),
           perm(perm) {}
 
-    /** A typed command. @p id is its id in a binary frame, from the block of its service. */
-    Command(uint8_t id, String command, String description, Perm perm)
-        : command(std::move(command)), description(std::move(description)), perm(perm) {
-        typed().id = id;
-        declare();
-    }
+    /**
+     * @brief A typed command. @p id is its id in a binary frame, from the block of its service.
+     * @param description a string literal, or a text that lives as long as the command.
+     */
+    Command(uint8_t id, String command, const char* description, Perm perm)
+        : command(std::move(command)), description(description), perm(perm), id(id) {}
 
     /**
      * @brief Declares the arguments with a schema, as cmdFields.h describes it. The usage text
      *        comes from the schema unless withUsage() sets one.
+     * @param schema a string literal.
      */
     Command& args(const char* schema) {
-        typed().args = schema;
-        declare();
-        if (usage.length() == 0 && typed_->valid) {
-            usage = usageFromSchema(typed_->declaration.args).c_str();
+        argsSchema = schema;
+        Schema parsed;
+        if (usage.length() == 0 && parseSchema(schema, parsed)) {
+            usage = usageFromSchema(parsed).c_str();
         }
         return *this;
     }
 
-    /** Declares the reply fields with a schema, and the template that makes their text. */
-    Command& reply(const char* schema, const char* replyTemplate) {
-        typed().reply = schema;
-        typed().replyTemplate = replyTemplate;
-        declare();
+    /**
+     * @brief Declares the reply fields with a schema, and the template that makes their text.
+     *        Both are string literals.
+     */
+    Command& reply(const char* schema, const char* textTemplate) {
+        replySchema = schema;
+        replyTemplate = textTemplate;
         return *this;
     }
 
     /** Sets the typed handler. */
     Command& run(TypedCallback handler) {
-        typed().handler = std::move(handler);
+        typedCallback = std::move(handler);
         return *this;
     }
 
     /** Sets the handler that sees the text lines of a typed command first. */
     Command& runText(TextCallback handler) {
         textCallback = std::move(handler);
+        return *this;
+    }
+
+    /**
+     * @brief Sets what turns the arguments of a text line into the typed ones, for words that
+     *        stand for a value. A signed line for another node never passes through it, since
+     *        its signature covers the line as it is.
+     */
+    Command& withAlias(TextAlias alias) {
+        textAlias = alias;
         return *this;
     }
 
@@ -122,13 +142,12 @@ public:
 
     /**
      * @brief Declares an error of this command: a status from 128 to 255 and its text for
-     *        people.
+     *        people. Both texts are string literals.
      * @param detail how the number that a typed handler sends with the error reads: "" for
      *        decimal, "x" for hex as an esp_err_t code, "e(a,b)" for a name (parseErrorDetail()).
      */
     Command& withCode(uint8_t code, const char* text, const char* detail = "") {
-        codes.push_back(CommandCode{code, text, detail});
-        if (typed_) declare();
+        codes.push_back(Code{code, text, detail});
         return *this;
     }
 
@@ -139,39 +158,60 @@ public:
         return runTyped(argText);
     }
 
-    /** Reads @p argText as the typed arguments, runs the typed handler and renders its reply. */
+    /**
+     * @brief Reads @p argText as the typed arguments, after the alias of the command, runs the
+     *        typed handler and renders its reply.
+     */
     CommandReply runTyped(const String& argText) const {
-        if (!typed_ || !typed_->valid) return CommandStatus::UNKNOWN;
-        return runTypedFromText(typed_->declaration, typed_->handler, argText.c_str());
+        TypedDeclaration declared;
+        if (!declaration(declared)) return CommandStatus::UNKNOWN;
+        return runTypedFromText(declared, typedCallback, typedArgs(argText).c_str());
     }
 
     /** @return the text of a typed outcome that a text handler produced without arguments. */
     CommandReply render(const TypedResult& result, const Fields& out) const {
-        if (!typed_ || !typed_->valid) return CommandStatus::UNKNOWN;
-        return typedReplyText(typed_->declaration, Fields(), result, out);
+        TypedDeclaration declared;
+        if (!declaration(declared)) return CommandStatus::UNKNOWN;
+        return typedReplyText(declared, Fields(), result, out);
     }
 
-    /** Runs the typed handler. @return UNKNOWN for a command without one. */
-    TypedResult executeTyped(const Fields& in, Fields& out) const {
-        if (!typed_ || !typed_->handler) return CommandStatus::UNKNOWN;
-        return typed_->handler(in, out);
+    /** @return @p argText as the typed arguments read it: what the alias makes of it. */
+    String typedArgs(const String& argText) const {
+        return textAlias != nullptr ? textAlias(argText) : argText;
     }
+
+    /** @return the typed handler, empty for a command without one. */
+    const TypedCallback& typedHandler() const { return typedCallback; }
 
     /** @return the id in a binary frame, or 0 for a command without one. */
-    uint8_t getId() const { return typed_ ? typed_->id : 0; }
+    uint8_t getId() const { return id; }
 
-    /** @return the typed declaration, or nullptr if the command has none or it is not valid. */
-    const TypedDeclaration* declaration() const {
-        return typed_ && typed_->valid ? &typed_->declaration : nullptr;
+    /**
+     * @brief Reads the typed declaration of the command.
+     * @return false, leaving @p out unchanged, if the command has no id or its declaration is
+     *         not valid.
+     */
+    bool declaration(TypedDeclaration& out) const {
+        return id != 0 && typedDeclarationOf(spec(), out);
     }
 
     const String& getCommand() const { return command; }
 
-    const String& getDescription() const { return description; }
+    const char* getDescription() const { return description; }
 
     const String& getUsage() const { return usage; }
 
     Perm getPerm() const { return perm; }
+
+    uint32_t getAllowanceMs() const { return allowanceMs; }
+
+    /** @return the text of specific error @p code, or nullptr if the command declares none. */
+    const char* codeText(uint8_t code) const {
+        for (const Code& entry : codes) {
+            if (entry.code == code) return entry.text;
+        }
+        return nullptr;
+    }
 
     /** @return the command as the catalogue lists it. */
     CommandSpec spec() const {
@@ -180,42 +220,37 @@ public:
         out.perm = perm;
         out.usage = usage.c_str();
         out.allowanceMs = allowanceMs;
-        out.codes = codes;
-        if (typed_) {
-            out.id = typed_->id;
-            out.args = typed_->args;
-            out.reply = typed_->reply;
-            out.replyTemplate = typed_->replyTemplate;
+        out.codes.reserve(codes.size());
+        for (const Code& entry : codes) {
+            out.codes.push_back(CommandCode{entry.code, entry.text, entry.detail});
         }
+        out.id = id;
+        out.args = argsSchema;
+        out.reply = replySchema;
+        out.replyTemplate = replyTemplate;
         return out;
     }
 
 private:
-    /** The typed side of a command, shared by the copies of the command. */
-    struct Typed {
-        uint8_t id = 0;
-        std::string args;
-        std::string reply;
-        std::string replyTemplate;
-        TypedDeclaration declaration;
-        bool valid = false;
-        TypedCallback handler;
+    /** An error of the command. The texts are string literals. */
+    struct Code {
+        uint8_t code;
+        const char* text;
+        const char* detail;
     };
 
-    Typed& typed() {
-        if (!typed_) typed_ = std::make_shared<Typed>();
-        return *typed_;
-    }
-
-    void declare() { typed_->valid = typedDeclarationOf(spec(), typed_->declaration); }
-
     String command;
-    String description;
+    const char* description = "";
     String usage;
     Callback callback;
     TextCallback textCallback;
+    TypedCallback typedCallback;
+    TextAlias textAlias = nullptr;
     Perm perm = Perm::LOCAL_ONLY;
+    uint8_t id = 0;
     uint32_t allowanceMs = 0;
-    std::vector<CommandCode> codes;
-    std::shared_ptr<Typed> typed_;
+    const char* argsSchema = "";
+    const char* replySchema = "";
+    const char* replyTemplate = "";
+    std::vector<Code> codes;
 };
