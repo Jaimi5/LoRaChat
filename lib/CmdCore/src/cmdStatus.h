@@ -19,7 +19,7 @@ enum class CommandStatus : uint8_t {
     REPLAY = 4,
     ARG = 5,
     STORAGE = 6,
-    /** 7 to 10 are produced by the gateway and never travel over LoRa. */
+    /** 7 to 10, 12 and 13 are produced by the gateway and never travel over LoRa. */
     NO_ROUTE = 7,
     TIMEOUT = 8,
     DROPPED = 9,
@@ -27,6 +27,11 @@ enum class CommandStatus : uint8_t {
     BUSY = 11,
     /** Produced by the gateway for a command that was cancelled. Never travels over LoRa. */
     CANCELLED = 12,
+    /**
+     * Produced by the gateway for a command that only answers on the node it is typed on, such
+     * as /help. Never travels over LoRa.
+     */
+    NOT_REMOTE = 13,
 };
 
 /** First status that belongs to the command that was sent. */

@@ -220,12 +220,13 @@ TEST(MonReportV2, RoundTrips) {
 }
 
 TEST(MonReportV2, RoundTripsEveryFlag) {
-    for (int flag = 0; flag < 4; flag++) {
+    for (int flag = 0; flag < 5; flag++) {
         MonReport report;
         report.externalPower = flag == 0;
         report.charging = flag == 1;
         report.batteryPresent = flag == 2;
         report.installMode = flag == 3;
+        report.binaryCommands = flag == 4;
         std::vector<uint8_t> bytes = encodeMonReport(report);
         MonReport decoded;
         ASSERT_TRUE(decodeMonReport(bytes.data(), bytes.size(), decoded));
@@ -233,7 +234,17 @@ TEST(MonReportV2, RoundTripsEveryFlag) {
         EXPECT_EQ(decoded.charging, flag == 1);
         EXPECT_EQ(decoded.batteryPresent, flag == 2);
         EXPECT_EQ(decoded.installMode, flag == 3);
+        EXPECT_EQ(decoded.binaryCommands, flag == 4);
     }
+    // A node that understands binary command frames says so in bit 5.
+    MonReport binary;
+    binary.binaryCommands = true;
+    EXPECT_EQ(encodeMonReport(binary)[2], 0x20);
+    // A format 1 report cannot say it.
+    std::vector<uint8_t> old = encodeMonReportV1(binary);
+    MonReport fromOld;
+    ASSERT_TRUE(decodeMonReport(old.data(), old.size(), fromOld));
+    EXPECT_FALSE(fromOld.binaryCommands);
     MonReport install;
     install.installMode = true;
     EXPECT_EQ(encodeMonReport(install)[2], 0x10);

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "cmdFields.h"
 #include "cmdPerm.h"
 
 /** Margin added to every wait for a reply (g). */
@@ -84,6 +85,10 @@ struct PendingCommand {
     std::string name;
     /** The encoded command frame, kept for the retransmission while the command waits. */
     std::vector<uint8_t> frame;
+    /** The frame is a binary one. Its reply is rendered with the declaration of the command. */
+    bool binary = false;
+    /** The typed arguments of a binary request, which the reply template may quote. */
+    Fields args;
     /** Timing of the first transmission. */
     AttemptTiming timing;
     /** Neighbour the command left through. */

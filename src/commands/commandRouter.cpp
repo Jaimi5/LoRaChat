@@ -67,15 +67,33 @@ void CommandRouter::task(void* parameter) {
 }
 
 void CommandRouter::processReceivedMessage(messagePort port, DataMessage* message) {
+    CommandRequest request;
+    request.origin = Origin::LORA;
+    request.src = message->addrSrc;
+    request.requestId = message->messageId;
+    if (isBinaryCommandFrame(message->message, message->messageSize)) {
+        BinaryCommandFrame binary;
+        if (!BinaryCommandFrame::decode(message->message, message->messageSize, binary)) {
+            ESP_LOGW(CR_TAG, "Malformed binary command frame from %04X", message->addrSrc);
+            return;
+        }
+        request.binary = true;
+        request.response = binary.response;
+        request.status = binary.status;
+        request.replayed = binary.replayed;
+        request.commandId = binary.id;
+        request.payload = binary.payload;
+        request.command.isSigned = binary.isSigned;
+        request.command.counter = binary.counter;
+        request.command.tag = binary.tag;
+        submit(request);
+        return;
+    }
     CommandFrame frame;
     if (!CommandFrame::decode(message->message, message->messageSize, frame)) {
         ESP_LOGW(CR_TAG, "Malformed command frame from %04X", message->addrSrc);
         return;
     }
-    CommandRequest request;
-    request.origin = Origin::LORA;
-    request.src = message->addrSrc;
-    request.requestId = message->messageId;
     request.response = frame.response;
     request.status = frame.status;
     request.command.line = frame.line;
@@ -105,6 +123,10 @@ void CommandRouter::handle(const CommandRequest& request) {
         return;
     }
 
+    if (request.binary) {
+        serveBinary(request);
+        return;
+    }
     uint16_t local = LoRaMeshService::getInstance().getLocalAddress();
     if (request.command.remote && request.command.dst != local) {
         forward(request);
@@ -136,7 +158,24 @@ void CommandRouter::handleReply(const CommandRequest& request) {
     path.nextHop = pending.nextHop;
     path.superframeMs = pending.timing.superframeMs;
     rtt_.addSample(path, pending.waitedMs(nowMs), pending.timing.slotWaitMs, pending.retransmitted);
-    deliver(pending, CommandReply(request.status, request.command.line.c_str()));
+    if (request.binary) {
+        BinaryCommandFrame frame;
+        frame.response = true;
+        frame.status = request.status;
+        frame.replayed = request.replayed;
+        frame.payload = request.payload;
+        const Command* command = MessageManager::getInstance().findCommand(pending.name.c_str());
+        TypedDeclaration declaration;
+        const bool declared = command != nullptr && command->declaration(declaration);
+        deliver(pending, renderBinaryReply(frame, declared ? &declaration : nullptr, pending.args));
+    } else {
+        if (pending.binary) {
+            // A text answer to a binary frame comes from a node that does not read them.
+            ESP_LOGW(CR_TAG, "Node %04X answered a binary command as text", request.src);
+            binaryNodes_.note(request.src, false);
+        }
+        deliver(pending, CommandReply(request.status, request.command.line.c_str()));
+    }
     acknowledge(pending, formatDoneAck(pending, nowMs));
 }
 
@@ -145,12 +184,54 @@ CommandReply CommandRouter::runLocal(const CommandRequest& request) {
                                                         request.origin, false);
 }
 
-CommandReply CommandRouter::runSigned(const CommandRequest& request) {
+KeyedHmac CommandRouter::deploymentHmac() {
     DeploymentKey key;
-    if (!OtaService::getInstance().deploymentKey(key)) return CommandStatus::AUTH;
-    KeyedHmac hmac = [&key](const uint8_t* data, size_t size) {
+    if (!OtaService::getInstance().deploymentKey(key)) return KeyedHmac();
+    return [key](const uint8_t* data, size_t size) {
         return hmacSha256(key.data(), key.size(), data, size);
     };
+}
+
+void CommandRouter::serveBinary(const CommandRequest& request) {
+    BinaryCommandFrame frame;
+    frame.id = request.commandId;
+    frame.isSigned = request.command.isSigned;
+    frame.counter = request.command.counter;
+    frame.tag = request.command.tag;
+    frame.payload = request.payload;
+
+    ServedCommand served;
+    const Command* command = MessageManager::getInstance().findCommandById(frame.id);
+    const bool known = command != nullptr && command->declaration(served.declaration);
+    if (known) {
+        served.name = command->getCommand().c_str();
+        served.perm = command->getPerm();
+        // The handler runs as the command of this request, for what it reads from the router.
+        served.handler = [this, command, &request](const Fields& in, Fields& out) {
+            running_ = &request;
+            const TypedResult result = command->typedHandler()(in, out);
+            running_ = nullptr;
+            return result;
+        };
+        if (!command->typedHandler()) served.handler = nullptr;
+    }
+    LoRaMeshService& mesh = LoRaMeshService::getInstance();
+    NodeAuth auth;
+    auth.address = mesh.getLocalAddress();
+    if (frame.isSigned) auth.hmac = deploymentHmac();
+    auth.counter = [this]() { return counterLoaded_ || loadCounter() ? &counter_ : nullptr; };
+    auth.store = [this](uint32_t counter) { return storeCounter(counter); };
+    const BinaryCommandFrame reply = serveBinaryCommand(frame, known ? &served : nullptr,
+                                                        request.origin, auth, mesh.maxAppPayload());
+    if (sendFrame(request.src, request.requestId, reply.encode()) != CommandStatus::OK) {
+        ESP_LOGW(CR_TAG, "The reply to %04X [%u] could not be sent", request.src,
+                 request.requestId);
+    }
+}
+
+CommandReply CommandRouter::runSigned(const CommandRequest& request) {
+    KeyedHmac hmac = deploymentHmac();
+    if (!hmac) return CommandStatus::AUTH;
     uint16_t local = LoRaMeshService::getInstance().getLocalAddress();
     CommandTag expected =
         commandTag(hmac, local, request.command.counter, request.command.line);
@@ -190,28 +271,34 @@ uint32_t CommandRouter::expectedIn(uint16_t dst, uint16_t nextHop, const Attempt
 }
 
 void CommandRouter::forward(const CommandRequest& request) {
-    CommandFrame frame;
-    frame.line = request.command.line;
-    frame.isSigned = request.command.isSigned;
-    frame.counter = request.command.counter;
-    frame.tag = request.command.tag;
+    LoRaMeshService& mesh = LoRaMeshService::getInstance();
+    std::string name;
+    std::string args;
+    splitCommand(request.command.line, name, args);
+    const Command* command = MessageManager::getInstance().findCommand(name.c_str());
+    CommandSpec spec;
+    if (command != nullptr) {
+        spec = command->spec();
+        // A word that stands for a value is replaced only in a line without a signature.
+        if (!request.command.isSigned) args = command->typedArgs(args.c_str()).c_str();
+    }
+    ForwardPlan plan = planForward(request.command, args, command != nullptr ? &spec : nullptr,
+                                   binaryNodes_.has(request.command.dst), mesh.maxAppPayload());
+    if (!plan.send()) {
+        reply(request, CommandReply(plan.status, plan.argument.c_str()));
+        return;
+    }
 
     PendingCommand pending;
     pending.dst = request.command.dst;
     pending.origin = request.origin;
     pending.originRequestId = request.requestId;
-    pending.isSigned = frame.isSigned;
-    pending.frame = frame.encode();
-    std::string args;
-    splitCommand(frame.line, pending.name, args);
+    pending.isSigned = request.command.isSigned;
+    pending.frame = plan.frame;
+    pending.binary = plan.binary;
+    pending.args = plan.args;
+    pending.name = plan.name;
 
-    LoRaMeshService& mesh = LoRaMeshService::getInstance();
-    size_t maxFrame = mesh.maxAppPayload();
-    if (pending.frame.size() > maxFrame) {
-        size_t overhead = pending.frame.size() - frame.line.size();
-        reply(request, CommandReply(CommandStatus::TOO_LONG, String(maxFrame - overhead)));
-        return;
-    }
     uint32_t nowMs = clockMs();
     if (request.origin == Origin::MQTT) {
         // The same request again while it waits: it is on its way, so it is not sent twice.

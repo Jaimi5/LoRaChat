@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <algorithm>
 #include <limits>
+#include "commands/commandRouter.h"
 #include "devices/initDevices.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -34,7 +35,7 @@ String MonService::getJSON(DataMessage* message) {
     }
 
     // Every key is a string literal, so the document only stores its objects and arrays.
-    constexpr size_t REPORT_KEYS = 21;
+    constexpr size_t REPORT_KEYS = 22;
     constexpr size_t ROUTE_KEYS = 6;
     DynamicJsonDocument doc(JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(REPORT_KEYS) +
                             JSON_ARRAY_SIZE(report.routes.size()) +
@@ -55,7 +56,10 @@ String MonService::getJSON(DataMessage* message) {
         data["ext_power"] = report.externalPower ? 1 : 0;
         data["charging"] = report.charging ? 1 : 0;
         data["install"] = report.installMode ? 1 : 0;
+        data["bin_cmd"] = report.binaryCommands ? 1 : 0;
     }
+    // The gateway sends binary command frames only to the nodes that announce them.
+    CommandRouter::getInstance().noteBinaryCommands(message->addrSrc, report.binaryCommands);
     if (report.hasSensor) {
         data["temp_c"] = report.sensor.tempCentiC / 100.0;
         if (report.sensor.rhCentiPercent != MON_NO_HUMIDITY) {
@@ -252,6 +256,7 @@ MonReport MonService::collectState() const {
     report.rxQueue = static_cast<uint16_t>(
         std::min<size_t>(mesh.GetRxQueueSize(), std::numeric_limits<uint16_t>::max()));
     report.installMode = installActive();
+    report.binaryCommands = true;
     // The report holds the interval in 16 bits, so a longer one is sent as 65535 s.
     report.intervalS = static_cast<uint16_t>(
         std::min<uint32_t>(reportPacing().intervalMs / 1000, std::numeric_limits<uint16_t>::max()));

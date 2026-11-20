@@ -15,7 +15,7 @@ namespace {
 
 const char* const GENERIC_LINE =
     "E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;"
-    "10=too long;11=busy;12=cancelled";
+    "10=too long;11=busy;12=cancelled;13=not remote";
 
 std::vector<std::string> lines(const std::string& page) {
     std::vector<std::string> out;

@@ -39,6 +39,7 @@ uint8_t flagsOf(const MonReport& report) {
     if (report.batteryPresent) flags |= MON_FLAG_BATTERY_PRESENT;
     if (report.hasSensor) flags |= MON_FLAG_SENSOR;
     if (report.installMode) flags |= MON_FLAG_INSTALL_MODE;
+    if (report.binaryCommands) flags |= MON_FLAG_BINARY_COMMANDS;
     return flags;
 }
 
@@ -80,6 +81,7 @@ bool decodeV2(const uint8_t* payload, size_t size, MonReport& report) {
     report.charging = (flags & MON_FLAG_CHARGING) != 0;
     report.batteryPresent = (flags & MON_FLAG_BATTERY_PRESENT) != 0;
     report.installMode = (flags & MON_FLAG_INSTALL_MODE) != 0;
+    report.binaryCommands = (flags & MON_FLAG_BINARY_COMMANDS) != 0;
     report.hasSensor = hasSensor;
     report.uptimeMs = getU32(payload + 3) * MS_PER_S;
     report.txQueue = payload[7];

@@ -2,6 +2,8 @@
 
 static const uint8_t AUTH_LABEL[] = {'L', 'M', 'C', '1'};
 
+const char* const COMMAND_ALREADY_EXECUTED_TEXT = "OK already executed";
+
 std::vector<uint8_t> commandAuthMessage(uint16_t dst, uint32_t counter, const std::string& line) {
     std::vector<uint8_t> message(AUTH_LABEL, AUTH_LABEL + sizeof(AUTH_LABEL));
     message.push_back(static_cast<uint8_t>(dst & 0xFF));
@@ -38,10 +40,22 @@ void CommandCounter::accept(uint32_t counter) {
     any_ = true;
     reply_ = CommandResult();
     hasReply_ = false;
+    binary_ = BinaryReply();
+    hasBinary_ = false;
 }
 
 CommandResult CommandCounter::lastReply() const {
-    return hasReply_ ? reply_ : CommandResult("OK already executed");
+    if (hasReply_) return reply_;
+    if (hasBinary_ && binary_.status != 0) return CommandResult(binary_.status, "");
+    return CommandResult(COMMAND_ALREADY_EXECUTED_TEXT);
+}
+
+BinaryReply CommandCounter::lastBinaryReply() const {
+    if (hasBinary_) return binary_;
+    BinaryReply reply;
+    reply.status = hasReply_ ? reply_.status : 0;
+    reply.replayed = reply.status == 0;
+    return reply;
 }
 
 CommandResult runOncePerCounter(CommandCounter& counter, uint32_t value,
@@ -60,5 +74,28 @@ CommandResult runOncePerCounter(CommandCounter& counter, uint32_t value,
     counter.accept(value);
     CommandResult reply = execute();
     counter.setReply(reply);
+    return reply;
+}
+
+BinaryReply runBinaryOncePerCounter(CommandCounter& counter, uint32_t value,
+                                    const std::function<bool(uint32_t)>& store,
+                                    const std::function<BinaryReply()>& execute) {
+    BinaryReply refused;
+    switch (counter.decide(value)) {
+        case CounterDecision::REPLAY:
+            refused.status = static_cast<uint8_t>(CommandStatus::REPLAY);
+            return refused;
+        case CounterDecision::REPEAT:
+            return counter.lastBinaryReply();
+        case CounterDecision::EXECUTE:
+            break;
+    }
+    if (!store(value)) {
+        refused.status = static_cast<uint8_t>(CommandStatus::STORAGE);
+        return refused;
+    }
+    counter.accept(value);
+    BinaryReply reply = execute();
+    counter.setBinaryReply(reply);
     return reply;
 }

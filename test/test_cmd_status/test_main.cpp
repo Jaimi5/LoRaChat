@@ -23,6 +23,7 @@ TEST(CmdStatus, TheGenericTableMatchesTheProtocol) {
         {10, "too long", "The command does not fit in one LoRa frame"},
         {11, "busy", "The node cannot run this now"},
         {12, "cancelled", "Cancelled before a reply arrived"},
+        {13, "not remote", "The gateway does not send this command to other nodes"},
     };
     size_t count = 0;
     const CommandStatusInfo* table = commandStatusTable(count);
@@ -62,9 +63,16 @@ TEST(CmdStatus, ACancelledCommandIsReportedWithoutArgument) {
     EXPECT_EQ(describeCommandStatus(12, ""), "Cancelled before a reply arrived");
 }
 
+TEST(CmdStatus, ACommandThatStaysOnItsNodeIsRefusedWithoutArgument) {
+    EXPECT_EQ(static_cast<uint8_t>(CommandStatus::NOT_REMOTE), 13);
+    EXPECT_EQ(formatReplyPayload(17, CommandResult(CommandStatus::NOT_REMOTE)), "17 E13");
+    EXPECT_EQ(describeCommandStatus(13, ""),
+              "The gateway does not send this command to other nodes");
+}
+
 TEST(CmdStatus, CodesOutsideTheTableHaveNoRow) {
     EXPECT_EQ(commandStatusInfo(0), nullptr);
-    EXPECT_EQ(commandStatusInfo(13), nullptr);
+    EXPECT_EQ(commandStatusInfo(14), nullptr);
     EXPECT_EQ(commandStatusInfo(127), nullptr);
     EXPECT_EQ(commandStatusInfo(128), nullptr);
     EXPECT_EQ(commandStatusInfo(255), nullptr);
@@ -73,7 +81,7 @@ TEST(CmdStatus, CodesOutsideTheTableHaveNoRow) {
 TEST(CmdStatus, TheCatalogueLineListsEveryGenericError) {
     EXPECT_EQ(commandStatusCatalogueLine(),
               "E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;"
-              "9=dropped;10=too long;11=busy;12=cancelled");
+              "9=dropped;10=too long;11=busy;12=cancelled;13=not remote");
 }
 
 TEST(CmdStatus, FormatsTheErrorForm) {

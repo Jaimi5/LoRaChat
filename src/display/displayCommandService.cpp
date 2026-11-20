@@ -2,7 +2,6 @@
 #include "displayService.h"
 
 #include "cmdText.h"
-#include "commands/commandRouter.h"
 #include "loramesh/loraMeshService.h"
 
 namespace {
@@ -10,9 +9,9 @@ namespace {
 /**
  * Adds the handlers and the errors of display command @p command to its declaration.
  *
- * On the serial console the arguments may start with a destination, "<addr> [<text>]": the
- * first word is one only when it has exactly four hex digits. The command then goes to that
- * node as a display message. Every other line runs on this node.
+ * On a text line the arguments may start with a destination, "<addr> [<text>]": the first word
+ * is one only when it has exactly four hex digits. The command then goes to that node as a
+ * display message. Every other line runs on this node. A binary frame carries no destination.
  */
 Command displayCommand(Command declared, DisplayCommand command) {
     return declared
@@ -22,10 +21,8 @@ Command displayCommand(Command declared, DisplayCommand command) {
         .runText([command](String args, const Command& self) {
             uint16_t dst = 0;
             std::string rest;
-            const bool console =
-                CommandRouter::getInstance().runningOrigin() == Origin::SERIAL_CONSOLE;
             // An address alone is the text of /displayText: there is nothing to send to that node.
-            if (!console || !parseAddressedArgs(args.c_str(), dst, rest) ||
+            if (!parseAddressedArgs(args.c_str(), dst, rest) ||
                 (command == DisplayText && rest.empty())) {
                 return self.runTyped(args);
             }

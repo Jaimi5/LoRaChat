@@ -1,5 +1,4 @@
 #include "monCommandService.h"
-#include "commands/commandRouter.h"
 #include "installMode.h"
 #include "monService.h"
 
@@ -20,7 +19,7 @@ monCommandService::monCommandService() {
             .run([](const Fields&, Fields& out) {
                 return MonService::getInstance().reportInto(out);
             }));
-    // The text handler stays for the serial console, where the word "default" stands for 0.
+    // On a text line the word "default" stands for 0, the typed way to remove the interval.
     addCommand(
         Command(0x7A, "/report.set", "Set the monitor report interval (no restart)", Perm::SIGNED)
             .args("seconds:u")
@@ -28,10 +27,8 @@ monCommandService::monCommandService() {
             .run([](const Fields& in, Fields& out) {
                 return MonService::getInstance().setReportInterval(in.u(0), out);
             })
-            .runText([](String args, const Command& self) {
-                const bool console =
-                    CommandRouter::getInstance().runningOrigin() == Origin::SERIAL_CONSOLE;
-                return self.runTyped(console && args.equalsIgnoreCase("default") ? "0" : args);
+            .withAlias([](const String& args) {
+                return args.equalsIgnoreCase("default") ? String("0") : args;
             })
             .withUsage(String("<seconds from ") + REPORT_INTERVAL_MIN_S + " to " +
                        REPORT_INTERVAL_MAX_S + ", or 0 for the default>")

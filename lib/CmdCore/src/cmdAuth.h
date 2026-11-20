@@ -35,12 +35,22 @@ enum class CounterDecision : uint8_t {
     REPLAY,
 };
 
+/** The reply to a binary command frame: its status and the bytes behind it. */
+struct BinaryReply {
+    uint8_t status = 0;
+    /** The reply fields of a success, or the number of an error. */
+    std::vector<uint8_t> payload;
+    /** The command ran earlier and the bytes of its reply are not held any more. */
+    bool replayed = false;
+};
+
 /**
  * @brief Replay protection for signed commands.
  *
  * Counters only grow. The node stores the last counter in NVS before running a command, so a
  * command never runs twice, even across a reboot. The reply of the last command is kept in RAM
- * for repeats.
+ * for repeats, in the form it was given: as text or as the bytes of a binary reply. A repeat in
+ * the other form gets the status alone.
  */
 class CommandCounter {
 public:
@@ -55,6 +65,16 @@ public:
     void setReply(const CommandResult& reply) {
         reply_ = reply;
         hasReply_ = true;
+        hasBinary_ = false;
+        binary_ = BinaryReply();
+    }
+
+    /** Stores the binary reply of the last accepted command. */
+    void setBinaryReply(const BinaryReply& reply) {
+        binary_ = reply;
+        hasBinary_ = true;
+        hasReply_ = false;
+        reply_ = CommandResult();
     }
 
     /**
@@ -63,6 +83,13 @@ public:
      */
     CommandResult lastReply() const;
 
+    /**
+     * @return the binary reply of the last command. If its bytes are not held (lost in a
+     *         reboot, or the command was answered as text) the status alone, marked replayed
+     *         for a success.
+     */
+    BinaryReply lastBinaryReply() const;
+
     uint32_t last() const { return last_; }
 
 private:
@@ -70,6 +97,8 @@ private:
     bool any_;
     CommandResult reply_;
     bool hasReply_ = false;
+    BinaryReply binary_;
+    bool hasBinary_ = false;
 };
 
 /**
@@ -83,3 +112,11 @@ private:
 CommandResult runOncePerCounter(CommandCounter& counter, uint32_t value,
                                 const std::function<bool(uint32_t)>& store,
                                 const std::function<CommandResult()>& execute);
+
+/** runOncePerCounter() for a command that arrived as a binary frame. */
+BinaryReply runBinaryOncePerCounter(CommandCounter& counter, uint32_t value,
+                                    const std::function<bool(uint32_t)>& store,
+                                    const std::function<BinaryReply()>& execute);
+
+/** Text of a signed command that ran earlier and whose reply is not held any more. */
+extern const char* const COMMAND_ALREADY_EXECUTED_TEXT;

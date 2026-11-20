@@ -46,6 +46,8 @@ struct MonReport {
     bool charging = false;
     bool batteryPresent = false;
     bool installMode = false;
+    /** The node understands binary command frames (cmdFrame.h). Format 2 only. */
+    bool binaryCommands = false;
     bool hasSensor = false;
     MonSensor sensor;
     std::vector<MonRoute> routes;
@@ -79,6 +81,7 @@ constexpr uint8_t MON_FLAG_CHARGING = 1U << 1;
 constexpr uint8_t MON_FLAG_BATTERY_PRESENT = 1U << 2;
 constexpr uint8_t MON_FLAG_SENSOR = 1U << 3;
 constexpr uint8_t MON_FLAG_INSTALL_MODE = 1U << 4;
+constexpr uint8_t MON_FLAG_BINARY_COMMANDS = 1U << 5;
 
 /**
  * @return the format 2 payload of @p report: the header, the sensor block if it has one, and

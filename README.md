@@ -203,14 +203,15 @@ Every reply carries a status. 0 is success and the reply is the text of the comm
 | 10 | too long | max line bytes | The command does not fit in one LoRa frame |
 | 11 | busy | | The node cannot run this now |
 | 12 | cancelled | | Cancelled before a reply arrived |
+| 13 | not remote | | The gateway does not send this command to other nodes |
 
-Codes 7 to 10 and 12 come from the gateway and never travel over LoRa. On the serial console an error prints its text, and a bad argument prints `Usage: <command> <arguments>`. On MQTT an error is `<request id> E<code>` or `<request id> E<code> <argument>` on `cmd-resp/<node>`, for example `17 E7`, `17 E8 94` or `17 E5`. No successful reply starts with `E` and a digit. On LoRa a reply frame is the flags byte, the status byte and then the text or the argument.
+Codes 7 to 10, 12 and 13 come from the gateway and never travel over LoRa. Code 13 answers `/help` and `/cmds` for another node: their replies do not fit a LoRa frame, so ask the gateway itself. On the serial console an error prints its text, and a bad argument prints `Usage: <command> <arguments>`. On MQTT an error is `<request id> E<code>` or `<request id> E<code> <argument>` on `cmd-resp/<node>`, for example `17 E7`, `17 E8 94` or `17 E5`. No successful reply starts with `E` and a digit. On LoRa a reply frame is the flags byte, the status byte and then the text or the argument.
 
 `/cmds [page]` lists every command for programs. Ask the gateway itself over MQTT, so the answer does not cross LoRa. Each page stays under 900 bytes:
 
 ```
 cmds 1 0.1.2+g2bfdeeb1 1/8
-E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;10=too long;11=busy;12=cancelled
+E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;10=too long;11=busy;12=cancelled;13=not remote
 /addPassword|local|<password of at most 64 bytes>|
 /connectWiFi|signed||128=The WiFi did not connect|50||=Connected
 /report.set|signed|<seconds from 60 to 43200, or 0 for the default>|128=The interval could not be stored|7a|seconds:u|stored:u? def:u?=Report interval set to [{0} s][default ({1} s)]
@@ -218,7 +219,7 @@ E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=droppe
 
 Line 1 holds the format version `1`, the firmware version and the page position. The `E|` line with the generic errors comes on page 1 only. Then one line per command, sorted by name: `name|perm|usage|code=text;code=text`, where perm is `open`, `signed` or `local`. A command name registered by two services is refused at boot with an error in the log.
 
-A command with a typed declaration appends three fields to its line: `|id|arguments|reply=template`. The id is the byte that will name the command in a binary frame, in two hex digits. The arguments and the reply are schemas of typed fields, and the template turns the reply fields into the reply text. `lib/CmdCore/src/cmdFields.h` describes the schema and the template, and `lib/CmdCore/src/cmdFrame.h` the binary frame. Every command that can be sent to another node is declared this way, 28 in all. `/help` and `/cmds` have no id, and neither have the local commands `/key.set`, `/ota.server`, `/addSSID` and `/addPassword`. Commands still travel over LoRa as text. An id registered twice is refused at boot like a name. The ids are listed in `test/vectors/cmdIds.txt` and are never reused. `test/test_cmd_golden` holds the bytes of each request and reply.
+A command with a typed declaration appends three fields to its line: `|id|arguments|reply=template`. The id is the byte that will name the command in a binary frame, in two hex digits. The arguments and the reply are schemas of typed fields, and the template turns the reply fields into the reply text. `lib/CmdCore/src/cmdFields.h` describes the schema and the template, and `lib/CmdCore/src/cmdFrame.h` the binary frame. Every command that can be sent to another node is declared this way, 28 in all. `/help` and `/cmds` have no id, and neither have the local commands `/key.set`, `/ota.server`, `/addSSID` and `/addPassword`. An id registered twice is refused at boot like a name. The ids are listed in `test/vectors/cmdIds.txt` and are never reused. `test/test_cmd_golden` holds the bytes of each request and reply.
 
 A typed command gives the same reply text on the serial console, over MQTT and after a trip over LoRa, because the text always comes from the template. Three things follow from that:
 
@@ -226,7 +227,26 @@ A typed command gives the same reply text on the serial console, over MQTT and a
 - A command without arguments refuses extra words with a bad argument.
 - A reply field of type `e(word)?` is a marker. The node sets it or leaves it out, and the template shows the bracket that names it. `/maint.close` answers `No window open` or `Closing the window` this way.
 
-A few commands accept more on a text line than their typed arguments carry. On the serial console `/report.set default` stands for `/report.set 0`, `/maint.wifi <ssid> [<password>]` takes the credentials in the clear, and the display commands take a destination address (see below). `/version` adds `node=<address>` to the reply of a text line.
+A few commands accept more on a text line than their typed arguments carry. `/report.set default` stands for `/report.set 0`, the display commands take a destination address (see below), and on the serial console `/maint.wifi <ssid> [<password>]` takes the credentials in the clear. `/version` adds `node=<address>` to the reply of a text line.
+
+#### Binary command frames
+
+A command for another node travels over LoRa as a binary frame when that node understands it, and as text otherwise. The reply has the form of the request. MQTT and the serial console keep their text in both cases: the gateway turns the line into bytes and the reply bytes back into the same text.
+
+| | Byte 0 | Byte 1 | Then |
+|---|---|---|---|
+| Request | flags: bit 6 signed, bit 5 binary | command id | the argument fields. Signed: counter (u32 LE) and tag (8 bytes) at the end |
+| Reply | flags: bit 7 reply, bit 5 binary, bit 4 reply lost | status | status 0: the reply fields. Error: an optional number |
+
+`/version` is `20 34` and its reply has 15 bytes. `/sleep` answers in 12 bytes what a text frame cuts at 100 characters. A signed `/report.set 600` has 16 bytes where the text frame has 28.
+
+- **Who gets binary frames.** A node sets bit 5 of the flags in its monitor report, and the gateway publishes it as `bin_cmd` (1 or 0) in the report JSON. The gateway remembers the nodes that announced it, in RAM. A node counts as a text node until its first report arrives, and again after a restart of the gateway until its next report. A node that answers a binary frame as text is taken off the list.
+- **Signature.** The tag covers the same text line in both forms. The node builds the line from the id and the fields, so a signed line for another node must be the canonical one: the declared name, one space between arguments, numbers without leading zeros, hex in lower case. The gateway answers `E5` without sending for any other signed line, for every node. `/report.set default` is such a line: sign `/report.set 0`.
+- **Lines without a signature** may be typed loosely (`/identify 030`). The gateway reads them with the schema and sends the same bytes.
+- **Refused by the gateway without sending**, for a node that takes binary frames: `E1` for a name the gateway does not know, `E2` for a local command, `E5` for arguments that do not fit the schema. A gateway must run firmware at least as new as its nodes. The address form of the display commands is one of those bad arguments, since a binary frame carries no destination.
+- **Replay.** A signed command runs once per counter in both forms. A repeat of the last counter gets the stored reply bytes. After a restart of the node those bytes are gone: the reply then has bit 4 set and no fields, and the gateway shows `OK already executed`.
+- **Replies that pass one frame.** `/getRT` is cut at a whole route. Its first field still gives the number of routes. Any other reply that does not fit gives `E11`.
+- **Old and new together.** An old gateway sends text, which a new node answers as text. An old node that gets a binary frame answers `E1` or `E3` as text, or drops the frame.
 
 #### Commands for other nodes
 
@@ -262,7 +282,7 @@ A command from MQTT that waits for its reply can be cancelled: publish `<node> <
 | `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10, from 1 to 600) to find the board. Any other value is a bad argument. Error 128 means that the blink task could not be started |
 | `/install [seconds]` | Signed | Install mode for 600 s, or for the given time up to 3600 s: the node stays awake and reports every two superframes. A new `/install` sets a new end time, `/install 0` stops it. A value above 3600 is a bad argument. Replies `OK install <n> s` or `OK install off` |
 | `/report` | Open | The monitor report interval in force, whether it is stored or the default, and the time until the next report. Example: `report every 300 s (default), next in 212 s`. While install mode shortens the interval: `report every 20 s (install mode, then 300 s default), next in 12 s` |
-| `/report.set <seconds>` | Signed | Stores the monitor report interval, from 60 to 43200 s, and applies it at once without a restart: a report goes out with the new `interval_s`. `0` removes the stored value and restores the default. The serial console also takes the word `default` for 0. Any other value is a bad argument. Replies `Report interval set to <n> s` or `Report interval set to default (300 s)`. Error 128 means that the interval could not be stored, and the old one stays in force |
+| `/report.set <seconds>` | Signed | Stores the monitor report interval, from 60 to 43200 s, and applies it at once without a restart: a report goes out with the new `interval_s`. `0` removes the stored value and restores the default. A text line also takes the word `default` for 0, except a signed line for another node. Any other value is a bad argument. Replies `Report interval set to <n> s` or `Report interval set to default (300 s)`. Error 128 means that the interval could not be stored, and the old one stays in force |
 | `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
 | `/sleep` | Open | Sleep mode and sleep fraction (stored or default) and the light and deep sleeps since power-on |
 | `/sleep.set none\|light\|deep` | Signed | Stores how a sensor's MCU sleeps through the SLEEP slots and restarts the node. Refused while a new image is being verified |
@@ -284,11 +304,11 @@ A command from MQTT that waits for its reply can be cancelled: publish `<node> <
 | `/displayText <text>` | Open | Shows one line on the last row for five minutes (the first 14 characters fit beside the version). A new line replaces the old one. It does not turn the display on. The text is UTF-8 and cannot be empty |
 | `/displayClear` | Open | Removes that line |
 
-On the serial console the display commands also take a destination in front, `/displayOn <addr>` or `/displayText <addr> <text>`, where `<addr>` is exactly four hex digits (`0A3F`). The command then goes to that node as a display message, which gets no reply. Any other first word belongs to the text, so `/displayText add milk` shows `add milk` on this node. On the serial console a text that starts with a four-digit hex word needs the node's own address in front. A node without a working display still sends display commands to other nodes. Text sent this way takes up to 100 characters at SF9 (one LoRa packet), and longer text is refused. Over MQTT and LoRa a display command has no address argument: send the command to the node itself, as `@<node> /displayOn` on a serial console or with the node as the MQTT destination, and it answers like any other command.
+On a text line the display commands also take a destination in front, `/displayOn <addr>` or `/displayText <addr> <text>`, where `<addr>` is exactly four hex digits (`0A3F`). The command then goes to that node as a display message, which gets no reply. Any other first word belongs to the text, so `/displayText add milk` shows `add milk` on this node. A text that starts with a four-digit hex word needs the node's own address in front. A node without a working display still sends display commands to other nodes. Text sent this way takes up to 100 characters at SF9 (one LoRa packet), and longer text is refused. The better way is to send the command to the node itself, as `@<node> /displayOn` on a serial console or with the node as the MQTT destination: it answers like any other command, and a binary frame has no address form.
 
 The commands that restart the node (`/role.set`, `/sleep.set`, `/sleep.fraction` and `/reboot`) restart it after their reply has left. The node waits at least 1 s, then until its LoRa TX queue is empty, and 2 s more for the last frame to be on the air. A command that came over LoRa therefore restarts the node after its next TX data slot, which can be a whole superframe away. A command from the serial console, or from MQTT on a gateway with an empty queue, restarts it after about 3 s. The wait ends at the latest after two superframes and 5 s, or after 180 s while the node does not know the superframe. The node does not sleep while it waits. Error 130 of the three setting commands means that the setting is stored and the restart could not be scheduled.
 
-One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there). A reply has room for 100 characters there, and a longer one is cut and ends in `~`.
+One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there). A text reply has room for 100 characters there, and a longer one is cut and ends in `~`. A binary frame carries the same command in fewer bytes (see Binary command frames).
 
 Sensor nodes can let the ESP32 sleep while the mesh has nothing for them (`/sleep.set`, default `none`). The radio always sleeps in the SLEEP slots. `light` puts the MCU into light sleep through each run of SLEEP slots. `deep` deep-sleeps through runs long enough for a reboot (`LORA_DEEP_SLEEP_MIN_MS` plus `LORA_DEEP_SLEEP_BOOT_MS` in `src/config.h`) and light-sleeps through shorter ones. In deep-sleep mode the node keeps its mesh state in RTC memory and resumes its slots after the wake-up, without the display, the charger restart or the WiFi boot window, and the wake-up does not count as a boot. Long sleep runs need a gateway with a higher `/sleep.fraction`. A node stays awake while its display is on, in install mode, during a maintenance window, while a new image is being verified and while a restart waits for the reply of its command to leave. The gateway never sleeps. A node also stays awake while the power chip signals an event that has not been read yet, and logs a warning if that lasts more than 5 s.
 
@@ -329,7 +349,7 @@ A monitor report carries the node's uptime, queues, report interval, battery vol
 
 The 300 s are the default of the firmware (`MON_SENDING_EVERY` in `src/config.h`). The signed command `/report.set <seconds>` stores another interval for one node, from 60 to 43200 s. The node applies it at once, sends a report with the new `interval_s` and keeps the value through restarts and deep sleep. `/report.set 0` goes back to the firmware value, and `/report` shows the interval in force. Install mode only shortens the interval: a node with a stored interval below two superframes keeps reporting at its own pace. The report holds `interval_s` in 16 bits, so an interval above 65535 s is reported as 65535. A node only transmits in its own data slots, so with an interval shorter than the superframe the reports can pile up in its TX queue.
 
- The gateway adds `sf_ms`, the duration of its superframe in ms when it builds the JSON. A node with an environment sensor adds `temp_c`, `hpa` and, with a BME280, `rh`. A gateway decodes both formats, but a gateway with older firmware drops format 2 reports, so flash the gateway before the other nodes.
+ The gateway adds `sf_ms`, the duration of its superframe in ms when it builds the JSON. `bin_cmd` is 1 for a node that understands binary command frames and 0 for a node with format 2 reports that does not. A node with an environment sensor adds `temp_c`, `hpa` and, with a BME280, `rh`. A gateway decodes both formats, but a gateway with older firmware drops format 2 reports, so flash the gateway before the other nodes.
 
 ## More information on the design and evaluation of LoRaChat
 Please see our open access paper ["Middleware for Distributed Applications in a LoRa Mesh Network"]([https://ieeexplore.ieee.org/document/9930341](https://dl.acm.org/doi/10.1145/3747295)) for a detailed description. If you use the LoRaChat, in academic work, please cite the following:

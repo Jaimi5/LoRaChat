@@ -8,6 +8,7 @@
 #include "cmdFrame.h"
 #include "cmdPending.h"
 #include "cmdPerm.h"
+#include "cmdRelay.h"
 #include "cmdRoute.h"
 #include "cmdRtt.h"
 #include "cmdStatus.h"
@@ -27,6 +28,14 @@ struct CommandRequest {
     bool response = false;
     /** Status of a reply. */
     uint8_t status = 0;
+    /** The frame from LoRa is a binary one (cmdFrame.h). The line is empty then. */
+    bool binary = false;
+    /** Command id of a binary request. */
+    uint8_t commandId = 0;
+    /** The argument fields of a binary request, or what follows the status of a binary reply. */
+    std::vector<uint8_t> payload;
+    /** A binary reply to a command that ran earlier, whose reply bytes were lost. */
+    bool replayed = false;
     /**
      * The request cancels the waiting command that came from the same origin for command.dst
      * with the same request id. It carries no line.
@@ -44,6 +53,13 @@ struct CommandRequest {
  * before they run; the permission of each command decides what a channel may run. A command
  * for another node (serial "@<dst> ...", or an MQTT dst that is not this gateway) is sent over
  * LoRa; its reply is printed on serial or published on cmd-resp/<dst> when it arrives.
+ *
+ * A command frame from LoRa is a text frame or a binary frame, and its reply has the same
+ * form. A command for another node goes out as a binary frame if that node announced binary
+ * commands in a monitor report (noteBinaryCommands()), and as text otherwise. The table of
+ * those nodes is kept in RAM, so every node counts as a text node after a restart of the
+ * gateway until its next report. planForward() in cmdRelay.h lists what the gateway answers
+ * itself without sending.
  *
  * A forwarded command always gets an answer, a status of CommandStatus. NO_ROUTE comes at once
  * when the routing table has no route to the node (commandRoute()), and nothing is sent then.
@@ -83,6 +99,12 @@ public:
     /** @return the channel of the command that is running. Only valid inside a handler. */
     Origin runningOrigin() const;
 
+    /**
+     * @brief Records whether node @p node announced binary commands in its monitor report.
+     *        Any task may call it.
+     */
+    void noteBinaryCommands(uint16_t node, bool capable) { binaryNodes_.note(node, capable); }
+
 private:
     static constexpr size_t PENDING_SLOTS = 8;
 
@@ -94,6 +116,10 @@ private:
     void handleReply(const CommandRequest& request);
     CommandReply runLocal(const CommandRequest& request);
     CommandReply runSigned(const CommandRequest& request);
+    /** Runs a binary request from LoRa and sends its binary reply. */
+    void serveBinary(const CommandRequest& request);
+    /** @return the HMAC under the deployment key, empty on a node without a key. */
+    static KeyedHmac deploymentHmac();
     void forward(const CommandRequest& request);
     /** Gives up the waiting command that @p request names and answers it with CANCELLED. */
     void cancel(const CommandRequest& request);
@@ -124,4 +150,6 @@ private:
     /** Measured round trip times, for the expected time of a reply. */
     RttEstimator rtt_;
     const CommandRequest* running_ = nullptr;
+    /** Nodes that take binary command frames. */
+    BinaryCapableNodes binaryNodes_;
 };
