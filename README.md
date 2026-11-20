@@ -209,13 +209,16 @@ Codes 7 to 10 and 12 come from the gateway and never travel over LoRa. On the se
 `/cmds [page]` lists every command for programs. Ask the gateway itself over MQTT, so the answer does not cross LoRa. Each page stays under 900 bytes:
 
 ```
-cmds 1 0.1.2+g2bfdeeb 1/4
+cmds 1 0.1.2+g2bfdeeb 1/5
 E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;10=too long;11=busy;12=cancelled
 /addPassword|local|<password of at most 64 bytes>|
 /connectWiFi|signed||128=The WiFi did not connect
+/report.set|signed|<seconds from 60 to 43200, or default>|128=The interval could not be stored|7a|seconds:u|def:u?=Report interval set to {a0} s[ (the default, {0} s)]
 ```
 
 Line 1 holds the format version `1`, the firmware version and the page position. The `E|` line with the generic errors comes on page 1 only. Then one line per command, sorted by name: `name|perm|usage|code=text;code=text`, where perm is `open`, `signed` or `local`. A command name registered by two services is refused at boot with an error in the log.
+
+A command with a typed declaration appends three fields to its line: `|id|arguments|reply=template`. The id is the byte that will name the command in a binary frame, in two hex digits. The arguments and the reply are schemas of typed fields, and the template turns the reply fields into the reply text. `lib/CmdCore/src/cmdFields.h` describes the schema and the template, and `lib/CmdCore/src/cmdFrame.h` the binary frame. `/version`, `/sensor` and `/report.set` are declared this way so far. Commands still travel over LoRa as text. An id registered twice is refused at boot like a name. The ids are listed in `test/vectors/cmdIds.txt` and are never reused.
 
 #### Commands for other nodes
 

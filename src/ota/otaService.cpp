@@ -1,5 +1,6 @@
 #include "otaService.h"
 
+#include <cstring>
 #include <vector>
 
 #include "cmdSeal.h"
@@ -23,6 +24,9 @@ static const char* NVS_OTA_NAMESPACE = "lmota";
 static const char* NVS_KEY_SERVER = "srv";
 static constexpr size_t MAX_SERVER_URL = 128;
 static const uint8_t SEAL_LABEL[] = {'L', 'M', 'W', '1'};
+
+/** Bytes of the bootloader hash that /version shows. */
+static constexpr size_t BOOTLOADER_HASH_BYTES = 3;
 
 static constexpr uint32_t MAX_PULL_WINDOW_S = MaintWindowPlan::MAX_PULL_S;
 static constexpr uint32_t MAX_AP_WINDOW_S = MaintWindowPlan::MAX_AP_S;
@@ -92,6 +96,27 @@ String OtaService::version() const {
              OtaBootGuard::bootloaderHash().c_str(), BUILD_ENV_NAME,
              LoRaMeshService::getInstance().getLocalAddress());
     return text;
+}
+
+TypedResult OtaService::versionInto(Fields& out) const {
+    enum Field : size_t { VERSION, SLOT, STATE, BOOTLOADER, ENV };
+    static const char* const SLOTS[] = {"app0", "app1"};
+    static const char* const ENVS[] = {"tbeam", "tbeam-debug"};
+    uint8_t version[FIELD_VERSION_BYTES] = {};
+    parseVersionPrefix(esp_ota_get_app_description()->version, version);
+    out.setVersion(VERSION, version[0], version[1], version[2]);
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    for (uint32_t i = 0; i < sizeof(SLOTS) / sizeof(SLOTS[0]); i++) {
+        if (running != nullptr && strcmp(running->label, SLOTS[i]) == 0) out.setU(SLOT, i);
+    }
+    out.setU(STATE, OtaBootGuard::getInstance().isPendingVerify() ? 1 : 0);
+    std::vector<uint8_t> hash;
+    if (!fromHex(OtaBootGuard::bootloaderHash(), hash)) hash.assign(BOOTLOADER_HASH_BYTES, 0);
+    out.setBytes(BOOTLOADER, hash.data(), hash.size());
+    for (uint32_t i = 0; i < sizeof(ENVS) / sizeof(ENVS[0]); i++) {
+        if (strcmp(BUILD_ENV_NAME, ENVS[i]) == 0) out.setU(ENV, i);
+    }
+    return TypedResult();
 }
 
 String OtaService::otaStatus() const {

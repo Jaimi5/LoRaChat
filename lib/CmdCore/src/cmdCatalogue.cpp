@@ -4,6 +4,7 @@
 
 #include "cmdStatus.h"
 #include "cmdText.h"
+#include "cmdTyped.h"
 
 namespace {
 
@@ -54,6 +55,16 @@ bool CommandCatalogue::add(const CommandSpec& spec) {
             if (spec.codes[j].code == spec.codes[i].code) return false;
         }
     }
+    if (spec.id != 0) {
+        TypedDeclaration declaration;
+        if (findById(spec.id) != nullptr ||
+            !parseTypedDeclaration(spec.id, spec.args, spec.reply, spec.replyTemplate,
+                                   declaration)) {
+            return false;
+        }
+    } else if (!spec.args.empty() || !spec.reply.empty() || !spec.replyTemplate.empty()) {
+        return false;
+    }
     specs_.push_back(spec);
     return true;
 }
@@ -61,6 +72,14 @@ bool CommandCatalogue::add(const CommandSpec& spec) {
 const CommandSpec* CommandCatalogue::find(const std::string& name) const {
     for (const CommandSpec& spec : specs_) {
         if (sameCommandName(spec.name, name)) return &spec;
+    }
+    return nullptr;
+}
+
+const CommandSpec* CommandCatalogue::findById(uint8_t id) const {
+    if (id == 0) return nullptr;
+    for (const CommandSpec& spec : specs_) {
+        if (spec.id == id) return &spec;
     }
     return nullptr;
 }
@@ -91,6 +110,10 @@ std::string CommandCatalogue::line(const CommandSpec& spec) {
         if (i > 0) text += ";";
         text += std::to_string(static_cast<unsigned>(spec.codes[i].code)) + "=" +
                 field(spec.codes[i].text);
+    }
+    if (spec.id != 0) {
+        text += "|" + toHex(&spec.id, 1) + "|" + field(spec.args) + "|" + field(spec.reply) + "=" +
+                field(spec.replyTemplate);
     }
     return text;
 }

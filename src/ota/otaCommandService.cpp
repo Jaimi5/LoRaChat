@@ -32,10 +32,18 @@ OtaCommandService::OtaCommandService() {
             .withCode(MAINT_ERR_CHECK_RUNNING, "An update check is already running"));
     addCommand(Command("/maint.close", "Close the maintenance window", Perm::SIGNED,
                        [](String) { return OtaService::getInstance().closeWindow(); }));
-    addCommand(Command("/version",
+    // The text handler stays: the typed reply has no room for the build suffix of the version
+    // and leaves out the node address, which the asker knows.
+    addCommand(Command(0x34, "/version",
                        "Show version, slot, image state, bootloader hash, board and address",
-                       Perm::OPEN,
-                       [](String) { return OtaService::getInstance().version(); }));
+                       Perm::OPEN)
+                   .reply("ver:v slot:e(app0,app1)? state:e(VALID,PENDING_VERIFY) bl:h3 "
+                          "env:e(tbeam,tbeam-debug)?",
+                          "{0}[ {1}] {2} bl={3}[ env={4}]")
+                   .run([](const Fields&, Fields& out) {
+                       return OtaService::getInstance().versionInto(out);
+                   })
+                   .runText([](String) { return OtaService::getInstance().version(); }));
     addCommand(Command("/ota.status", "Show the last update attempt and its outcome",
                        Perm::OPEN,
                        [](String) { return OtaService::getInstance().otaStatus(); }));

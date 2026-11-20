@@ -40,6 +40,15 @@ public:
     /** @return version, slot, image state, bootloader hash, board env and node address. */
     String version() const;
 
+    /**
+     * @brief Writes the reply fields of /version: the three numbers of the version (0.0.0 if
+     *        the image version does not start with three numbers), the slot (0 app0, 1 app1,
+     *        absent for another partition), the image state (0 VALID, 1 PENDING_VERIFY), the
+     *        first three bytes of the bootloader hash (zeros if it cannot be read) and the
+     *        board env (0 tbeam, 1 tbeam-debug, absent for another env).
+     */
+    TypedResult versionInto(Fields& out) const;
+
     /** @return the last update attempt and its outcome. */
     String otaStatus() const;
 

@@ -11,7 +11,9 @@ void MessageManager::addMessageService(MessageService* service) {
     std::vector<String> refused;
     for (const Command& command : service->commandService->commands()) {
         if (catalogue_.add(command.spec())) continue;
-        ESP_LOGE(MANAGER_TAG, "Command %s of service %s refused: name taken or bad error codes",
+        ESP_LOGE(MANAGER_TAG,
+                 "Command %s of service %s refused: name or id taken, bad error codes or a typed "
+                 "declaration that is not valid",
                  command.getCommand().c_str(), service->serviceName.c_str());
         refused.push_back(command.getCommand());
     }

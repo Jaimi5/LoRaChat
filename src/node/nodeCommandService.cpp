@@ -42,8 +42,14 @@ NodeCommandService::NodeCommandService() {
     addCommand(Command("/power", "Show supply, battery and charger state", Perm::OPEN,
                        [](String) { return String(InitDevices::powerReport().c_str()); }));
     addCommand(
-        Command("/sensor", "Show the BME280 or BMP280 sensor and a new measurement", Perm::OPEN,
-                [](String) { return CommandReply(Bme280Sensor::getInstance().describe()); })
+        Command(0x18, "/sensor", "Show the BME280 or BMP280 sensor and a new measurement",
+                Perm::OPEN)
+            .reply("chip:e(BMP280,BME280) addr:h1 t:i/100 p:u/100 rh:u?/100 age:u?",
+                   "{0} at 0x{1}: {2} C[ {4} %RH] {3} hPa[, read {5} s ago, the sensor does not "
+                   "answer now]")
+            .run([](const Fields&, Fields& out) {
+                return Bme280Sensor::getInstance().measureInto(out);
+            })
             .withAllowance(bme280MeasureTimeMs(true))
             .withCode(SENSOR_ERR_NOT_FOUND, "No sensor found (BME280 or BMP280 at 0x76 or 0x77)")
             .withCode(SENSOR_ERR_NO_MEASUREMENT, "The sensor gave no measurement")

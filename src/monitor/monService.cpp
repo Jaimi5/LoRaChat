@@ -187,18 +187,34 @@ static esp_err_t storeReportInterval(uint32_t seconds) {
 CommandReply MonService::setReportInterval(const String& args) {
     uint32_t seconds = 0;
     if (!parseReportInterval(args.c_str(), seconds)) return CommandStatus::ARG;
-    esp_err_t err = storeReportInterval(seconds);
+    esp_err_t err = applyReportInterval(seconds);
     if (err != ESP_OK) return CommandReply(MON_ERR_STORE, esp_err_to_name(err));
-    reportIntervalS_ = seconds;
-    // The report that follows carries the new interval, and the next wait lasts that long.
-    if (sending_TaskHandle != nullptr) xTaskNotifyGive(sending_TaskHandle);
-    ESP_LOGI(MON_TAG, "Report interval set to %u s (0 is the default)",
-             static_cast<unsigned>(seconds));
     if (seconds == REPORT_INTERVAL_NONE) {
         return String(String("Report interval set to default (") + MON_SENDING_EVERY / 1000 +
                       " s)");
     }
     return String(String("Report interval set to ") + seconds + " s");
+}
+
+TypedResult MonService::setReportInterval(uint32_t seconds, Fields& out) {
+    if (seconds != REPORT_INTERVAL_NONE && !reportIntervalValid(seconds)) {
+        return CommandStatus::ARG;
+    }
+    esp_err_t err = applyReportInterval(seconds);
+    if (err != ESP_OK) return TypedResult(MON_ERR_STORE, static_cast<uint32_t>(err));
+    if (seconds == REPORT_INTERVAL_NONE) out.setU(0, MON_SENDING_EVERY / 1000);
+    return TypedResult();
+}
+
+esp_err_t MonService::applyReportInterval(uint32_t seconds) {
+    esp_err_t err = storeReportInterval(seconds);
+    if (err != ESP_OK) return err;
+    reportIntervalS_ = seconds;
+    // The report that follows carries the new interval, and the next wait lasts that long.
+    if (sending_TaskHandle != nullptr) xTaskNotifyGive(sending_TaskHandle);
+    ESP_LOGI(MON_TAG, "Report interval set to %u s (0 is the default)",
+             static_cast<unsigned>(seconds));
+    return ESP_OK;
 }
 
 String MonService::describeReport() const {

@@ -11,7 +11,7 @@ class CommandService {
 public:
     virtual ~CommandService() = default;
 
-    /** Adds @p command unless its name is already taken. @return false if it was refused. */
+    /** Adds @p command unless its name or its id is taken. @return false if it was refused. */
     bool addCommand(Command command);
 
     /** Removes the command named @p name. @return false if there is none. */
@@ -19,6 +19,9 @@ public:
 
     /** @return the command named @p name, or nullptr. */
     Command* find(const String& name);
+
+    /** @return the command with id @p id in a binary frame, or nullptr. Id 0 finds nothing. */
+    Command* findById(uint8_t id);
 
     /** @return one help line per command that may run when it arrives on @p origin. */
     String help(Origin origin) const;

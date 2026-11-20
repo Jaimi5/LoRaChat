@@ -6,7 +6,7 @@
 #include <string>
 
 #include "bme280Math.h"
-#include "cmdStatus.h"
+#include "cmdTyped.h"
 
 /** Errors of /sensor. */
 constexpr uint8_t SENSOR_ERR_NOT_FOUND = 128;
@@ -47,10 +47,13 @@ public:
     bool lastReading(Bme280Reading& out, uint32_t& ageSeconds) const;
 
     /**
-     * @brief Takes a measurement for /sensor.
-     * @return chip, address and values as one line, or one of the SENSOR_ERR codes.
+     * @brief Takes a measurement for /sensor and writes its reply fields: chip (0 BMP280,
+     *        1 BME280), bus address, temperature in 0.01 degrees Celsius, pressure in Pa,
+     *        humidity in 0.01 %RH when the chip has it, and the age in seconds of the last
+     *        reading when the sensor does not answer now.
+     * @return success, or one of the SENSOR_ERR codes.
      */
-    CommandResult describe();
+    TypedResult measureInto(Fields& out);
 
 private:
     Bme280Sensor() = default;

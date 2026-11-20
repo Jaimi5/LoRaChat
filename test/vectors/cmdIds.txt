@@ -1,0 +1,3 @@
+18=/sensor
+34=/version
+7a=/report.set

@@ -62,7 +62,18 @@ public:
      */
     CommandReply setReportInterval(const String& args);
 
+    /**
+     * @brief Runs /report.set with a typed argument: @p seconds is the interval, or 0 to remove
+     *        the stored one. Then field 0 of @p out gets the default interval in seconds.
+     * @return success, ARG for an interval out of range, or MON_ERR_STORE with the esp_err_t
+     *         code.
+     */
+    TypedResult setReportInterval(uint32_t seconds, Fields& out);
+
 private:
+    /** Stores @p seconds and applies it at once. A report follows. */
+    esp_err_t applyReportInterval(uint32_t seconds);
+
     MonService() : MessageService(MonApp, "Mon") { commandService = &commands_; }
     monCommandService commands_;
     void createSendingTask();

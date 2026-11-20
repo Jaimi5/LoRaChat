@@ -139,34 +139,22 @@ bool Bme280Sensor::lastReading(Bme280Reading& out, uint32_t& ageSeconds) const {
     return true;
 }
 
-CommandResult Bme280Sensor::describe() {
-    if (!present()) return CommandResult(SENSOR_ERR_NOT_FOUND, "");
+TypedResult Bme280Sensor::measureInto(Fields& out) {
+    enum Field : size_t { CHIP, ADDRESS, TEMPERATURE, PRESSURE, HUMIDITY, AGE };
+    if (!present()) return TypedResult(SENSOR_ERR_NOT_FOUND);
     Bme280Reading reading;
     bool fresh = measure(reading);
     uint32_t ageSeconds = 0;
-    char text[120];
-    int length = snprintf(text, sizeof(text), "%s at 0x%02X: ", bme280ChipName(chip_), address_);
     if (!fresh && !lastReading(reading, ageSeconds)) {
-        return CommandResult(SENSOR_ERR_NO_MEASUREMENT, "");
+        return TypedResult(SENSOR_ERR_NO_MEASUREMENT);
     }
-    int32_t centi = reading.tempCentiC;
-    length += snprintf(text + length, sizeof(text) - length, "%s%d.%02d C", centi < 0 ? "-" : "",
-                       static_cast<int>(abs(centi) / 100), static_cast<int>(abs(centi) % 100));
-    if (reading.hasHumidity) {
-        length += snprintf(text + length, sizeof(text) - length, " %u.%02u %%RH",
-                           static_cast<unsigned>(reading.rhCentiPercent / 100),
-                           static_cast<unsigned>(reading.rhCentiPercent % 100));
-    }
-    length += snprintf(text + length, sizeof(text) - length, " %u.%02u hPa",
-                       static_cast<unsigned>(reading.pressurePa / 100),
-                       static_cast<unsigned>(reading.pressurePa % 100));
-    if (!fresh) {
-        snprintf(text + length, sizeof(text) - length,
-                 ", read %u s ago, the sensor does not "
-                 "answer now",
-                 static_cast<unsigned>(ageSeconds));
-    }
-    return text;
+    out.setU(CHIP, chip_ == Bme280Chip::BME280 ? 1 : 0);
+    out.setBytes(ADDRESS, &address_, sizeof(address_));
+    out.setI(TEMPERATURE, reading.tempCentiC);
+    out.setU(PRESSURE, reading.pressurePa);
+    if (reading.hasHumidity) out.setU(HUMIDITY, reading.rhCentiPercent);
+    if (!fresh) out.setU(AGE, ageSeconds);
+    return TypedResult();
 }
 
 #else
@@ -181,8 +169,8 @@ bool Bme280Sensor::lastReading(Bme280Reading&, uint32_t&) const {
     return false;
 }
 
-CommandResult Bme280Sensor::describe() {
-    return CommandResult(SENSOR_ERR_NO_SUPPORT, "");
+TypedResult Bme280Sensor::measureInto(Fields&) {
+    return TypedResult(SENSOR_ERR_NO_SUPPORT);
 }
 
 #endif

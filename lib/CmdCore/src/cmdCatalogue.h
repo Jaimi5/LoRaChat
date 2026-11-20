@@ -28,6 +28,14 @@ struct CommandSpec {
     /** Time the command may take to run on the node, in ms. */
     uint32_t allowanceMs = 0;
     std::vector<CommandCode> codes;
+    /** Id of the command in a binary frame. 0 for a command without the typed declaration. */
+    uint8_t id = 0;
+    /** Schema of the arguments, as cmdFields.h describes it. */
+    std::string args;
+    /** Schema of the reply fields. */
+    std::string reply;
+    /** Template that turns the reply fields into text. */
+    std::string replyTemplate;
 };
 
 /** @return "open", "signed" or "local". */
@@ -39,19 +47,23 @@ bool sameCommandName(const std::string& a, const std::string& b);
 /**
  * @brief The commands of the whole firmware, each name once.
  *
- * It tells a duplicate name at registration and writes the pages of /cmds.
+ * It tells a duplicate name or id at registration and writes the pages of /cmds.
  */
 class CommandCatalogue {
 public:
     /**
      * @brief Adds @p spec.
-     * @return false, leaving the catalogue unchanged, if the name is empty or taken, or a code
-     *         is below 128 or listed twice.
+     * @return false, leaving the catalogue unchanged, if the name is empty or taken, a code is
+     *         below 128 or listed twice, the id is taken, or the typed declaration is not valid
+     *         (parseTypedDeclaration()). A command without an id has no schemas and no template.
      */
     bool add(const CommandSpec& spec);
 
     /** @return the command named @p name, or nullptr. */
     const CommandSpec* find(const std::string& name) const;
+
+    /** @return the command with id @p id, or nullptr. Id 0 finds nothing. */
+    const CommandSpec* findById(uint8_t id) const;
 
     /** @return the text of specific error @p code of command @p name, or empty. */
     std::string codeText(const std::string& name, uint8_t code) const;
@@ -62,8 +74,10 @@ public:
      * @brief Writes every page of /cmds, commands sorted by name.
      *
      * Line 1 of a page is "cmds 1 <version> <page>/<pages>". Page 1 then lists the generic
-     * errors. Each command takes one line "name|perm|usage|code=text;code=text". The characters
-     * '|', ';' and newline never appear inside a field.
+     * errors. Each command takes one line "name|perm|usage|code=text;code=text". A command with
+     * an id appends three fields: "|id|args|reply=template", the id in two hex digits, the two
+     * schemas and the template as declared. A command without an id keeps four fields, which
+     * keeps the pages small. The characters '|', ';' and newline never appear inside a field.
      * @param version firmware version. Its spaces become '_'.
      * @param maxPageBytes most bytes of one page.
      * @return the pages, at least one.

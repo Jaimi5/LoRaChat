@@ -7,6 +7,11 @@ bool CommandService::addCommand(Command command) {
         ESP_LOGE(CMD_TAG, "Command %s registered twice", command.getCommand().c_str());
         return false;
     }
+    if (command.getId() != 0 && findById(command.getId()) != nullptr) {
+        ESP_LOGE(CMD_TAG, "Command %s has id 0x%02X, which is taken", command.getCommand().c_str(),
+                 command.getId());
+        return false;
+    }
     commands_.push_back(command);
     return true;
 }
@@ -23,6 +28,14 @@ bool CommandService::removeCommand(const String& name) {
 Command* CommandService::find(const String& name) {
     for (Command& command : commands_) {
         if (name.equalsIgnoreCase(command.getCommand())) return &command;
+    }
+    return nullptr;
+}
+
+Command* CommandService::findById(uint8_t id) {
+    if (id == 0) return nullptr;
+    for (Command& command : commands_) {
+        if (command.getId() == id) return &command;
     }
     return nullptr;
 }
