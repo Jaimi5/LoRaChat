@@ -485,6 +485,109 @@ TEST(PendingLate, ACommandGivenUpByTheCallerIsRememberedToo) {
     EXPECT_EQ(out.originRequestId, 107);
 }
 
+TEST(PendingCancel, AWaitingCommandIsGivenUpAndNeverSentAgain) {
+    Table t;
+    PendingCommand first = command(0x0B12, 7, true);
+    t.add(first, 1000);
+    t.add(command(0x0B13, 8, true), 1000);
+    PendingCommand out;
+    ASSERT_TRUE(t.pending.cancel(Origin::MQTT, 0x0B12, first.originRequestId, 5000, out));
+    EXPECT_EQ(out.dst, 0x0B12);
+    EXPECT_EQ(out.requestId, 7);
+    EXPECT_EQ(out.originRequestId, 107);
+    EXPECT_EQ(out.origin, Origin::MQTT);
+    EXPECT_EQ(t.pending.size(), 1U);
+    EXPECT_EQ(formatReplyPayload(out.originRequestId, CommandResult(CommandStatus::CANCELLED)),
+              "107 E12");
+
+    // Neither the retransmission nor the timeout of the cancelled command follows.
+    t.sweep(1000 + SHORT_A);
+    ASSERT_EQ(t.retransmit.size(), 1U);
+    EXPECT_EQ(t.retransmit[0].dst, 0x0B13);
+    t.sweep(1000 + SHORT_SIGNED_GIVE_UP);
+    ASSERT_EQ(t.expired.size(), 1U);
+    EXPECT_EQ(t.expired[0].dst, 0x0B13);
+    // The same request is new again, and a second cancel finds nothing.
+    EXPECT_EQ(t.pending.findRepeat(Origin::MQTT, 0x0B12, first.originRequestId, first.frame),
+              nullptr);
+    EXPECT_FALSE(t.pending.cancel(Origin::MQTT, 0x0B12, first.originRequestId, 6000, out));
+}
+
+TEST(PendingCancel, ACancelledCommandIsRememberedForItsLateReplyForTenMinutes) {
+    Table t;
+    t.add(command(0x0B12, 7, true), 1000);
+    PendingCommand out;
+    ASSERT_TRUE(t.pending.cancel(Origin::MQTT, 0x0B12, 107, 5000, out));
+    EXPECT_EQ(t.pending.lateSize(5000), 1U);
+    EXPECT_FALSE(t.pending.take(0x0B12, 7, out));
+    PendingCommand late;
+    ASSERT_TRUE(t.pending.takeLate(0x0B12, 7, 5000 + COMMAND_LATE_REPLY_MS, late));
+    EXPECT_EQ(late.originRequestId, 107);
+    EXPECT_EQ(late.sentMs, 1000U);
+    EXPECT_EQ(late.attempts(), 1U);
+    EXPECT_TRUE(late.frame.empty());
+
+    t.add(command(0x0B12, 9, false), 1000);
+    ASSERT_TRUE(t.pending.cancel(Origin::MQTT, 0x0B12, 109, 5000, out));
+    EXPECT_FALSE(t.pending.takeLate(0x0B12, 9, 5000 + COMMAND_LATE_REPLY_MS + 1, late));
+}
+
+TEST(PendingCancel, ACancelAfterTheRetransmissionKeepsTheAttempts) {
+    Table t;
+    t.add(command(0x0B12, 7, true), 0);
+    t.sweep(SHORT_A);
+    ASSERT_EQ(t.retransmit.size(), 1U);
+    PendingCommand out;
+    ASSERT_TRUE(t.pending.secondAttempt(0x0B12, 7, SHORT_A, SHORT, 0, out));
+    ASSERT_TRUE(t.pending.cancel(Origin::MQTT, 0x0B12, 107, SHORT_A + 1000, out));
+    EXPECT_EQ(out.attempts(), 2U);
+    t.sweep(SHORT_A + SHORT_A);
+    EXPECT_TRUE(t.expired.empty());
+}
+
+TEST(PendingCancel, NothingHappensWithoutAWaitingCommandOfThatRequest) {
+    Table t;
+    PendingCommand serial = command(0x0B12, 7, true);
+    serial.origin = Origin::SERIAL_CONSOLE;
+    t.add(serial, 0);
+    PendingCommand out;
+    out.dst = 0x0042;
+    // Never seen: another destination, another request id, another channel.
+    EXPECT_FALSE(t.pending.cancel(Origin::MQTT, 0x0B13, 107, 1000, out));
+    EXPECT_FALSE(t.pending.cancel(Origin::MQTT, 0x0B12, 108, 1000, out));
+    EXPECT_FALSE(t.pending.cancel(Origin::MQTT, 0x0B12, 107, 1000, out));
+    // The LoRa request id is not the one the cancel names.
+    EXPECT_FALSE(t.pending.cancel(Origin::SERIAL_CONSOLE, 0x0B12, 7, 1000, out));
+    EXPECT_EQ(out.dst, 0x0042);
+    EXPECT_EQ(t.pending.size(), 1U);
+    EXPECT_EQ(t.pending.lateSize(1000), 0U);
+
+    // Already answered.
+    t.add(command(0x0B14, 8, false), 0);
+    ASSERT_TRUE(t.pending.take(0x0B14, 8, out));
+    EXPECT_FALSE(t.pending.cancel(Origin::MQTT, 0x0B14, 108, 1000, out));
+    // Already timed out: the remembered command stays for its late reply.
+    t.add(command(0x0B15, 9, false), 0);
+    t.sweep(SHORT_A);
+    ASSERT_EQ(t.expired.size(), 1U);
+    EXPECT_FALSE(t.pending.cancel(Origin::MQTT, 0x0B15, 109, SHORT_A + 1, out));
+    EXPECT_EQ(t.pending.lateSize(SHORT_A + 1), 1U);
+}
+
+TEST(PendingCancel, EveryWaitingCommandOfTheRequestIsGivenUp) {
+    Table t;
+    PendingCommand first = command(0x0B12, 7, true);
+    PendingCommand second = command(0x0B12, 8, true);
+    second.originRequestId = first.originRequestId;
+    t.add(first, 0);
+    t.add(second, 500);
+    PendingCommand out;
+    ASSERT_TRUE(t.pending.cancel(Origin::MQTT, 0x0B12, first.originRequestId, 1000, out));
+    EXPECT_EQ(out.requestId, 7);
+    EXPECT_EQ(t.pending.size(), 0U);
+    EXPECT_EQ(t.pending.lateSize(1000), 2U);
+}
+
 TEST(PendingLate, AnEvictedCommandIsNotRemembered) {
     Table t;
     for (uint8_t i = 0; i < SLOTS; i++) t.add(command(0x0100 + i, i, false), i);

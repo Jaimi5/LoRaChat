@@ -119,7 +119,10 @@ bool parseMqttCommand(const std::string& text, MqttCommand& out) {
     if (!parseDecimal(idText, MAX_REQUEST_ID, requestId)) return false;
 
     MqttCommand parsed;
-    if (!parseCommandLine(rest.substr(second + 1), parsed.command) || parsed.command.remote) {
+    std::string line = trim(rest.substr(second + 1));
+    parsed.cancel = line == MQTT_CANCEL_LINE;
+    if (!parsed.cancel && (line.empty() || line[0] == MQTT_CANCEL_LINE[0] ||
+                           !parseCommandLine(line, parsed.command) || parsed.command.remote)) {
         return false;
     }
     parsed.dst = static_cast<uint16_t>(dst);

@@ -7,9 +7,9 @@
 #include "commands/commandRouter.h"
 #include "config.h"
 #include "esp_ota_ops.h"
-#include "esp_timer.h"
 #include "loramesh/loraMeshService.h"
 #include "maintWifi.h"
+#include "node/deferredRestart.h"
 #include "node/nodeService.h"
 #include "nvs.h"
 #include "otaBootGuard.h"
@@ -22,7 +22,6 @@ static const char* NVS_KEY_DEPLOYMENT = "cmdkey";
 static const char* NVS_OTA_NAMESPACE = "lmota";
 static const char* NVS_KEY_SERVER = "srv";
 static constexpr size_t MAX_SERVER_URL = 128;
-static constexpr uint64_t REBOOT_DELAY_US = 1000ULL * 1000;
 static const uint8_t SEAL_LABEL[] = {'L', 'M', 'W', '1'};
 
 static constexpr uint32_t MAX_PULL_WINDOW_S = MaintWindowPlan::MAX_PULL_S;
@@ -108,15 +107,7 @@ String OtaService::otaStatus() const {
 }
 
 CommandReply OtaService::reboot() {
-    esp_timer_create_args_t args = {};
-    args.callback = [](void*) { esp_restart(); };
-    args.name = "reboot";
-    esp_timer_handle_t timer = nullptr;
-    if (esp_timer_create(&args, &timer) != ESP_OK ||
-        esp_timer_start_once(timer, REBOOT_DELAY_US) != ESP_OK) {
-        return CommandReply(OTA_ERR_FAILED, "");
-    }
-    MaintenanceWifi::getInstance().saveClock();
+    if (!DeferredRestart::getInstance().request()) return CommandReply(OTA_ERR_FAILED, "");
     ESP_LOGW(OS_TAG, "Reboot requested");
     return "Rebooting";
 }

@@ -27,6 +27,11 @@ struct CommandRequest {
     bool response = false;
     /** Status of a reply. */
     uint8_t status = 0;
+    /**
+     * The request cancels the waiting command that came from the same origin for command.dst
+     * with the same request id. It carries no line.
+     */
+    bool cancel = false;
     CommandLine command;
 };
 
@@ -47,6 +52,10 @@ struct CommandRequest {
  * sent once more. TIMEOUT follows when the wait ends, and a command pushed out of the full
  * table of waiting commands gets DROPPED. A reply that arrives up to ten minutes after its
  * TIMEOUT is still delivered. Commands from MQTT also get progress lines on cmd-ack/<dst>.
+ *
+ * "<dst> <request id> !cancel" on cmd/<gateway> cancels the waiting command of that request: it
+ * is answered with CANCELLED, is never sent again and its late reply is still delivered. The
+ * cancel line itself never runs and never goes to a node.
  */
 class CommandRouter : public MessageService {
 public:
@@ -86,6 +95,8 @@ private:
     CommandReply runLocal(const CommandRequest& request);
     CommandReply runSigned(const CommandRequest& request);
     void forward(const CommandRequest& request);
+    /** Gives up the waiting command that @p request names and answers it with CANCELLED. */
+    void cancel(const CommandRequest& request);
     void reply(const CommandRequest& request, const CommandReply& result);
     /** Hands the answer to a forwarded command to the channel the command came from. */
     void deliver(const PendingCommand& pending, const CommandReply& result);

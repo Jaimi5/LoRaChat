@@ -14,7 +14,7 @@ namespace {
 
 const char* const GENERIC_LINE =
     "E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;"
-    "10=too long;11=busy";
+    "10=too long;11=busy;12=cancelled";
 
 CommandSpec spec(const std::string& name, Perm perm, const std::string& usage = "",
                  const std::vector<CommandCode>& codes = {}) {
@@ -57,7 +57,8 @@ std::vector<std::string> fields(const std::string& line) {
 CommandCatalogue firmwareCatalogue() {
     const std::vector<CommandCode> setting = {
         {128, "The new image is still being verified. Try again later"},
-        {129, "The setting could not be stored"}};
+        {129, "The setting could not be stored"},
+        {130, "The setting is stored. The restart could not be scheduled"}};
     const std::vector<CommandCode> display = {{128, "The node has no working display"},
                                               {129, "The text is too long to send to another node"},
                                               {130, "The command could not be sent on"}};

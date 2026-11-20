@@ -25,6 +25,8 @@ enum class CommandStatus : uint8_t {
     DROPPED = 9,
     TOO_LONG = 10,
     BUSY = 11,
+    /** Produced by the gateway for a command that was cancelled. Never travels over LoRa. */
+    CANCELLED = 12,
 };
 
 /** First status that belongs to the command that was sent. */

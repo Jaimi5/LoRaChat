@@ -14,6 +14,7 @@ const CommandStatusInfo STATUS_TABLE[] = {
     {9, "dropped", "Dropped by the gateway, too many commands waiting"},
     {10, "too long", "The command does not fit in one LoRa frame"},
     {11, "busy", "The node cannot run this now"},
+    {12, "cancelled", "Cancelled before a reply arrived"},
 };
 
 constexpr size_t STATUS_COUNT = sizeof(STATUS_TABLE) / sizeof(STATUS_TABLE[0]);

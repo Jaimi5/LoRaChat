@@ -100,6 +100,10 @@ void CommandRouter::handle(const CommandRequest& request) {
         handleReply(request);
         return;
     }
+    if (request.cancel) {
+        cancel(request);
+        return;
+    }
 
     uint16_t local = LoRaMeshService::getInstance().getLocalAddress();
     if (request.command.remote && request.command.dst != local) {
@@ -243,6 +247,18 @@ void CommandRouter::forward(const CommandRequest& request) {
                            "], reply expected in " + ceilSeconds(pending.expectedMs) +
                            " s, given up after " + ceilSeconds(pending.giveUpMs) + " s");
     }
+}
+
+void CommandRouter::cancel(const CommandRequest& request) {
+    PendingCommand pending;
+    if (!pending_.cancel(request.origin, request.command.dst, request.requestId, clockMs(),
+                         pending)) {
+        ESP_LOGI(CR_TAG, "Nothing to cancel for %04X, request %u", request.command.dst,
+                 request.requestId);
+        return;
+    }
+    ESP_LOGI(CR_TAG, "Command to %04X [%u] cancelled", pending.dst, pending.requestId);
+    deliver(pending, CommandStatus::CANCELLED);
 }
 
 void CommandRouter::deliver(const PendingCommand& pending, const CommandReply& result) {

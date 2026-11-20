@@ -181,7 +181,7 @@ Text commands arrive from three channels and run one at a time:
 
 - **USB serial** (115200 baud, one command per line): trusted, runs every command. The reply follows a `> <command>` line; the arguments are not echoed, since they can hold keys.
 - **LoRa**: a line typed as `@<node> <command>` on a node's serial console is sent to that node; its reply arrives as `< <node> [<request>] <reply>`.
-- **MQTT** (gateway): publish `<node> <request id> <command>` on `cmd/<gateway>`. The reply is published on `cmd-resp/<node>` as `<request id> <reply>`. A command for another node is sent on over LoRa, and the gateway reports its progress on `cmd-ack/<node>`.
+- **MQTT** (gateway): publish `<node> <request id> <command>` on `cmd/<gateway>`. The reply is published on `cmd-resp/<node>` as `<request id> <reply>`. A command for another node is sent on over LoRa, and the gateway reports its progress on `cmd-ack/<node>`. `<node> <request id> !cancel` cancels a command that still waits for its reply (see [Commands for other nodes](#commands-for-other-nodes)).
 
 Every command has a permission: **Open** commands run from any channel, **Signed** commands need a signature when they come over LoRa or MQTT, and **local** commands only run on the serial console. A signature is ` #<counter>.<tag>` at the end of the line, made with the deployment key by `scripts/ota_tools/lmcmd.py sign` (see [scripts/ota_tools/README.md](scripts/ota_tools/README.md)). A node runs each counter once. An older counter gets the error `replay`. The same counter again gets the stored reply with its stored status, or `OK already executed` if the node restarted in between.
 
@@ -202,14 +202,15 @@ Every reply carries a status. 0 is success and the reply is the text of the comm
 | 9 | dropped | | Dropped by the gateway, too many commands waiting |
 | 10 | too long | max line bytes | The command does not fit in one LoRa frame |
 | 11 | busy | | The node cannot run this now |
+| 12 | cancelled | | Cancelled before a reply arrived |
 
-Codes 7 to 10 come from the gateway and never travel over LoRa. On the serial console an error prints its text, and a bad argument prints `Usage: <command> <arguments>`. On MQTT an error is `<request id> E<code>` or `<request id> E<code> <argument>` on `cmd-resp/<node>`, for example `17 E7`, `17 E8 94` or `17 E5`. No successful reply starts with `E` and a digit. On LoRa a reply frame is the flags byte, the status byte and then the text or the argument.
+Codes 7 to 10 and 12 come from the gateway and never travel over LoRa. On the serial console an error prints its text, and a bad argument prints `Usage: <command> <arguments>`. On MQTT an error is `<request id> E<code>` or `<request id> E<code> <argument>` on `cmd-resp/<node>`, for example `17 E7`, `17 E8 94` or `17 E5`. No successful reply starts with `E` and a digit. On LoRa a reply frame is the flags byte, the status byte and then the text or the argument.
 
 `/cmds [page]` lists every command for programs. Ask the gateway itself over MQTT, so the answer does not cross LoRa. Each page stays under 900 bytes:
 
 ```
 cmds 1 0.1.2+g2bfdeeb 1/4
-E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;10=too long;11=busy
+E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;10=too long;11=busy;12=cancelled
 /addPassword|local|<password of at most 64 bytes>|
 /connectWiFi|signed||128=The WiFi did not connect
 ```
@@ -235,6 +236,8 @@ For a command from MQTT the gateway also publishes on `cmd-ack/<node>`:
 | `<request id> D <rtt_ms> <attempts>` | Right after a reply was published. `rtt_ms` is the time from the first send to the reply, `attempts` is 1 or 2 |
 
 `expected_s` comes from the replies the gateway has measured for that node (a smoothed round trip time as in RFC 6298, kept in RAM), or from `w + h · S` while it has none. The measurement never shortens a wait. The same command published again with the same request id while it waits is not sent again. The gateway answers it with a new `Q` line that holds the remaining times. Commands that the gateway runs itself and commands refused with `E7` or `E10` get no line on `cmd-ack`. The broker must let the gateway user write `cmd-ack/#`.
+
+A command from MQTT that waits for its reply can be cancelled: publish `<node> <request id> !cancel` on `cmd/<gateway>`, with the node and the request id of the command. The gateway gives the command up at once, publishes `<request id> E12` on `cmd-resp/<node>` and never sends it a second time. No `D` line follows. The first transmission cannot be recalled, so the node may still run the command. Its reply is then published like a late reply, up to ten minutes after the cancel. A cancel for a command that was already answered, already given up or never seen does nothing: the gateway publishes nothing and sends nothing over LoRa. The cancel line is never run as a command and never sent to a node, also when `<node>` is the gateway itself. Any other line that starts with `!` is refused. A program should send the cancel line only to a gateway whose `E|` line lists code 12, because an older gateway sends `!cancel` on to the node as a command.
 
 | Command | Permission | Effect |
 |---|---|---|
@@ -270,9 +273,11 @@ For a command from MQTT the gateway also publishes on `cmd-ack/<node>`:
 
 In the display commands `<addr>` is the destination node as exactly four hex digits (`0A3F`). Any other first word belongs to the text, so `/displayText add milk` shows `add milk` on this node. A text that starts with a four-digit hex word needs the node's own address in front. A node without a working display still sends display commands to other nodes. Text sent to another node takes up to 100 characters at SF9 (one LoRa packet), and longer text is refused.
 
+The commands that restart the node (`/role.set`, `/sleep.set`, `/sleep.fraction` and `/reboot`) restart it after their reply has left. The node waits at least 1 s, then until its LoRa TX queue is empty, and 2 s more for the last frame to be on the air. A command that came over LoRa therefore restarts the node after its next TX data slot, which can be a whole superframe away. A command from the serial console, or from MQTT on a gateway with an empty queue, restarts it after about 3 s. The wait ends at the latest after two superframes and 5 s, or after 180 s while the node does not know the superframe. The node does not sleep while it waits. Error 130 of the three setting commands means that the setting is stored and the restart could not be scheduled.
+
 One LoRa packet carries the command frame, so a signed line has room for about 89 characters at SF9 (LoRaMesher limits packets to 115 bytes there). A reply has room for 100 characters there, and a longer one is cut and ends in `~`.
 
-Sensor nodes can let the ESP32 sleep while the mesh has nothing for them (`/sleep.set`, default `none`). The radio always sleeps in the SLEEP slots. `light` puts the MCU into light sleep through each run of SLEEP slots. `deep` deep-sleeps through runs long enough for a reboot (`LORA_DEEP_SLEEP_MIN_MS` plus `LORA_DEEP_SLEEP_BOOT_MS` in `src/config.h`) and light-sleeps through shorter ones. In deep-sleep mode the node keeps its mesh state in RTC memory and resumes its slots after the wake-up, without the display, the charger restart or the WiFi boot window, and the wake-up does not count as a boot. Long sleep runs need a gateway with a higher `/sleep.fraction`. A node stays awake while its display is on, in install mode, during a maintenance window and while a new image is being verified. The gateway never sleeps. A node also stays awake while the power chip signals an event that has not been read yet, and logs a warning if that lasts more than 5 s.
+Sensor nodes can let the ESP32 sleep while the mesh has nothing for them (`/sleep.set`, default `none`). The radio always sleeps in the SLEEP slots. `light` puts the MCU into light sleep through each run of SLEEP slots. `deep` deep-sleeps through runs long enough for a reboot (`LORA_DEEP_SLEEP_MIN_MS` plus `LORA_DEEP_SLEEP_BOOT_MS` in `src/config.h`) and light-sleeps through shorter ones. In deep-sleep mode the node keeps its mesh state in RTC memory and resumes its slots after the wake-up, without the display, the charger restart or the WiFi boot window, and the wake-up does not count as a boot. Long sleep runs need a gateway with a higher `/sleep.fraction`. A node stays awake while its display is on, in install mode, during a maintenance window, while a new image is being verified and while a restart waits for the reply of its command to leave. The gateway never sleeps. A node also stays awake while the power chip signals an event that has not been read yet, and logs a warning if that lasts more than 5 s.
 
 The power button ends a light sleep at once (`PMU_KEY_WAKES_LIGHT_SLEEP` in `src/config.h`, on by default). LoRaMesher then corrects its clock with the time the node really slept, so the node keeps its slots. The display stays off after a deep-sleep wake-up, and the button neither turns it on nor ends a deep sleep. The firmware uses LoRaMesher `release/2.0.0` at commit `368c359`, which holds the early-wake fix of light sleep (pull request 145). The commit is pinned in `platformio.ini`.
 

@@ -17,6 +17,7 @@
 /** Errors of /role.set, /sleep.set and /sleep.fraction. */
 constexpr uint8_t NODE_ERR_VERIFYING = 128;
 constexpr uint8_t NODE_ERR_STORE = 129;
+constexpr uint8_t NODE_ERR_RESTART = 130;
 
 class NodeService : public MessageService {
 public:
@@ -68,7 +69,10 @@ private:
     NodeService() : MessageService(NodeApp, "Node") { commandService = &commands_; }
 
     NodeCommandService commands_;
-    /** Stores @p value under @p key and restarts the node. @return the reply, or an error. */
+    /**
+     * Stores @p value under @p key and restarts the node once the reply has left.
+     * @return the reply, or an error.
+     */
     CommandReply storeAndRestart(const char* key, uint8_t value, const String& done);
 
     NodeRole role_ = NodeRole::SENSOR;

@@ -45,6 +45,8 @@ struct SleepBlockers {
     bool pmuIrqLow = false;
     /** Install mode is on: the node stays awake and reports often. */
     bool installMode = false;
+    /** A restart was requested and waits for the reply of its command to leave. */
+    bool restartPending = false;
 };
 
 /** Answer to the mesh's sleep request. Values are logged, keep them. */
@@ -58,6 +60,7 @@ enum class SleepDecision : uint8_t {
     DISPLAY_AWAKE = 6,
     PMU_IRQ_PENDING = 7,
     INSTALL_MODE = 8,
+    RESTART_PENDING = 9,
 };
 
 /**

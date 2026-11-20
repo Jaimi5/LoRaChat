@@ -41,14 +41,25 @@ void splitCommand(const std::string& line, std::string& name, std::string& args)
  */
 bool parseAddressedArgs(const std::string& args, uint16_t& dst, std::string& rest);
 
-/** A command published to the gateway over MQTT: "<dst hex> <request id> <command line>". */
+/** The line that cancels a waiting command in place of a command line. */
+constexpr char MQTT_CANCEL_LINE[] = "!cancel";
+
+/**
+ * @brief A message published to the gateway over MQTT: "<dst hex> <request id> <command line>",
+ *        or "<dst hex> <request id> !cancel" to cancel the waiting command of that request.
+ */
 struct MqttCommand {
     uint16_t dst = 0;
     uint8_t requestId = 0;
+    /** The message cancels the request. The command line is empty then. */
+    bool cancel = false;
     CommandLine command;
 };
 
-/** @return false if @p text is not an MQTT command. A target prefix in the line is refused. */
+/**
+ * @return false if @p text is not an MQTT command. A target prefix in the line is refused, and
+ *         so is every line that starts with '!' except the exact cancel line.
+ */
 bool parseMqttCommand(const std::string& text, MqttCommand& out);
 
 /**

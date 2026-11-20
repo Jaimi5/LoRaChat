@@ -15,7 +15,8 @@ Command storedSetting(const char* name, const char* description, const String& u
     return Command(name, description, Perm::SIGNED, std::move(callback))
         .withUsage(usage)
         .withCode(NODE_ERR_VERIFYING, "The new image is still being verified. Try again later")
-        .withCode(NODE_ERR_STORE, "The setting could not be stored");
+        .withCode(NODE_ERR_STORE, "The setting could not be stored")
+        .withCode(NODE_ERR_RESTART, "The setting is stored. The restart could not be scheduled");
 }
 
 }  // namespace

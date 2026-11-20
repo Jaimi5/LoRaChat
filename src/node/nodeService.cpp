@@ -1,10 +1,8 @@
 #include "nodeService.h"
 
 #include "config.h"
-#include "esp_system.h"
-#include "esp_timer.h"
+#include "deferredRestart.h"
 #include "nvs.h"
-#include "ota/maintWifi.h"
 #include "ota/otaBootGuard.h"
 
 static const char* NODE_TAG = "NodeService";
@@ -12,7 +10,6 @@ static const char* NVS_NAMESPACE = "lmnode";
 static const char* NVS_KEY_ROLE = "role";
 static const char* NVS_KEY_SLEEP_MODE = "sleep";
 static const char* NVS_KEY_SLEEP_FRACTION = "sleepfrac";
-static constexpr uint64_t RESTART_DELAY_US = 1000ULL * 1000;
 
 void NodeService::init(uint16_t address) {
     nvs_handle_t handle;
@@ -83,12 +80,7 @@ CommandReply NodeService::storeAndRestart(const char* key, uint8_t value, const 
     nvs_close(handle);
     if (err != ESP_OK) return CommandReply(NODE_ERR_STORE, esp_err_to_name(err));
 
-    esp_timer_create_args_t args = {};
-    args.callback = [](void*) { esp_restart(); };
-    args.name = "nodeRestart";
-    MaintenanceWifi::getInstance().saveClock();
-    esp_timer_handle_t timer = nullptr;
-    if (esp_timer_create(&args, &timer) == ESP_OK) esp_timer_start_once(timer, RESTART_DELAY_US);
+    if (!DeferredRestart::getInstance().request()) return CommandReply(NODE_ERR_RESTART, "");
     ESP_LOGI(NODE_TAG, "%s, restarting", done.c_str());
     return String(done + ", restarting");
 }

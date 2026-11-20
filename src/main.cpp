@@ -34,6 +34,7 @@
 #include "monitor/monService.h"
 
 // Node role
+#include "node/deferredRestart.h"
 #include "node/nodeService.h"
 
 // Commands
@@ -222,6 +223,7 @@ void setup() {
         blockers.displayAwake = displayService.isAwake();
 #endif
         blockers.pmuIrqLow = InitDevices::powerKeyPending();
+        blockers.restartPending = DeferredRestart::getInstance().isPending();
 #ifdef MQTT_MON_ENABLED
         blockers.installMode = mon_mqttService.installActive();
 #endif

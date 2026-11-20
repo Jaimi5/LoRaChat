@@ -416,6 +416,41 @@ TEST(CmdText, ParsesMqttCommands) {
     EXPECT_FALSE(parseMqttCommand("xyz 1 /version", command));
 }
 
+TEST(CmdText, AnMqttCommandIsNotACancel) {
+    MqttCommand command;
+    command.cancel = true;
+    ASSERT_TRUE(parseMqttCommand("7680 12 /version", command));
+    EXPECT_FALSE(command.cancel);
+}
+
+TEST(CmdText, ParsesTheMqttCancelLine) {
+    MqttCommand command;
+    ASSERT_TRUE(parseMqttCommand("7680 12 !cancel", command));
+    EXPECT_TRUE(command.cancel);
+    EXPECT_EQ(command.dst, 0x7680);
+    EXPECT_EQ(command.requestId, 12);
+    EXPECT_TRUE(command.command.line.empty());
+    EXPECT_FALSE(command.command.isSigned);
+
+    ASSERT_TRUE(parseMqttCommand(" b12 255 !cancel \t", command));
+    EXPECT_TRUE(command.cancel);
+    EXPECT_EQ(command.dst, 0x0B12);
+    EXPECT_EQ(command.requestId, 255);
+}
+
+TEST(CmdText, OnlyTheExactCancelLineStartsWithAnExclamationMark) {
+    MqttCommand command;
+    command.dst = 7;
+    for (const char* bad :
+         {"7680 12 !cancel now", "7680 12 !Cancel", "7680 12 !cancelled", "7680 12 !",
+          "7680 12 !stop", "7680 12 !cancel #65000000.48fbaa33fa0d63c5", "7680 300 !cancel",
+          "7680 !cancel", "xyz 1 !cancel", "!cancel"}) {
+        EXPECT_FALSE(parseMqttCommand(bad, command)) << bad;
+    }
+    EXPECT_EQ(command.dst, 7);
+    EXPECT_FALSE(command.cancel);
+}
+
 TEST(CmdText, AnMqttRequestIdIsAPlainNumberUpTo255) {
     MqttCommand command;
     ASSERT_TRUE(parseMqttCommand("7680 255 /version", command));

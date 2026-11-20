@@ -230,6 +230,29 @@ bool PendingCommands::giveUp(uint16_t dst, uint8_t requestId, uint32_t nowMs, Pe
     return true;
 }
 
+bool PendingCommands::cancel(Origin origin, uint16_t dst, uint8_t originRequestId, uint32_t nowMs,
+                             PendingCommand& out) {
+    bool found = false;
+    uint32_t oldestAgeMs = 0;
+    for (Slot& slot : slots_) {
+        const PendingCommand& command = slot.command;
+        if (!slot.used || command.origin != origin || command.dst != dst ||
+            command.originRequestId != originRequestId) {
+            continue;
+        }
+        // Ages are compared, since the clock may have wrapped between two commands.
+        uint32_t ageMs = command.waitedMs(nowMs);
+        if (!found || ageMs > oldestAgeMs) {
+            out = command;
+            oldestAgeMs = ageMs;
+        }
+        found = true;
+        remember(command, nowMs);
+        slot = Slot{};
+    }
+    return found;
+}
+
 size_t PendingCommands::size() const {
     return static_cast<size_t>(
         std::count_if(slots_.begin(), slots_.end(), [](const Slot& slot) { return slot.used; }));

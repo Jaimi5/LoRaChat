@@ -145,12 +145,14 @@ void MqttService::processReceivedMessageFromMQTT(String& topic, String& payload)
     if (topic == commandTopic()) {
         MqttCommand command;
         if (!parseMqttCommand(payload.c_str(), command)) {
-            ESP_LOGW(MQTT_TAG, "Malformed command: <dst> <request id> <line> [#<counter>.<tag>]");
+            ESP_LOGW(MQTT_TAG, "Malformed command: <dst> <request id> <line> [#<counter>.<tag>]"
+                               " or <dst> <request id> !cancel");
             return;
         }
         CommandRequest request;
         request.origin = Origin::MQTT;
         request.requestId = command.requestId;
+        request.cancel = command.cancel;
         request.command = command.command;
         request.command.remote = true;
         request.command.dst = command.dst;

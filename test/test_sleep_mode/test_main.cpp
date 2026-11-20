@@ -78,7 +78,12 @@ TEST(SleepDecision, EachBlockerKeepsTheNodeAwake) {
     pmu.pmuIrqLow = true;
     SleepBlockers install;
     install.installMode = true;
+    SleepBlockers restart;
+    restart.restartPending = true;
     for (bool deep : {false, true}) {
+        EXPECT_EQ(decideSleep(SleepMode::DEEP, deep, restart), SleepDecision::RESTART_PENDING);
+        EXPECT_EQ(decideSleep(SleepMode::LIGHT, deep, restart), SleepDecision::RESTART_PENDING);
+        EXPECT_EQ(decideSleep(SleepMode::NONE, deep, restart), SleepDecision::MODE_NONE);
         EXPECT_EQ(decideSleep(SleepMode::DEEP, deep, install), SleepDecision::INSTALL_MODE);
         EXPECT_EQ(decideSleep(SleepMode::LIGHT, deep, install), SleepDecision::INSTALL_MODE);
         EXPECT_EQ(decideSleep(SleepMode::NONE, deep, install), SleepDecision::MODE_NONE);
@@ -96,6 +101,8 @@ TEST(SleepDecision, NamesForTheLog) {
     EXPECT_STREQ(sleepDecisionName(SleepDecision::MAINTENANCE_WINDOW), "maintenance window");
     EXPECT_STREQ(sleepDecisionName(SleepDecision::PMU_IRQ_PENDING), "pmu interrupt pending");
     EXPECT_STREQ(sleepDecisionName(SleepDecision::INSTALL_MODE), "install mode");
+    EXPECT_EQ(static_cast<uint8_t>(SleepDecision::RESTART_PENDING), 9);
+    EXPECT_STREQ(sleepDecisionName(SleepDecision::RESTART_PENDING), "restart pending");
 }
 
 int main(int argc, char** argv) {

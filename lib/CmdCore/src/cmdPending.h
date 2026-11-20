@@ -125,7 +125,7 @@ std::string formatDoneAck(const PendingCommand& command, uint32_t nowMs);
  *
  * A command is never sent again while a lossless reply to it may still be on its way. A signed
  * command waits A1, is sent once more and is given up A2 later. An unsigned command is given up
- * after A. A command that was given up is remembered without its frame for
+ * after A. A command that was given up or cancelled is remembered without its frame for
  * COMMAND_LATE_REPLY_MS, so a late reply still finds it.
  *
  * The caller provides the clock in milliseconds, which may wrap. The table is not thread
@@ -191,6 +191,16 @@ public:
      * @return false if the command does not wait any more.
      */
     bool giveUp(uint16_t dst, uint8_t requestId, uint32_t nowMs, PendingCommand& out);
+
+    /**
+     * @brief Cancels the waiting commands that came from @p origin for @p dst with request id
+     *        @p originRequestId: each is given up at @p nowMs, is never sent again and is
+     *        remembered for its late reply.
+     * @param out the oldest of them. Unchanged when none waits.
+     * @return false if no such command waits: it was answered, given up or never added.
+     */
+    bool cancel(Origin origin, uint16_t dst, uint8_t originRequestId, uint32_t nowMs,
+                PendingCommand& out);
 
     /** @return the number of waiting commands. */
     size_t size() const;
