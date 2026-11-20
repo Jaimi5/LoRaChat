@@ -13,6 +13,7 @@
 #include "cmdText.h"
 #include "cmdTyped.h"
 #include "firmwareCatalogue.h"
+#include "typedFrames.h"
 // The fixture reads limits from NetCore and OtaCore. These includes let PlatformIO find both.
 #include "installMode.h"
 #include "maintWindowPlan.h"
@@ -21,73 +22,11 @@ namespace {
 
 using Bytes = std::vector<uint8_t>;
 
-const CommandTag TAG = {{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}};
-constexpr uint32_t COUNTER = 0x01020304;
-
 TypedDeclaration declared(uint8_t id, const std::string& args, const std::string& reply,
                           const std::string& replyTemplate) {
     TypedDeclaration declaration;
     EXPECT_TRUE(parseTypedDeclaration(id, args, reply, replyTemplate, declaration));
     return declaration;
-}
-
-/** @return the request frame of @p line, as a gateway builds it. */
-Bytes requestFrame(const TypedDeclaration& declaration, const std::string& name,
-                   const std::string& line, bool isSigned) {
-    EXPECT_TRUE(isCanonicalLine(line, name, declaration.args)) << line;
-    Fields in;
-    EXPECT_TRUE(parseArgs(declaration.args, line.substr(name.size()), in)) << line;
-    BinaryCommandFrame frame;
-    frame.id = declaration.id;
-    frame.isSigned = isSigned;
-    frame.counter = COUNTER;
-    frame.tag = TAG;
-    EXPECT_TRUE(encodeFields(declaration.args, in, frame.payload));
-    return frame.encode();
-}
-
-/** @return the line a node signs for, built from the bytes of a request frame. */
-std::string lineOf(const TypedDeclaration& declaration, const std::string& name,
-                   const Bytes& bytes) {
-    BinaryCommandFrame frame;
-    EXPECT_TRUE(BinaryCommandFrame::decode(bytes.data(), bytes.size(), frame));
-    EXPECT_EQ(frame.id, declaration.id);
-    Fields in;
-    EXPECT_TRUE(decodeFields(declaration.args, frame.payload.data(), frame.payload.size(), in));
-    std::string line;
-    EXPECT_TRUE(canonicalLine(name, declaration.args, in, line));
-    return line;
-}
-
-/** @return the reply frame of a typed outcome, as a node builds it. */
-Bytes replyFrame(const TypedDeclaration& declaration, const TypedResult& result,
-                 const Fields& out) {
-    BinaryCommandFrame frame;
-    frame.response = true;
-    frame.status = result.status;
-    EXPECT_TRUE(encodeTypedReply(declaration, result, out, frame.payload));
-    return frame.encode();
-}
-
-/** @return the text a gateway makes of a reply frame for the request with arguments @p in. */
-CommandResult textOf(const TypedDeclaration& declaration, const Fields& in, const Bytes& bytes) {
-    BinaryCommandFrame frame;
-    EXPECT_TRUE(BinaryCommandFrame::decode(bytes.data(), bytes.size(), frame));
-    EXPECT_TRUE(frame.response);
-    TypedResult result;
-    Fields out;
-    EXPECT_TRUE(decodeTypedReply(declaration, frame.status, frame.payload.data(),
-                                 frame.payload.size(), result, out));
-    return typedReplyText(declaration, in, result, out);
-}
-
-/** The reply fields of /sensor as Bme280Sensor::measureInto() writes them. */
-Fields sensorReading(bool bme, uint8_t address, int32_t tempCentiC, uint32_t pressurePa,
-                     uint32_t rhCentiPercent) {
-    Fields out;
-    out.setU(0, bme ? 1 : 0).setBytes(1, &address, 1).setI(2, tempCentiC).setU(3, pressurePa);
-    if (bme) out.setU(4, rhCentiPercent);
-    return out;
 }
 
 std::string readGoldenIds() {
@@ -129,8 +68,8 @@ TEST(BinaryFrame, ASignedRequestEndsWithCounterAndTag) {
     frame.id = 0x13;
     frame.isSigned = true;
     frame.payload = {0x01};
-    frame.counter = COUNTER;
-    frame.tag = TAG;
+    frame.counter = GOLDEN_COUNTER;
+    frame.tag = GOLDEN_TAG;
     Bytes bytes = frame.encode();
     EXPECT_EQ(bytes, (Bytes{0x60, 0x13, 0x01, 0x04, 0x03, 0x02, 0x01, 0x11, 0x22, 0x33, 0x44, 0x55,
                             0x66, 0x77, 0x88}));
@@ -140,8 +79,8 @@ TEST(BinaryFrame, ASignedRequestEndsWithCounterAndTag) {
     EXPECT_TRUE(out.isSigned);
     EXPECT_EQ(out.id, 0x13);
     EXPECT_EQ(out.payload, (Bytes{0x01}));
-    EXPECT_EQ(out.counter, COUNTER);
-    EXPECT_EQ(out.tag, TAG);
+    EXPECT_EQ(out.counter, GOLDEN_COUNTER);
+    EXPECT_EQ(out.tag, GOLDEN_TAG);
 }
 
 TEST(BinaryFrame, AReplyIsFlagsStatusAndFields) {
@@ -330,7 +269,8 @@ TEST(TypedCommand, AnErrorReplyCarriesAnOptionalNumber) {
     in.setU(0, 600);
     CommandResult result = textOf(declaration, in, bytes);
     EXPECT_EQ(result.status, 128);
-    EXPECT_EQ(result.text, "4357");
+    // The command declares that number as an esp_err_t code.
+    EXPECT_EQ(result.text, "0x1105");
 
     bytes = replyFrame(declaration, CommandStatus::ARG, Fields());
     EXPECT_EQ(bytes, (Bytes{0xA0, 0x05}));
@@ -344,163 +284,136 @@ TEST(TypedCommand, AnErrorReplyCarriesAnOptionalNumber) {
     EXPECT_FALSE(decodeTypedReply(declaration, 128, cut.data(), cut.size(), out, fields));
 }
 
-// --- The examples of the design, as whole frames ---
+// --- The number of an error ---
 
-TEST(GoldenFrames, Version) {
-    TypedDeclaration declaration = firmwareDeclaration("/version");
-    Bytes request = requestFrame(declaration, "/version", "/version", false);
-    EXPECT_EQ(request, (Bytes{0x20, 0x34}));
-    EXPECT_EQ(lineOf(declaration, "/version", request), "/version");
-
-    // 0.1.2 in slot app0, valid, bootloader 20f487, board tbeam.
-    Fields out;
-    const uint8_t bootloader[] = {0x20, 0xF4, 0x87};
-    out.setVersion(0, 0, 1, 2).setU(1, 0).setU(2, 0).setBytes(3, bootloader, 3).setU(4, 0);
-    Bytes reply = replyFrame(declaration, TypedResult(), out);
-    EXPECT_EQ(reply, (Bytes{0xA0, 0x00, 0x00, 0x01, 0x02, 0x01, 0x00, 0x20, 0xF4, 0x87, 0x01}));
-    EXPECT_EQ(reply.size(), 11U);
-    EXPECT_EQ(textOf(declaration, Fields(), reply).text, "0.1.2 app0 VALID bl=20f487 env=tbeam");
-
-    // A new image on the other slot of a debug build.
-    Fields pending;
-    pending.setVersion(0, 1, 20, 255).setU(1, 1).setU(2, 1).setBytes(3, bootloader, 3).setU(4, 1);
-    reply = replyFrame(declaration, TypedResult(), pending);
-    EXPECT_EQ(reply, (Bytes{0xA0, 0x00, 0x01, 0x14, 0xFF, 0x02, 0x01, 0x20, 0xF4, 0x87, 0x02}));
-    EXPECT_EQ(textOf(declaration, Fields(), reply).text,
-              "1.20.255 app1 PENDING_VERIFY bl=20f487 env=tbeam-debug");
-
-    // A slot and a board this firmware has no name for.
-    Fields unknown;
-    unknown.setVersion(0, 0, 1, 2).setU(2, 0).setBytes(3, bootloader, 3);
-    reply = replyFrame(declaration, TypedResult(), unknown);
-    EXPECT_EQ(reply, (Bytes{0xA0, 0x00, 0x00, 0x01, 0x02, 0x00, 0x00, 0x20, 0xF4, 0x87}));
-    EXPECT_EQ(textOf(declaration, Fields(), reply).text, "0.1.2 VALID bl=20f487");
-}
-
-TEST(GoldenFrames, SleepSetLight) {
-    // The command keeps its text handler for now, so the declaration is the one of the design.
-    TypedDeclaration declaration =
-        declared(0x13, "mode:e(none,light,deep)", "", "Sleep mode set to {a0}, restarting");
-    Bytes request = requestFrame(declaration, "/sleep.set", "/sleep.set light", true);
-    EXPECT_EQ(request, (Bytes{0x60, 0x13, 0x01, 0x04, 0x03, 0x02, 0x01, 0x11, 0x22, 0x33, 0x44,
-                              0x55, 0x66, 0x77, 0x88}));
-    EXPECT_EQ(request.size(), 15U);
-    EXPECT_EQ(lineOf(declaration, "/sleep.set", request), "/sleep.set light");
-
-    Bytes reply = replyFrame(declaration, TypedResult(), Fields());
-    EXPECT_EQ(reply, (Bytes{0xA0, 0x00}));
-    Fields in;
-    in.setU(0, 1);
-    EXPECT_EQ(textOf(declaration, in, reply).text, "Sleep mode set to light, restarting");
-}
-
-TEST(GoldenFrames, Sensor) {
-    TypedDeclaration declaration = firmwareDeclaration("/sensor");
-    Bytes request = requestFrame(declaration, "/sensor", "/sensor", false);
-    EXPECT_EQ(request, (Bytes{0x20, 0x18}));
-    EXPECT_EQ(lineOf(declaration, "/sensor", request), "/sensor");
-
-    // BMP280 at 0x76: 21.50 C and 1013.25 hPa.
-    Bytes reply =
-        replyFrame(declaration, TypedResult(), sensorReading(false, 0x76, 2150, 101325, 0));
-    EXPECT_EQ(reply, (Bytes{0xA0, 0x00, 0x00, 0x76, 0xCC, 0x21, 0xCD, 0x97, 0x06}));
-    EXPECT_EQ(reply.size(), 9U);
-    EXPECT_EQ(textOf(declaration, Fields(), reply).text, "BMP280 at 0x76: 21.50 C 1013.25 hPa");
-
-    // BME280 at 0x77 with 45.50 %RH.
-    reply = replyFrame(declaration, TypedResult(), sensorReading(true, 0x77, 2150, 101325, 4550));
-    EXPECT_EQ(reply, (Bytes{0xA0, 0x00, 0x01, 0x77, 0xCC, 0x21, 0xCD, 0x97, 0x06, 0xC7, 0x23}));
-    EXPECT_EQ(reply.size(), 11U);
-    EXPECT_EQ(textOf(declaration, Fields(), reply).text,
-              "BME280 at 0x77: 21.50 C 45.50 %RH 1013.25 hPa");
-
-    // An error of the command has no fields.
-    EXPECT_EQ(replyFrame(declaration, TypedResult(128), Fields()), (Bytes{0xA0, 0x80}));
-}
-
-// The serial console and MQTT show what the text handler printed before the command was typed.
-TEST(GoldenFrames, SensorTextIsTheOneOfTheTextCommand) {
-    TypedDeclaration declaration = firmwareDeclaration("/sensor");
-    struct Case {
-        Fields out;
-        const char* text;
-    };
-    Fields stale = sensorReading(false, 0x76, 2150, 101325, 0);
-    stale.setU(5, 75);
-    Fields staleNow = sensorReading(true, 0x77, 2150, 101325, 4550);
-    staleNow.setU(5, 0);
-    for (const Case& c : std::vector<Case>{
-             {sensorReading(false, 0x76, 2150, 101325, 0), "BMP280 at 0x76: 21.50 C 1013.25 hPa"},
-             {sensorReading(true, 0x77, 2150, 101325, 4550),
-              "BME280 at 0x77: 21.50 C 45.50 %RH 1013.25 hPa"},
-             {sensorReading(true, 0x76, -5, 30000, 0),
-              "BME280 at 0x76: -0.05 C 0.00 %RH 300.00 hPa"},
-             {sensorReading(true, 0x76, -1234, 110007, 10000),
-              "BME280 at 0x76: -12.34 C 100.00 %RH 1100.07 hPa"},
-             {sensorReading(false, 0x77, 0, 99999, 0), "BMP280 at 0x77: 0.00 C 999.99 hPa"},
-             {stale,
-              "BMP280 at 0x76: 21.50 C 1013.25 hPa, read 75 s ago, the sensor does not answer now"},
-             {staleNow, "BME280 at 0x77: 21.50 C 45.50 %RH 1013.25 hPa, read 0 s ago, the sensor "
-                        "does not answer now"},
-         }) {
-        const Fields fields = c.out;
-        CommandResult direct = runTypedFromText(
-            declaration,
-            [&fields](const Fields&, Fields& out) {
-                out = fields;
-                return TypedResult();
-            },
-            "");
-        EXPECT_TRUE(direct.ok());
-        EXPECT_EQ(direct.text, c.text);
-        // The same text after the trip over LoRa.
-        EXPECT_EQ(
-            textOf(declaration, Fields(), replyFrame(declaration, TypedResult(), fields)).text,
-            c.text);
+TEST(ErrorDetails, ReadsADeclaration) {
+    ErrorDetail detail;
+    ASSERT_TRUE(parseErrorDetail(129, "x", detail));
+    EXPECT_EQ(detail.code, 129);
+    EXPECT_EQ(detail.kind, ErrorDetailKind::HEX_NUMBER);
+    ASSERT_TRUE(parseErrorDetail(131, "e(REFUSE_BATTERY,REFUSE_HEAP)", detail));
+    EXPECT_EQ(detail.kind, ErrorDetailKind::NAME_OF);
+    EXPECT_EQ(detail.names, (std::vector<std::string>{"REFUSE_BATTERY", "REFUSE_HEAP"}));
+    for (const char* decimal : {"", "u"}) {
+        ASSERT_TRUE(parseErrorDetail(132, decimal, detail)) << decimal;
+        EXPECT_EQ(detail.kind, ErrorDetailKind::DECIMAL_NUMBER);
+        EXPECT_TRUE(detail.names.empty());
     }
-    // /sensor takes no argument.
-    EXPECT_EQ(runTypedFromText(
-                  declaration, [](const Fields&, Fields&) { return TypedResult(); }, "now")
-                  .status,
-              static_cast<uint8_t>(CommandStatus::ARG));
-    CommandResult error =
-        runTypedFromText(declaration, [](const Fields&, Fields&) { return TypedResult(129); }, "");
-    EXPECT_EQ(error.status, 129);
-    EXPECT_EQ(error.text, "");
+    detail.code = 77;
+    for (const char* bad :
+         {"X", "xx", "i", "h2", "e", "e()", "e(a,a)", "e(a) b:u", "e(a)?", "s", " x"}) {
+        EXPECT_FALSE(parseErrorDetail(128, bad, detail)) << bad;
+    }
+    EXPECT_EQ(detail.code, 77);
 }
 
-TEST(GoldenFrames, ReportSet600) {
-    TypedDeclaration declaration = firmwareDeclaration("/report.set");
-    Bytes request = requestFrame(declaration, "/report.set", "/report.set 600", true);
-    EXPECT_EQ(request, (Bytes{0x60, 0x7A, 0xD8, 0x04, 0x04, 0x03, 0x02, 0x01, 0x11, 0x22, 0x33,
-                              0x44, 0x55, 0x66, 0x77, 0x88}));
-    EXPECT_EQ(request.size(), 16U);
-    EXPECT_EQ(lineOf(declaration, "/report.set", request), "/report.set 600");
-    EXPECT_FALSE(isCanonicalLine("/report.set 0600", "/report.set", declaration.args));
-
-    Bytes reply = replyFrame(declaration, TypedResult(), Fields());
-    EXPECT_EQ(reply, (Bytes{0xA0, 0x00}));
-    Fields in;
-    in.setU(0, 600);
-    // The text of the text command.
-    EXPECT_EQ(textOf(declaration, in, reply).text, "Report interval set to 600 s");
-
-    // 0 removes the stored interval. The reply then names the default of the node.
-    Fields toDefault;
-    toDefault.setU(0, 300);
-    reply = replyFrame(declaration, TypedResult(), toDefault);
-    EXPECT_EQ(reply, (Bytes{0xA0, 0x00, 0xAD, 0x02}));
-    in.setU(0, 0);
-    EXPECT_EQ(textOf(declaration, in, reply).text,
-              "Report interval set to 0 s (the default, 300 s)");
+TEST(ErrorDetails, RendersTheNumberAsDeclared) {
+    std::vector<ErrorDetail> details(2);
+    ASSERT_TRUE(parseErrorDetail(129, "x", details[0]));
+    ASSERT_TRUE(parseErrorDetail(131, "e(REFUSE_BATTERY,REFUSE_HEAP)", details[1]));
+    EXPECT_EQ(errorDetailText(details, 129, 0x1105), "0x1105");
+    EXPECT_EQ(errorDetailText(details, 129, 0), "0x0");
+    EXPECT_EQ(errorDetailText(details, 129, 0xFFFFFFFF), "0xffffffff");
+    EXPECT_EQ(errorDetailText(details, 131, 0), "REFUSE_BATTERY");
+    EXPECT_EQ(errorDetailText(details, 131, 1), "REFUSE_HEAP");
+    // A number without a name, and a code without a declaration, read as decimal.
+    EXPECT_EQ(errorDetailText(details, 131, 2), "2");
+    EXPECT_EQ(errorDetailText(details, 132, 8), "8");
+    EXPECT_EQ(errorDetailText({}, 129, 4357), "4357");
 }
 
-TEST(GoldenFrames, Sleep) {
-    // The command keeps its text handler for now. A request without arguments is two bytes.
-    TypedDeclaration declaration = declared(0x12, "", "", "");
-    Bytes request = requestFrame(declaration, "/sleep", "/sleep", false);
-    EXPECT_EQ(request, (Bytes{0x20, 0x12}));
-    EXPECT_EQ(lineOf(declaration, "/sleep", request), "/sleep");
+TEST(ErrorDetails, ACommandWithABadDetailIsRefused) {
+    CommandCatalogue catalogue;
+    EXPECT_FALSE(catalogue.add(spec("/a", Perm::OPEN, "", {{128, "No", "hex"}})));
+    EXPECT_FALSE(
+        catalogue.add(typed(0x20, spec("/a", Perm::OPEN, "", {{128, "No", "e("}}), "", "", "")));
+    EXPECT_TRUE(
+        catalogue.add(typed(0x20, spec("/a", Perm::OPEN, "", {{128, "No", "x"}}), "", "", "")));
+    TypedDeclaration declaration;
+    ASSERT_TRUE(typedDeclarationOf(*catalogue.find("/a"), declaration));
+    ASSERT_EQ(declaration.details.size(), 1U);
+    EXPECT_EQ(typedReplyText(declaration, Fields(), TypedResult(128, 0x3001), Fields()).text,
+              "0x3001");
+    // The line of /cmds does not change with the detail.
+    EXPECT_EQ(CommandCatalogue::line(*catalogue.find("/a")), "/a|open||128=No|20||=");
+}
+
+// --- A reply that must fit one frame ---
+
+TEST(BoundedReply, AReplyThatFitsIsWrittenWhole) {
+    TypedDeclaration declaration = declared(0x20, "", "n:u rows:*(a:h2 b:u)", "{0}");
+    Fields out;
+    out.setU(0, 3);
+    for (uint8_t i = 0; i < 3; i++) {
+        const uint8_t address[] = {0x10, i};
+        Fields row;
+        row.setBytes(0, address, 2).setU(1, i);
+        out.addRow(row);
+    }
+    Bytes payload = {0xEE};
+    size_t kept = 99;
+    ASSERT_TRUE(encodeTypedReplyWithin(declaration, TypedResult(), out, 10, payload, &kept));
+    EXPECT_EQ(payload, (Bytes{0xEE, 0x03, 0x10, 0x00, 0x00, 0x10, 0x01, 0x01, 0x10, 0x02, 0x02}));
+    EXPECT_EQ(kept, 3U);
+}
+
+TEST(BoundedReply, RowsAreDroppedFromTheEndUntilItFits) {
+    TypedDeclaration declaration = declared(0x20, "", "n:u rows:*(a:h2 b:u)", "{0}");
+    Fields out;
+    out.setU(0, 3);
+    for (uint8_t i = 0; i < 3; i++) {
+        const uint8_t address[] = {0x10, i};
+        Fields row;
+        row.setBytes(0, address, 2).setU(1, i);
+        out.addRow(row);
+    }
+    Bytes payload;
+    size_t kept = 99;
+    // One byte short of the third row.
+    ASSERT_TRUE(encodeTypedReplyWithin(declaration, TypedResult(), out, 9, payload, &kept));
+    EXPECT_EQ(payload, (Bytes{0x03, 0x10, 0x00, 0x00, 0x10, 0x01, 0x01}));
+    EXPECT_EQ(kept, 2U);
+    // The count field still tells how many rows there were.
+    Fields decoded;
+    TypedResult result;
+    ASSERT_TRUE(decodeTypedReply(declaration, 0, payload.data(), payload.size(), result, decoded));
+    EXPECT_EQ(decoded.u(0), 3U);
+    EXPECT_EQ(decoded.rowCount(), 2U);
+
+    payload.clear();
+    ASSERT_TRUE(encodeTypedReplyWithin(declaration, TypedResult(), out, 1, payload, &kept));
+    EXPECT_EQ(payload, (Bytes{0x03}));
+    EXPECT_EQ(kept, 0U);
+    // The caller may leave the row count out.
+    payload.clear();
+    EXPECT_TRUE(encodeTypedReplyWithin(declaration, TypedResult(), out, 4, payload));
+    EXPECT_EQ(payload, (Bytes{0x03, 0x10, 0x00, 0x00}));
+}
+
+TEST(BoundedReply, WhatCannotBeCutIsRefused) {
+    TypedDeclaration rows = declared(0x20, "", "n:u rows:*(a:h2 b:u)", "{0}");
+    Fields out;
+    out.setU(0, 300);
+    Bytes payload = {0xEE};
+    size_t kept = 99;
+    // The fields before the group alone are too long.
+    EXPECT_FALSE(encodeTypedReplyWithin(rows, TypedResult(), out, 1, payload, &kept));
+    TypedDeclaration text = declared(0x21, "", "name:s", "{0}");
+    Fields name;
+    name.setText(0, "LM-1A2B");
+    EXPECT_FALSE(encodeTypedReplyWithin(text, TypedResult(), name, 6, payload, &kept));
+    // Reply fields that do not fit the declaration.
+    EXPECT_FALSE(encodeTypedReplyWithin(text, TypedResult(), Fields(), 100, payload, &kept));
+    // An error with a number that is too long for the room.
+    EXPECT_FALSE(encodeTypedReplyWithin(text, TypedResult(128, 0x1105), Fields(), 1, payload));
+    EXPECT_EQ(payload, (Bytes{0xEE}));
+    EXPECT_EQ(kept, 99U);
+    EXPECT_TRUE(encodeTypedReplyWithin(text, TypedResult(128, 0x1105), Fields(), 2, payload));
+    EXPECT_EQ(payload, (Bytes{0xEE, 0x85, 0x22}));
+    payload.clear();
+    EXPECT_TRUE(encodeTypedReplyWithin(text, TypedResult(), name, 7, payload, &kept));
+    EXPECT_EQ(payload, (Bytes{'L', 'M', '-', '1', 'A', '2', 'B'}));
+    EXPECT_EQ(kept, 0U);
 }
 
 // --- Ids ---
@@ -517,23 +430,54 @@ TEST(CommandIds, MatchTheGoldenFile) {
     std::string text;
     for (const std::string& pair : pairs) text += pair + "\n";
     EXPECT_EQ(text, readGoldenIds());
-    EXPECT_EQ(pairs.size(), 3U);
+    EXPECT_EQ(pairs.size(), 28U);
 }
 
 TEST(CommandIds, EveryIdSitsInTheBlockOfItsService) {
     CommandCatalogue catalogue = firmwareCatalogue();
-    struct Case {
-        const char* name;
+    struct Block {
         uint8_t first;
         uint8_t last;
+        std::vector<std::string> names;
     };
     // 0x10 node, 0x30 OTA, 0x50 WiFi, 0x60 display, 0x70 mesh and monitor.
-    for (const Case& c : std::vector<Case>{
-             {"/sensor", 0x10, 0x2F}, {"/version", 0x30, 0x4F}, {"/report.set", 0x70, 0x8F}}) {
-        ASSERT_NE(catalogue.find(c.name), nullptr);
-        EXPECT_GE(catalogue.find(c.name)->id, c.first) << c.name;
-        EXPECT_LE(catalogue.find(c.name)->id, c.last) << c.name;
+    const std::vector<Block> blocks = {
+        {0x10,
+         0x2F,
+         {"/role", "/role.set", "/sleep", "/sleep.set", "/sleep.fraction", "/power", "/sensor",
+          "/identify"}},
+        {0x30,
+         0x4F,
+         {"/key", "/maint.open", "/maint.close", "/version", "/ota.status", "/reboot",
+          "/maint.wifi"}},
+        {0x50, 0x5F, {"/connectWiFi", "/getIP", "/resetWiFiData"}},
+        {0x60,
+         0x6F,
+         {"/displayOn", "/displayOff", "/displayBlink", "/displayClear", "/displayLogo",
+          "/displayText"}},
+        {0x70, 0x8F, {"/getRT", "/install", "/report", "/report.set"}},
+    };
+    size_t withId = 0;
+    for (const Block& block : blocks) {
+        for (const std::string& name : block.names) {
+            ASSERT_NE(catalogue.find(name), nullptr) << name;
+            EXPECT_GE(catalogue.find(name)->id, block.first) << name;
+            EXPECT_LE(catalogue.find(name)->id, block.last) << name;
+            withId++;
+        }
     }
+    EXPECT_EQ(withId, 28U);
+}
+
+TEST(CommandIds, CommandsThatNeverTravelHaveNone) {
+    CommandCatalogue catalogue = firmwareCatalogue();
+    // The local commands, and the two text dumps that a gateway refuses for another node.
+    for (const char* name :
+         {"/key.set", "/ota.server", "/addSSID", "/addPassword", "/help", "/cmds"}) {
+        ASSERT_NE(catalogue.find(name), nullptr) << name;
+        EXPECT_EQ(catalogue.find(name)->id, 0) << name;
+    }
+    EXPECT_EQ(catalogue.size(), 34U);
 }
 
 int main(int argc, char** argv) {

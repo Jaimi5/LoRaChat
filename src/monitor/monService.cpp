@@ -137,14 +137,18 @@ std::vector<MonRoute> MonService::collectReportedRoutes() {
     return routes;
 }
 
-CommandReply MonService::install(const String& args) {
-    uint32_t seconds = 0;
-    if (!parseInstallSeconds(args.c_str(), seconds)) return CommandStatus::ARG;
+TypedResult MonService::install(uint32_t seconds, Fields& out) {
+    enum Field : size_t { STARTED_SECONDS, STOPPED };
+    if (seconds > INSTALL_MAX_SECONDS) return CommandStatus::ARG;
     installMode_.start(seconds, clockMs());
     // The report that follows carries the new state and the new interval.
     if (sending_TaskHandle != nullptr) xTaskNotifyGive(sending_TaskHandle);
-    if (seconds == 0) return "OK install off";
-    return String(String("OK install ") + seconds + " s");
+    if (seconds == 0) {
+        out.setU(STOPPED, 0);
+    } else {
+        out.setU(STARTED_SECONDS, seconds);
+    }
+    return TypedResult();
 }
 
 bool MonService::installActive() const {
@@ -184,25 +188,18 @@ static esp_err_t storeReportInterval(uint32_t seconds) {
     return err;
 }
 
-CommandReply MonService::setReportInterval(const String& args) {
-    uint32_t seconds = 0;
-    if (!parseReportInterval(args.c_str(), seconds)) return CommandStatus::ARG;
-    esp_err_t err = applyReportInterval(seconds);
-    if (err != ESP_OK) return CommandReply(MON_ERR_STORE, esp_err_to_name(err));
-    if (seconds == REPORT_INTERVAL_NONE) {
-        return String(String("Report interval set to default (") + MON_SENDING_EVERY / 1000 +
-                      " s)");
-    }
-    return String(String("Report interval set to ") + seconds + " s");
-}
-
 TypedResult MonService::setReportInterval(uint32_t seconds, Fields& out) {
     if (seconds != REPORT_INTERVAL_NONE && !reportIntervalValid(seconds)) {
         return CommandStatus::ARG;
     }
     esp_err_t err = applyReportInterval(seconds);
     if (err != ESP_OK) return TypedResult(MON_ERR_STORE, static_cast<uint32_t>(err));
-    if (seconds == REPORT_INTERVAL_NONE) out.setU(0, MON_SENDING_EVERY / 1000);
+    enum Field : size_t { STORED_SECONDS, DEFAULT_SECONDS };
+    if (seconds == REPORT_INTERVAL_NONE) {
+        out.setU(DEFAULT_SECONDS, MON_SENDING_EVERY / 1000);
+    } else {
+        out.setU(STORED_SECONDS, seconds);
+    }
     return TypedResult();
 }
 
@@ -217,12 +214,18 @@ esp_err_t MonService::applyReportInterval(uint32_t seconds) {
     return ESP_OK;
 }
 
-String MonService::describeReport() const {
+TypedResult MonService::reportInto(Fields& out) const {
+    enum Field : size_t { EVERY_SECONDS, SOURCE, NEXT_SECONDS, THEN_SECONDS };
+    constexpr uint64_t MS_PER_S = 1000;
     uint64_t nowMs = clockMs();
     uint64_t nextAtMs = nextReportAtMs_;
     uint64_t nextInMs = nextAtMs > nowMs ? nextAtMs - nowMs : 0;
-    return describeReportPacing(reportPacing(), static_cast<uint32_t>((nextInMs + 999) / 1000))
-        .c_str();
+    const ReportPacing pacing = reportPacing();
+    out.setU(EVERY_SECONDS, pacing.intervalMs / MS_PER_S);
+    out.setU(SOURCE, pacing.stored ? 1 : 0);
+    out.setU(NEXT_SECONDS, static_cast<uint32_t>((nextInMs + MS_PER_S - 1) / MS_PER_S));
+    if (pacing.installShortens) out.setU(THEN_SECONDS, pacing.configuredMs / MS_PER_S);
+    return TypedResult();
 }
 
 ReportPacing MonService::reportPacing() const {

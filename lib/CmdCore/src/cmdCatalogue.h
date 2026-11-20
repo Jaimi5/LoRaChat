@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "cmdPerm.h"
+#include "cmdTyped.h"
 
 /** Largest text of one /cmds page in bytes. With the request id the MQTT payload stays under 900.
  */
@@ -13,10 +14,16 @@ constexpr size_t CATALOGUE_PAGE_MAX_BYTES = 880;
 /** Format version in the first line of every /cmds page. */
 constexpr unsigned CATALOGUE_FORMAT_VERSION = 1;
 
-/** An error that only one command gives: a status from 128 to 255 and its text for people. */
+/**
+ * @brief An error that only one command gives: a status from 128 to 255 and its text for people.
+ *
+ * A typed command may send a number with the error. @p detail says how that number reads as
+ * the argument of the error (errorDetailText() in cmdTyped.h). Empty means a decimal number.
+ */
 struct CommandCode {
     uint8_t code;
     std::string text;
+    std::string detail;
 };
 
 /** What the catalogue tells about one command. */
@@ -38,6 +45,14 @@ struct CommandSpec {
     std::string replyTemplate;
 };
 
+/**
+ * @brief Reads the typed declaration of @p spec: its id, schemas and template, and the details
+ *        of its error codes.
+ * @return false, leaving @p out unchanged, if the declaration (parseTypedDeclaration()) or the
+ *         detail of a code (parseErrorDetail()) is not valid.
+ */
+bool typedDeclarationOf(const CommandSpec& spec, TypedDeclaration& out);
+
 /** @return "open", "signed" or "local". */
 const char* commandPermName(Perm perm);
 
@@ -54,8 +69,9 @@ public:
     /**
      * @brief Adds @p spec.
      * @return false, leaving the catalogue unchanged, if the name is empty or taken, a code is
-     *         below 128 or listed twice, the id is taken, or the typed declaration is not valid
-     *         (parseTypedDeclaration()). A command without an id has no schemas and no template.
+     *         below 128 or listed twice, the detail of a code is not valid, the id is taken, or
+     *         the typed declaration is not valid (parseTypedDeclaration()). A command without
+     *         an id has no schemas and no template.
      */
     bool add(const CommandSpec& spec);
 

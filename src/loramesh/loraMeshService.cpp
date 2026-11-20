@@ -1,6 +1,7 @@
 #include "loraMeshService.h"
 
 #include "devices/initDevices.h"
+#include "monReport.h"
 
 #include "driver/gpio.h"
 #include "esp_attr.h"
@@ -50,18 +51,16 @@ void LoRaMeshService::countDeepSleepWake() {
     sleepStats.deepPending = 0;
 }
 
-std::string LoRaMeshService::sleepReport() const {
-    char text[128];
-    int length = snprintf(text, sizeof(text), "light %u x %u s, deep %u x %u s since power-on",
-                          (unsigned)sleepStats.lightCount, (unsigned)(sleepStats.lightMs / 1000),
-                          (unsigned)sleepStats.deepCount, (unsigned)(sleepStats.deepMs / 1000));
+void LoRaMeshService::sleepCountsInto(Fields& out, size_t first) const {
+    enum Field : size_t { LIGHT_COUNT, LIGHT_SECONDS, DEEP_COUNT, DEEP_SECONDS, KEY_WAKES };
+    constexpr uint32_t MS_PER_S = 1000;
+    out.setU(first + LIGHT_COUNT, sleepStats.lightCount);
+    out.setU(first + LIGHT_SECONDS, sleepStats.lightMs / MS_PER_S);
+    out.setU(first + DEEP_COUNT, sleepStats.deepCount);
+    out.setU(first + DEEP_SECONDS, sleepStats.deepMs / MS_PER_S);
 #if PMU_KEY_WAKES_LIGHT_SLEEP
-    snprintf(text + length, sizeof(text) - length, ", %u light sleeps ended by the power key",
-             (unsigned)keyWakes_.load());
-#else
-    (void)length;
+    out.setU(first + KEY_WAKES, keyWakes_.load());
 #endif
-    return text;
 }
 
 loramesher::power::SleepResult LoRaMeshService::onPrepareSleep(
@@ -233,26 +232,33 @@ uint16_t LoRaMeshService::getLocalAddress() {
                    : loramesher::LoraMesher::GenerateAddressFromHardware();
 }
 
-String LoRaMeshService::getRoutingTable() {
-    String routingTable = "--- Routing Table ---\n";
-
-    if (!mesher_) {
-        routingTable += "No mesher";
-        return routingTable;
-    }
-
-    auto routes = mesher_->GetRoutingTable();
-    if (routes.empty()) {
-        routingTable += "No routes";
-    } else {
-        for (const auto& route : routes) {
-            routingTable += String(route.destination) + " (hops:" + String(route.hop_count) +
-                            " lq:" + String(route.link_quality) +
-                            ") - Via: " + String(route.next_hop) + "\n";
+TypedResult LoRaMeshService::routesInto(Fields& out) {
+    enum Field : size_t { COUNT, ROUTES };
+    enum Member : size_t { DESTINATION, NEXT_HOP, LINK_QUALITY, HOPS, RSSI, SNR };
+    constexpr int32_t CENTI_DB_PER_QUARTER_DB = 25;
+    auto setAddress = [](Fields& row, size_t index, uint16_t address) {
+        const uint8_t bytes[] = {static_cast<uint8_t>(address >> 8),
+                                 static_cast<uint8_t>(address & 0xFF)};
+        row.setBytes(index, bytes, sizeof(bytes));
+    };
+    std::vector<loramesher::RouteEntry> routes;
+    if (mesher_) routes = mesher_->GetRoutingTable();
+    out.setU(COUNT, static_cast<uint32_t>(routes.size()));
+    for (const auto& route : routes) {
+        Fields row;
+        setAddress(row, DESTINATION, route.destination);
+        setAddress(row, NEXT_HOP, route.next_hop);
+        row.setU(LINK_QUALITY, route.link_quality);
+        row.setU(HOPS, route.hop_count);
+        // The mesh keeps signal readings of direct neighbours only.
+        const int8_t rssi = route.destination == route.next_hop ? monPackRssi(route.last_rssi) : 0;
+        if (rssi != 0) {
+            row.setU(RSSI, static_cast<uint32_t>(-rssi));
+            row.setI(SNR, monPackSnr(route.last_snr) * CENTI_DB_PER_QUARTER_DB);
         }
+        out.addRow(row);
     }
-
-    return routingTable;
+    return TypedResult();
 }
 
 MeshSend LoRaMeshService::send(DataMessage* message) {

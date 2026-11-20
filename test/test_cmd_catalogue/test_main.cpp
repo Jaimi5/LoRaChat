@@ -242,11 +242,13 @@ TEST(CmdCatalogue, TheFirmwareCatalogueFitsItsPages) {
     EXPECT_EQ(first[2], "/addPassword|local|<password of at most 64 bytes>|");
     EXPECT_EQ(first[3], "/addSSID|local|<ssid of 1 to 32 bytes>|");
     EXPECT_EQ(first[4], "/cmds|open|[page]|");
-    EXPECT_EQ(first[5], "/connectWiFi|signed||128=The WiFi did not connect");
     // A command with an id appends its id, its argument schema and its reply.
+    EXPECT_EQ(first[5], "/connectWiFi|signed||128=The WiFi did not connect|50||=Connected");
     EXPECT_EQ(lines(pages.back()).back(),
               "/version|open|||34||ver:v slot:e(app0,app1)? state:e(VALID,PENDING_VERIFY) bl:h3 "
-              "env:e(tbeam,tbeam-debug)?={0}[ {1}] {2} bl={3}[ env={4}]");
+              "env:e(tbeam,tbeam-debug)? git:h4 dirty:e(dirty)?={0}+g{5}[.{6}][ {1}] {2} "
+              "bl={3}[ env={4}]");
+    EXPECT_EQ(pages.size(), 8U);
 }
 
 TEST(CmdCatalogue, ACommandWithAnIdAppendsThreeFields) {
@@ -261,9 +263,9 @@ TEST(CmdCatalogue, ACommandWithAnIdAppendsThreeFields) {
     EXPECT_EQ(fields(sensor).size(), 7U);
     ASSERT_NE(catalogue.find("/report.set"), nullptr);
     EXPECT_EQ(CommandCatalogue::line(*catalogue.find("/report.set")),
-              "/report.set|signed|<seconds from 60 to 43200, or default>|128=The interval could "
-              "not be stored|7a|seconds:u|def:u?=Report interval set to {a0} s[ (the default, {0} "
-              "s)]");
+              "/report.set|signed|<seconds from 60 to 43200, or 0 for the default>|128=The "
+              "interval could not be stored|7a|seconds:u|stored:u? def:u?=Report interval set to "
+              "[{0} s][default ({1} s)]");
     // The first four fields are the line of the same command without an id.
     CommandSpec plain = *catalogue.find("/report.set");
     plain.id = 0;
@@ -272,8 +274,8 @@ TEST(CmdCatalogue, ACommandWithAnIdAppendsThreeFields) {
                   .compare(0, CommandCatalogue::line(plain).size(), CommandCatalogue::line(plain)),
               0);
     // A command without an id keeps four fields.
-    ASSERT_NE(catalogue.find("/sleep"), nullptr);
-    EXPECT_EQ(CommandCatalogue::line(*catalogue.find("/sleep")), "/sleep|open||");
+    ASSERT_NE(catalogue.find("/help"), nullptr);
+    EXPECT_EQ(CommandCatalogue::line(*catalogue.find("/help")), "/help|open||");
 }
 
 TEST(CmdCatalogue, AnIdRegisteredTwiceIsRefused) {

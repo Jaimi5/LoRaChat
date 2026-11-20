@@ -1,25 +1,7 @@
 #include "nodeRole.h"
 
-#include <algorithm>
-#include <cctype>
-
 const char* nodeRoleName(NodeRole role) {
     return role == NodeRole::GATEWAY ? "gateway" : "sensor";
-}
-
-bool parseNodeRole(const std::string& text, NodeRole& out) {
-    std::string lower = text;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    if (lower == "gateway") {
-        out = NodeRole::GATEWAY;
-        return true;
-    }
-    if (lower == "sensor") {
-        out = NodeRole::SENSOR;
-        return true;
-    }
-    return false;
 }
 
 bool nodeRoleFromValue(uint8_t value, NodeRole& out) {

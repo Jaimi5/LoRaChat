@@ -42,15 +42,23 @@ struct CommandReply {
  * @brief A command: its name, help text, arguments, permission, errors and handler.
  *
  * A text command has a text handler, which gets the arguments as typed and returns the reply
- * text. A typed command also has an id, the schemas of its arguments and of its reply, a reply
+ * text. A typed command has an id, the schemas of its arguments and of its reply, a reply
  * template and a typed handler (cmdTyped.h). Its text reply is the template filled with the
- * fields the typed handler wrote. A typed command may keep a text handler next to the typed
- * one: a text line then runs the text handler, and the typed handler serves binary frames.
+ * fields the typed handler wrote, so a text line and a binary frame give the same text.
+ *
+ * A typed command gets a text handler next to the typed one only when a text line accepts
+ * something that the typed arguments do not carry. The text handler sees every text line and
+ * hands the lines it does not take to the typed handler with runTyped().
+ *
+ * A reply field of type "e(word)?" works as a marker: the handler sets it or leaves it absent,
+ * and the template shows the bracket that names it. This gives one command several reply texts.
  */
 class Command {
 public:
     using Callback = std::function<CommandReply(String)>;
     using TypedCallback = TypedHandler;
+    /** The text handler of a typed command. It gets the arguments as typed and the command. */
+    using TextCallback = std::function<CommandReply(String, const Command&)>;
 
     Command() = default;
 
@@ -94,9 +102,9 @@ public:
         return *this;
     }
 
-    /** Keeps a text handler for text lines next to the typed handler. */
-    Command& runText(Callback handler) {
-        callback = std::move(handler);
+    /** Sets the handler that sees the text lines of a typed command first. */
+    Command& runText(TextCallback handler) {
+        textCallback = std::move(handler);
         return *this;
     }
 
@@ -112,17 +120,35 @@ public:
         return *this;
     }
 
-    /** Declares an error of this command: a status from 128 to 255 and its text for people. */
-    Command& withCode(uint8_t code, const char* text) {
-        codes.push_back(CommandCode{code, text});
+    /**
+     * @brief Declares an error of this command: a status from 128 to 255 and its text for
+     *        people.
+     * @param detail how the number that a typed handler sends with the error reads: "" for
+     *        decimal, "x" for hex as an esp_err_t code, "e(a,b)" for a name (parseErrorDetail()).
+     */
+    Command& withCode(uint8_t code, const char* text, const char* detail = "") {
+        codes.push_back(CommandCode{code, text, detail});
+        if (typed_) declare();
         return *this;
     }
 
     /** Runs the command for a text line. @p argText is the line without the command name. */
     CommandReply execute(const String& argText) const {
         if (callback) return callback(argText);
+        if (textCallback) return textCallback(argText, *this);
+        return runTyped(argText);
+    }
+
+    /** Reads @p argText as the typed arguments, runs the typed handler and renders its reply. */
+    CommandReply runTyped(const String& argText) const {
         if (!typed_ || !typed_->valid) return CommandStatus::UNKNOWN;
         return runTypedFromText(typed_->declaration, typed_->handler, argText.c_str());
+    }
+
+    /** @return the text of a typed outcome that a text handler produced without arguments. */
+    CommandReply render(const TypedResult& result, const Fields& out) const {
+        if (!typed_ || !typed_->valid) return CommandStatus::UNKNOWN;
+        return typedReplyText(typed_->declaration, Fields(), result, out);
     }
 
     /** Runs the typed handler. @return UNKNOWN for a command without one. */
@@ -181,15 +207,13 @@ private:
         return *typed_;
     }
 
-    void declare() {
-        typed_->valid = parseTypedDeclaration(typed_->id, typed_->args, typed_->reply,
-                                              typed_->replyTemplate, typed_->declaration);
-    }
+    void declare() { typed_->valid = typedDeclarationOf(spec(), typed_->declaration); }
 
     String command;
     String description;
     String usage;
     Callback callback;
+    TextCallback textCallback;
     Perm perm = Perm::LOCAL_ONLY;
     uint32_t allowanceMs = 0;
     std::vector<CommandCode> codes;

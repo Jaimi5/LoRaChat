@@ -19,17 +19,8 @@ constexpr uint8_t MAX_SLEEP_FRACTION_PERCENT = 90;
 /** @return "none", "light" or "deep". */
 const char* sleepModeName(SleepMode mode);
 
-/** Parses "none", "light" or "deep" (any case). @return false for anything else. */
-bool parseSleepMode(const std::string& text, SleepMode& out);
-
 /** Decodes a stored mode value. @return false if @p value is not a mode. */
 bool sleepModeFromValue(uint8_t value, SleepMode& out);
-
-/**
- * Parses a whole percentage from 0 to MAX_SLEEP_FRACTION_PERCENT (digits only).
- * @return false, leaving @p percent unchanged, for anything else.
- */
-bool parseSleepFraction(const std::string& text, uint8_t& percent);
 
 /** What keeps a node awake when the mesh offers it a sleep. */
 struct SleepBlockers {

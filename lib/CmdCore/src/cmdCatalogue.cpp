@@ -43,6 +43,20 @@ const char* commandPermName(Perm perm) {
     return "local";
 }
 
+bool typedDeclarationOf(const CommandSpec& spec, TypedDeclaration& out) {
+    TypedDeclaration declaration;
+    if (!parseTypedDeclaration(spec.id, spec.args, spec.reply, spec.replyTemplate, declaration)) {
+        return false;
+    }
+    for (const CommandCode& code : spec.codes) {
+        ErrorDetail detail;
+        if (!parseErrorDetail(code.code, code.detail, detail)) return false;
+        if (detail.kind != ErrorDetailKind::DECIMAL_NUMBER) declaration.details.push_back(detail);
+    }
+    out = declaration;
+    return true;
+}
+
 bool sameCommandName(const std::string& a, const std::string& b) {
     return lowered(a) == lowered(b);
 }
@@ -51,17 +65,15 @@ bool CommandCatalogue::add(const CommandSpec& spec) {
     if (spec.name.empty() || find(spec.name) != nullptr) return false;
     for (size_t i = 0; i < spec.codes.size(); i++) {
         if (spec.codes[i].code < COMMAND_STATUS_SPECIFIC_FIRST) return false;
+        ErrorDetail detail;
+        if (!parseErrorDetail(spec.codes[i].code, spec.codes[i].detail, detail)) return false;
         for (size_t j = 0; j < i; j++) {
             if (spec.codes[j].code == spec.codes[i].code) return false;
         }
     }
     if (spec.id != 0) {
         TypedDeclaration declaration;
-        if (findById(spec.id) != nullptr ||
-            !parseTypedDeclaration(spec.id, spec.args, spec.reply, spec.replyTemplate,
-                                   declaration)) {
-            return false;
-        }
+        if (findById(spec.id) != nullptr || !typedDeclarationOf(spec, declaration)) return false;
     } else if (!spec.args.empty() || !spec.reply.empty() || !spec.replyTemplate.empty()) {
         return false;
     }

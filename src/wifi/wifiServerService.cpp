@@ -163,19 +163,17 @@ CommandReply WiFiServerService::addPassword(String password) {
     return String(F("Password added"));
 }
 
-CommandReply WiFiServerService::storeCredentials(const String& ssid, const String& password) {
+TypedResult WiFiServerService::storeCredentials(const String& ssid, const String& password) {
     std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (ssid.length() == 0 || ssid.length() > MAX_SSID_LENGTH ||
         password.length() > MAX_PASSWORD_LENGTH) {
-        return CommandReply(WIFI_ERR_INVALID, "");
+        return TypedResult(WIFI_ERR_INVALID);
     }
     wifi_config_t config = {};
     memcpy(config.sta.ssid, ssid.c_str(), ssid.length());
     memcpy(config.sta.password, password.c_str(), password.length());
     esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
-    if (err != ESP_OK) {
-        return CommandReply(WIFI_ERR_STORE, esp_err_to_name(err));
-    }
+    if (err != ESP_OK) return TypedResult(WIFI_ERR_STORE, static_cast<uint32_t>(err));
 
     this->ssid = ssid;
     this->password = password;
@@ -184,10 +182,10 @@ CommandReply WiFiServerService::storeCredentials(const String& ssid, const Strin
     disconnectWiFi();
     connecting = false;
     connectBackoff.onSuccess();
-    return String("WiFi credentials stored for " + ssid + ", reconnecting");
+    return TypedResult();
 }
 
-CommandReply WiFiServerService::resetWiFiData() {
+TypedResult WiFiServerService::resetWiFiData() {
     std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     esp_err_t result;
 
@@ -196,7 +194,7 @@ CommandReply WiFiServerService::resetWiFiData() {
     wifiStarted = false;
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "Failed to stop WiFi: %s", esp_err_to_name(result));
-        return CommandReply(WIFI_ERR_FAILED, esp_err_to_name(result));
+        return TypedResult(WIFI_ERR_FAILED, static_cast<uint32_t>(result));
     }
 
     // Create empty WiFi configuration with proper initialization
@@ -212,7 +210,7 @@ CommandReply WiFiServerService::resetWiFiData() {
     result = esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg);
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set WiFi config: %s", esp_err_to_name(result));
-        return CommandReply(WIFI_ERR_FAILED, esp_err_to_name(result));
+        return TypedResult(WIFI_ERR_FAILED, static_cast<uint32_t>(result));
     }
 
     // Reset local credentials to default values
@@ -224,13 +222,13 @@ CommandReply WiFiServerService::resetWiFiData() {
         result = esp_wifi_start();
         if (result != ESP_OK) {
             ESP_LOGE(TAG, "Failed to restart WiFi: %s", esp_err_to_name(result));
-            return CommandReply(WIFI_ERR_FAILED, esp_err_to_name(result));
+            return TypedResult(WIFI_ERR_FAILED, static_cast<uint32_t>(result));
         }
         wifiStarted = true;
     }
 
     ESP_LOGI(TAG, "WiFi data successfully reset to defaults");
-    return String("WiFi data reset successfully");
+    return TypedResult();
 }
 
 bool WiFiServerService::isConnected() {
@@ -349,25 +347,20 @@ bool WiFiServerService::hasIp() {
            ipInfo.ip.addr != 0;
 }
 
-CommandReply WiFiServerService::getIP() {
-    if (!initialized) return CommandReply(WIFI_ERR_FAILED, "");
-    // TODO: Check if this is the correct way to get the IP
-
+TypedResult WiFiServerService::ipInto(Fields& out) {
+    if (!initialized) return TypedResult(WIFI_ERR_FAILED);
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (netif == nullptr) {
-        printf("Could not get netif handle\n");
-        return CommandReply(WIFI_ERR_FAILED, "");
+    esp_netif_ip_info_t ipInfo;
+    if (netif == nullptr || esp_netif_get_ip_info(netif, &ipInfo) != ESP_OK) {
+        return TypedResult(WIFI_ERR_FAILED);
     }
-
-    esp_netif_ip_info_t ip_info;
-    esp_err_t ret = esp_netif_get_ip_info(netif, &ip_info);
-    if (ret == ESP_OK) {
-        char ipStr[16];  // Buffer to hold the IP address string
-        ip4addr_ntoa_r((const ip4_addr_t*)&ip_info.ip, ipStr, sizeof(ipStr));
-        return String(ipStr);
+    // The address is kept in network order: its first number is the lowest byte.
+    constexpr size_t ADDRESS_NUMBERS = 4;
+    constexpr uint32_t BITS_PER_NUMBER = 8;
+    for (size_t i = 0; i < ADDRESS_NUMBERS; i++) {
+        out.setU(i, (ipInfo.ip.addr >> (BITS_PER_NUMBER * i)) & 0xFF);
     }
-
-    return CommandReply(WIFI_ERR_FAILED, "");
+    return TypedResult();
 }
 
 bool WiFiServerService::restartWiFiData() {

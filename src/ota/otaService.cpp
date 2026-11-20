@@ -40,10 +40,16 @@ bool OtaService::deploymentKey(DeploymentKey& out) const {
     return err == ESP_OK && size == out.size();
 }
 
-String OtaService::describeKey() const {
+TypedResult OtaService::keyInto(Fields& out) const {
+    enum Field : size_t { NO_KEY, FINGERPRINT };
     DeploymentKey key;
-    if (!deploymentKey(key)) return "No deployment key";
-    return String("Deployment key stored, fingerprint ") + keyFingerprint(key).c_str();
+    std::vector<uint8_t> fingerprint;
+    if (!deploymentKey(key) || !fromHex(keyFingerprint(key), fingerprint)) {
+        out.setU(NO_KEY, 0);
+        return TypedResult();
+    }
+    out.setBytes(FINGERPRINT, fingerprint.data(), fingerprint.size());
+    return TypedResult();
 }
 
 CommandReply OtaService::setKey(const String& text) {
@@ -63,48 +69,32 @@ CommandReply OtaService::setKey(const String& text) {
     return String("Deployment key stored, fingerprint ") + fingerprint.c_str();
 }
 
-CommandReply OtaService::openWindow(const String& args) {
-    String text = args;
-    text.trim();
-    int space = text.indexOf(' ');
-    String seconds = space < 0 ? text : text.substring(0, space);
-    String kind = space < 0 ? "" : text.substring(space + 1);
-    kind.trim();
-
-    uint32_t duration = 0;
-    bool accessPoint = kind == "ap";
-    uint32_t maxSeconds = accessPoint ? MAX_AP_WINDOW_S : MAX_PULL_WINDOW_S;
-    if (!parseDecimal(seconds.c_str(), maxSeconds, duration) || duration == 0 ||
-        (!kind.isEmpty() && !accessPoint)) {
-        return CommandStatus::ARG;
-    }
-
+TypedResult OtaService::openWindow(uint32_t seconds, bool accessPoint, Fields& out) {
+    const uint32_t maxSeconds = accessPoint ? MAX_AP_WINDOW_S : MAX_PULL_WINDOW_S;
+    if (seconds == 0 || seconds > maxSeconds) return CommandStatus::ARG;
     MaintenanceWifi& wifi = MaintenanceWifi::getInstance();
-    return accessPoint ? wifi.openApWindow(duration) : wifi.openPullWindow(duration);
+    return accessPoint ? wifi.openApWindow(seconds, out) : wifi.openPullWindow(seconds, out);
 }
 
-String OtaService::closeWindow() {
-    return MaintenanceWifi::getInstance().closeWindow().c_str();
-}
-
-String OtaService::version() const {
-    const esp_partition_t* running = esp_ota_get_running_partition();
-    char text[128];
-    snprintf(text, sizeof(text), "%s %s %s bl=%s env=%s node=%04X",
-             esp_ota_get_app_description()->version, running ? running->label : "?",
-             OtaBootGuard::getInstance().isPendingVerify() ? "PENDING_VERIFY" : "VALID",
-             OtaBootGuard::bootloaderHash().c_str(), BUILD_ENV_NAME,
-             LoRaMeshService::getInstance().getLocalAddress());
-    return text;
+TypedResult OtaService::closeWindow(Fields& out) {
+    enum Field : size_t { NONE_OPEN, CLOSING };
+    out.setU(MaintenanceWifi::getInstance().closeWindow() ? CLOSING : NONE_OPEN, 0);
+    return TypedResult();
 }
 
 TypedResult OtaService::versionInto(Fields& out) const {
-    enum Field : size_t { VERSION, SLOT, STATE, BOOTLOADER, ENV };
+    enum Field : size_t { VERSION, SLOT, STATE, BOOTLOADER, ENV, COMMIT, DIRTY };
     static const char* const SLOTS[] = {"app0", "app1"};
     static const char* const ENVS[] = {"tbeam", "tbeam-debug"};
+    const std::string text = esp_ota_get_app_description()->version;
     uint8_t version[FIELD_VERSION_BYTES] = {};
-    parseVersionPrefix(esp_ota_get_app_description()->version, version);
+    parseVersionPrefix(text, version);
     out.setVersion(VERSION, version[0], version[1], version[2]);
+    uint8_t commit[VERSION_COMMIT_BYTES] = {};
+    bool dirty = false;
+    parseVersionBuild(text, commit, dirty);
+    out.setBytes(COMMIT, commit, sizeof(commit));
+    if (dirty) out.setU(DIRTY, 0);
     const esp_partition_t* running = esp_ota_get_running_partition();
     for (uint32_t i = 0; i < sizeof(SLOTS) / sizeof(SLOTS[0]); i++) {
         if (running != nullptr && strcmp(running->label, SLOTS[i]) == 0) out.setU(SLOT, i);
@@ -119,22 +109,23 @@ TypedResult OtaService::versionInto(Fields& out) const {
     return TypedResult();
 }
 
-String OtaService::otaStatus() const {
-    static const char* OUTCOMES[] = {"NONE", "VALID", "ROLLED_BACK", "BL_NO_ROLLBACK"};
-    OtaRecord record = OtaBootGuard::getInstance().record();
-    size_t outcome = static_cast<size_t>(record.lastOutcome);
-    char text[128];
-    snprintf(text, sizeof(text), "last=%s pending=%s reason=%u unexplained=%u blacklisted=%u",
-             outcome < sizeof(OUTCOMES) / sizeof(OUTCOMES[0]) ? OUTCOMES[outcome] : "?",
-             record.pending ? "yes" : "no", static_cast<unsigned>(record.failReason),
-             record.unexplainedRollbacks, static_cast<unsigned>(record.blacklist.size()));
-    return text;
+TypedResult OtaService::statusInto(Fields& out) const {
+    enum Field : size_t { LAST, PENDING, REASON, UNEXPLAINED, BLACKLISTED };
+    const OtaRecord record = OtaBootGuard::getInstance().record();
+    if (record.lastOutcome <= OtaOutcome::BL_NO_ROLLBACK) {
+        out.setU(LAST, static_cast<uint32_t>(record.lastOutcome));
+    }
+    out.setU(PENDING, record.pending ? 1 : 0);
+    out.setU(REASON, static_cast<uint32_t>(record.failReason));
+    out.setU(UNEXPLAINED, record.unexplainedRollbacks);
+    out.setU(BLACKLISTED, static_cast<uint32_t>(record.blacklist.size()));
+    return TypedResult();
 }
 
-CommandReply OtaService::reboot() {
-    if (!DeferredRestart::getInstance().request()) return CommandReply(OTA_ERR_FAILED, "");
+TypedResult OtaService::reboot() {
+    if (!DeferredRestart::getInstance().request()) return TypedResult(OTA_ERR_FAILED);
     ESP_LOGW(OS_TAG, "Reboot requested");
-    return "Rebooting";
+    return TypedResult();
 }
 
 std::string OtaService::serverUrl() const {
@@ -170,37 +161,43 @@ CommandReply OtaService::setServer(const String& args) {
     return String("OTA server: ") + serverUrl().c_str();
 }
 
-CommandReply OtaService::setWifi(const String& args) {
+TypedResult OtaService::setWifiSealed(const std::vector<uint8_t>& sealed, Fields& out) {
+    uint32_t counter = 0;
+    DeploymentKey key;
+    if (!CommandRouter::getInstance().runningCounter(counter) || !deploymentKey(key)) {
+        return CommandStatus::ARG;
+    }
+    Sha256 sealKey = hmacSha256(key.data(), key.size(), SEAL_LABEL, sizeof(SEAL_LABEL));
+    KeyedHmac sealHmac = [&sealKey](const uint8_t* data, size_t size) {
+        return hmacSha256(sealKey.data(), sealKey.size(), data, size);
+    };
+    uint16_t local = LoRaMeshService::getInstance().getLocalAddress();
+    std::vector<uint8_t> plain = sealCommandArgs(sealHmac, local, counter, sealed);
     std::string ssid;
     std::string password;
-    uint32_t counter = 0;
-    if (CommandRouter::getInstance().runningCounter(counter)) {
-        std::vector<uint8_t> sealed;
-        DeploymentKey key;
-        if (!fromHex(args.c_str(), sealed) || !deploymentKey(key)) {
-            return CommandStatus::ARG;
-        }
-        Sha256 sealKey = hmacSha256(key.data(), key.size(), SEAL_LABEL, sizeof(SEAL_LABEL));
-        KeyedHmac sealHmac = [&sealKey](const uint8_t* data, size_t size) {
-            return hmacSha256(sealKey.data(), sealKey.size(), data, size);
-        };
-        uint16_t local = LoRaMeshService::getInstance().getLocalAddress();
-        std::vector<uint8_t> plain = sealCommandArgs(sealHmac, local, counter, sealed);
-        if (!decodeWifiCredentials(plain, ssid, password)) {
-            return CommandReply(WIFI_ERR_INVALID, "");
-        }
-    } else {
-        std::string text = args.c_str();
-        size_t space = text.find(' ');
-        ssid = text.substr(0, space);
-        password = space == std::string::npos ? "" : text.substr(space + 1);
-        if (!decodeWifiCredentials(encodeWifiCredentials(ssid, password), ssid, password)) {
-            return CommandStatus::ARG;
-        }
-    }
+    if (!decodeWifiCredentials(plain, ssid, password)) return TypedResult(WIFI_ERR_INVALID);
+    return storeWifi(ssid, password, out);
+}
 
-    if (NodeService::getInstance().isGateway()) {
-        return WiFiServerService::getInstance().storeCredentials(ssid.c_str(), password.c_str());
+TypedResult OtaService::setWifiPlain(const String& args, Fields& out) {
+    std::string text = args.c_str();
+    size_t space = text.find(' ');
+    std::string ssid = text.substr(0, space);
+    std::string password = space == std::string::npos ? "" : text.substr(space + 1);
+    if (!decodeWifiCredentials(encodeWifiCredentials(ssid, password), ssid, password)) {
+        return CommandStatus::ARG;
     }
-    return MaintenanceWifi::getInstance().storeCredentials(ssid, password);
+    return storeWifi(ssid, password, out);
+}
+
+TypedResult OtaService::storeWifi(const std::string& ssid, const std::string& password,
+                                  Fields& out) {
+    const bool gateway = NodeService::getInstance().isGateway();
+    TypedResult stored =
+        gateway ? WiFiServerService::getInstance().storeCredentials(ssid.c_str(), password.c_str())
+                : MaintenanceWifi::getInstance().storeCredentials(ssid, password);
+    if (!stored.ok()) return stored;
+    if (gateway) out.setU(MAINT_WIFI_RECONNECTING, 0);
+    out.setText(MAINT_WIFI_SSID, ssid);
+    return TypedResult();
 }

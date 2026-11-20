@@ -1,8 +1,5 @@
 #include "sleepMode.h"
 
-#include <algorithm>
-#include <cctype>
-
 const char* sleepModeName(SleepMode mode) {
     switch (mode) {
         case SleepMode::LIGHT:
@@ -15,34 +12,9 @@ const char* sleepModeName(SleepMode mode) {
     return "none";
 }
 
-bool parseSleepMode(const std::string& text, SleepMode& out) {
-    std::string lower = text;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    for (SleepMode mode : {SleepMode::NONE, SleepMode::LIGHT, SleepMode::DEEP}) {
-        if (lower == sleepModeName(mode)) {
-            out = mode;
-            return true;
-        }
-    }
-    return false;
-}
-
 bool sleepModeFromValue(uint8_t value, SleepMode& out) {
     if (value > static_cast<uint8_t>(SleepMode::DEEP)) return false;
     out = static_cast<SleepMode>(value);
-    return true;
-}
-
-bool parseSleepFraction(const std::string& text, uint8_t& percent) {
-    if (text.empty() || text.size() > 3) return false;
-    unsigned value = 0;
-    for (char c : text) {
-        if (c < '0' || c > '9') return false;
-        value = value * 10 + static_cast<unsigned>(c - '0');
-    }
-    if (value > MAX_SLEEP_FRACTION_PERCENT) return false;
-    percent = static_cast<uint8_t>(value);
     return true;
 }
 

@@ -11,15 +11,6 @@ constexpr uint32_t REPORT_INTERVAL_MAX_S = 43200;
 /** Stored value that stands for "no interval stored". */
 constexpr uint32_t REPORT_INTERVAL_NONE = 0;
 
-/**
- * @brief Reads the argument of /report.set: whole seconds from REPORT_INTERVAL_MIN_S to
- *        REPORT_INTERVAL_MAX_S in digits, or "default" (any case) or "0" to remove the stored
- *        interval. Spaces around the argument are ignored.
- * @param seconds the interval, or REPORT_INTERVAL_NONE to remove the stored one.
- * @return false, leaving @p seconds unchanged, for anything else.
- */
-bool parseReportInterval(const std::string& args, uint32_t& seconds);
-
 /** @return true if @p seconds is an interval an operator may store. */
 bool reportIntervalValid(uint32_t seconds);
 

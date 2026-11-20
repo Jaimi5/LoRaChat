@@ -7,24 +7,6 @@ TEST(NodeRole, Names) {
     EXPECT_STREQ(nodeRoleName(NodeRole::GATEWAY), "gateway");
 }
 
-TEST(NodeRole, ParsesNamesInAnyCase) {
-    NodeRole role = NodeRole::SENSOR;
-    EXPECT_TRUE(parseNodeRole("gateway", role));
-    EXPECT_EQ(role, NodeRole::GATEWAY);
-    EXPECT_TRUE(parseNodeRole("Sensor", role));
-    EXPECT_EQ(role, NodeRole::SENSOR);
-    EXPECT_TRUE(parseNodeRole("GATEWAY", role));
-    EXPECT_EQ(role, NodeRole::GATEWAY);
-}
-
-TEST(NodeRole, RejectsOtherText) {
-    NodeRole role = NodeRole::GATEWAY;
-    for (const char* bad : {"", "gw", "manager", "gateway ", " sensor", "1"}) {
-        EXPECT_FALSE(parseNodeRole(bad, role)) << bad;
-    }
-    EXPECT_EQ(role, NodeRole::GATEWAY);
-}
-
 TEST(NodeRole, DecodesStoredValues) {
     NodeRole role = NodeRole::SENSOR;
     EXPECT_TRUE(nodeRoleFromValue(1, role));

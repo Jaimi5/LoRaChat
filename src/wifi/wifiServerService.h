@@ -83,14 +83,22 @@ public:
 
     /**
      * @brief Saves the station credentials in the WiFi driver's NVS config and reconnects
-     *        with them. @return the reply to the command.
+     *        with them.
+     * @return success, or one of MaintWifiError with the esp_err_t code where there is one.
      */
-    CommandReply storeCredentials(const String& ssid, const String& password);
+    TypedResult storeCredentials(const String& ssid, const String& password);
 
-    CommandReply resetWiFiData();
+    /**
+     * @brief Puts the default credentials back and restarts the WiFi driver.
+     * @return success, or WIFI_ERR_FAILED with the esp_err_t code.
+     */
+    TypedResult resetWiFiData();
 
-
-    CommandReply getIP();
+    /**
+     * @brief Writes the reply fields of /getIP: the four numbers of the station address.
+     * @return success, or WIFI_ERR_FAILED without an address to read.
+     */
+    TypedResult ipInto(Fields& out);
 
 
     virtual void processReceivedMessage(messagePort port, DataMessage* message);

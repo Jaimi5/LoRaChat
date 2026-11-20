@@ -86,12 +86,9 @@ void DisplayService::setText(const char* text) {
     textAtUs_ = esp_timer_get_time();
 }
 
-CommandReply DisplayService::execute(DisplayCommand command, uint16_t dst, const String& text) {
+TypedResult DisplayService::run(DisplayCommand command, const String& text) {
     if (command > DisplayCommand::DisplayLogo) return CommandStatus::ARG;
-    if (dst != 0 && dst != LoRaMeshService::getInstance().getLocalAddress()) {
-        return sendRemote(command, dst, text);
-    }
-    if (!ready_) return CommandReply(DISPLAY_ERR_NO_DISPLAY, "");
+    if (!ready_) return TypedResult(DISPLAY_ERR_NO_DISPLAY);
 
     switch (command) {
         case DisplayCommand::DisplayOn:
@@ -114,10 +111,11 @@ CommandReply DisplayService::execute(DisplayCommand command, uint16_t dst, const
             requestPanel(PANEL_LOGO);
             break;
     }
-    return String("Display ") + COMMAND_NAMES[command];
+    return TypedResult();
 }
 
 CommandReply DisplayService::sendRemote(DisplayCommand command, uint16_t dst, const String& text) {
+    if (command > DisplayCommand::DisplayLogo) return CommandStatus::ARG;
     if (command == DisplayCommand::DisplayText && text.length() > maxRemoteTextLength()) {
         return CommandReply(DISPLAY_ERR_TEXT_TOO_LONG, String(maxRemoteTextLength()));
     }
@@ -203,7 +201,7 @@ void DisplayService::processReceivedMessage(messagePort port, DataMessage* messa
         text = displayTextFrom(displayMessage->displayText, displayMessage->getDisplayTextSize())
                    .c_str();
     }
-    execute(displayMessage->displayCommand, 0, text);
+    run(displayMessage->displayCommand, text);
 }
 
 void DisplayService::displayTask(void* pvParameters) {

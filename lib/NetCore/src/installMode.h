@@ -50,10 +50,3 @@ private:
     /** Clock value at which the mode ends, 0 while it is off. */
     std::atomic<uint64_t> untilMs_{0};
 };
-
-/**
- * @brief Reads the argument of /install: nothing for INSTALL_DEFAULT_SECONDS, or whole seconds
- *        from 0 to INSTALL_MAX_SECONDS in digits.
- * @return false, leaving @p seconds unchanged, for anything else.
- */
-bool parseInstallSeconds(const std::string& args, uint32_t& seconds);

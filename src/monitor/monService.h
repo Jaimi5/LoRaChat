@@ -37,11 +37,12 @@ public:
     void processReceivedMessage(messagePort port, DataMessage* message) override;
 
     /**
-     * @brief Runs /install: starts install mode for the seconds in @p args (default 600), sets
-     *        a new end time while it is on, or stops it with 0. A report follows at once.
-     * @return the reply for the command.
+     * @brief Runs /install: starts install mode for @p seconds, sets a new end time while it
+     *        is on, or stops it with 0. A report follows at once. Field 0 of @p out gets the
+     *        seconds of a started mode, field 1 the marker of a stopped one.
+     * @return success, or ARG above INSTALL_MAX_SECONDS.
      */
-    CommandReply install(const String& args);
+    TypedResult install(uint32_t seconds, Fields& out);
 
     /** @return true while install mode is on. Any task may call it, it never blocks. */
     bool installActive() const;
@@ -50,21 +51,16 @@ public:
     uint32_t installRemainingS() const;
 
     /**
-     * @return the report interval in force, whether it is stored or the default, whether
-     *         install mode shortens it, and the time until the next report.
+     * @brief Writes the reply fields of /report: the interval in force in seconds, whether the
+     *        configured interval is the default (0) or stored (1), the seconds until the next
+     *        report and, while install mode shortens the interval, the configured interval.
      */
-    String describeReport() const;
+    TypedResult reportInto(Fields& out) const;
 
     /**
-     * @brief Runs /report.set: stores the interval in @p args (seconds), or removes the stored
-     *        one with "default" or 0. The new interval applies at once and a report follows.
-     * @return the reply for the command.
-     */
-    CommandReply setReportInterval(const String& args);
-
-    /**
-     * @brief Runs /report.set with a typed argument: @p seconds is the interval, or 0 to remove
-     *        the stored one. Then field 0 of @p out gets the default interval in seconds.
+     * @brief Runs /report.set: @p seconds is the interval to store, or 0 to remove the stored
+     *        one. The new interval applies at once and a report follows. Field 0 of @p out
+     *        gets a stored interval, field 1 the default interval that is back in force.
      * @return success, ARG for an interval out of range, or MON_ERR_STORE with the esp_err_t
      *         code.
      */

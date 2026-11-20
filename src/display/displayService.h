@@ -51,12 +51,17 @@ public:
     bool isAwake() const { return ready_ && esp_timer_get_time() < sleepAtUs_; }
 
     /**
-     * @brief Runs a display command on this node or sends it to another one.
-     * @param dst the node that runs it. 0 or this node's address runs it here.
+     * @brief Runs a display command on this node.
      * @param text the line of a DisplayText command.
-     * @return the reply for the command.
+     * @return success, ARG for a command that does not exist, or DISPLAY_ERR_NO_DISPLAY.
      */
-    CommandReply execute(DisplayCommand command, uint16_t dst, const String& text = "");
+    TypedResult run(DisplayCommand command, const String& text = "");
+
+    /**
+     * @brief Sends a display command to node @p dst as a display message, which gets no reply.
+     * @return a text that says it was sent, DISPLAY_ERR_TEXT_TOO_LONG or DISPLAY_ERR_NOT_SENT.
+     */
+    CommandReply sendRemote(DisplayCommand command, uint16_t dst, const String& text);
 
     String getJSON(DataMessage* message) override;
 
@@ -108,7 +113,6 @@ private:
     /** Posts @p request to DisplayTask and turns the display on so it is seen. */
     void requestPanel(PanelRequest request);
     void setText(const char* text);
-    CommandReply sendRemote(DisplayCommand command, uint16_t dst, const String& text);
 
     static void displayTask(void* pvParameters);
 

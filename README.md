@@ -146,7 +146,7 @@ LoRaMesher is pinned to one commit in `platformio.ini`, so CI builds the same li
 
 ## Versions, releases and updates
 
-- **Version:** `version.txt` (`MAJOR.MINOR.PATCH`). Every build writes it into the image with the git commit, e.g. `0.1.0+gabc1234`, and the node prints it at boot: `BOOT part=app0 state=VALID ver=0.1.0+gabc1234 ...`.
+- **Version:** `version.txt` (`MAJOR.MINOR.PATCH`). Every build writes it into the image with the first eight hex digits of the git commit, e.g. `0.1.0+gabc12345`, and the node prints it at boot: `BOOT part=app0 state=VALID ver=0.1.0+gabc12345 ...`.
 - **Release:** after a build, `python3 scripts/ota_tools/release.py --env tbeam --sign-key <key.pem> --key-id <id>` checks the image and writes `release/tbeam/<version>/` with the images, `info.json`, the signed `manifest.bin` and `bundle.bin`.
 - **Keys:** images are signed with ECDSA P-256. Key id 1 is the test key in `test/vectors/test_key.pem` for bench and test images; production builds (`OTA_PRODUCTION`) refuse it. Production keys are created with `sign_manifest.py keygen` and kept offline; their public keys go into `src/ota/otaKeys.cpp`.
 - **Rollback:** the flash holds two app slots. A newly installed image boots in `PENDING_VERIFY`; the boot guard (`src/ota/otaBootGuard.cpp`) runs a self-test (radio, power chip, heap, signature check, mesh contact) with a 240 s deadline and an RTC watchdog (timed on the chip's calibrated slow clock), and either keeps the image or makes the bootloader return to the previous one. An image that fails its self-test is blacklisted at once; one that crashes or hangs without a recorded reason is blacklisted after its second rollback. A release built with `--skip-mesh-check` passes without mesh contact (for a change of the mesh protocol). Every rollback is reported.
@@ -209,16 +209,24 @@ Codes 7 to 10 and 12 come from the gateway and never travel over LoRa. On the se
 `/cmds [page]` lists every command for programs. Ask the gateway itself over MQTT, so the answer does not cross LoRa. Each page stays under 900 bytes:
 
 ```
-cmds 1 0.1.2+g2bfdeeb 1/5
+cmds 1 0.1.2+g2bfdeeb1 1/8
 E|1=unknown;2=perm;3=auth;4=replay;5=arg;6=storage;7=no route;8=timeout;9=dropped;10=too long;11=busy;12=cancelled
 /addPassword|local|<password of at most 64 bytes>|
-/connectWiFi|signed||128=The WiFi did not connect
-/report.set|signed|<seconds from 60 to 43200, or default>|128=The interval could not be stored|7a|seconds:u|def:u?=Report interval set to {a0} s[ (the default, {0} s)]
+/connectWiFi|signed||128=The WiFi did not connect|50||=Connected
+/report.set|signed|<seconds from 60 to 43200, or 0 for the default>|128=The interval could not be stored|7a|seconds:u|stored:u? def:u?=Report interval set to [{0} s][default ({1} s)]
 ```
 
 Line 1 holds the format version `1`, the firmware version and the page position. The `E|` line with the generic errors comes on page 1 only. Then one line per command, sorted by name: `name|perm|usage|code=text;code=text`, where perm is `open`, `signed` or `local`. A command name registered by two services is refused at boot with an error in the log.
 
-A command with a typed declaration appends three fields to its line: `|id|arguments|reply=template`. The id is the byte that will name the command in a binary frame, in two hex digits. The arguments and the reply are schemas of typed fields, and the template turns the reply fields into the reply text. `lib/CmdCore/src/cmdFields.h` describes the schema and the template, and `lib/CmdCore/src/cmdFrame.h` the binary frame. `/version`, `/sensor` and `/report.set` are declared this way so far. Commands still travel over LoRa as text. An id registered twice is refused at boot like a name. The ids are listed in `test/vectors/cmdIds.txt` and are never reused.
+A command with a typed declaration appends three fields to its line: `|id|arguments|reply=template`. The id is the byte that will name the command in a binary frame, in two hex digits. The arguments and the reply are schemas of typed fields, and the template turns the reply fields into the reply text. `lib/CmdCore/src/cmdFields.h` describes the schema and the template, and `lib/CmdCore/src/cmdFrame.h` the binary frame. Every command that can be sent to another node is declared this way, 28 in all. `/help` and `/cmds` have no id, and neither have the local commands `/key.set`, `/ota.server`, `/addSSID` and `/addPassword`. Commands still travel over LoRa as text. An id registered twice is refused at boot like a name. The ids are listed in `test/vectors/cmdIds.txt` and are never reused. `test/test_cmd_golden` holds the bytes of each request and reply.
+
+A typed command gives the same reply text on the serial console, over MQTT and after a trip over LoRa, because the text always comes from the template. Three things follow from that:
+
+- An error that comes with an `esp_err_t` code shows the number in hex, for example `The setting could not be stored (0x1105)`. `E131` of `/maint.open` names what was too low, `REFUSE_BATTERY` or `REFUSE_HEAP`.
+- A command without arguments refuses extra words with a bad argument.
+- A reply field of type `e(word)?` is a marker. The node sets it or leaves it out, and the template shows the bracket that names it. `/maint.close` answers `No window open` or `Closing the window` this way.
+
+A few commands accept more on a text line than their typed arguments carry. On the serial console `/report.set default` stands for `/report.set 0`, `/maint.wifi <ssid> [<password>]` takes the credentials in the clear, and the display commands take a destination address (see below). `/version` adds `node=<address>` to the reply of a text line.
 
 #### Commands for other nodes
 
@@ -246,15 +254,15 @@ A command from MQTT that waits for its reply can be cancelled: publish `<node> <
 |---|---|---|
 | `/help` | Open | Lists the commands the channel may run |
 | `/cmds [page]` | Open | Lists every command with its permission, arguments and errors, for programs |
-| `/version` | Open | Version, slot, image state, bootloader hash, board and address |
+| `/version` | Open | Version with the commit it was built from, slot, image state, bootloader hash, board and address. Example: `0.1.2+g2bfdeeb1 app0 VALID bl=20f487 env=tbeam node=1A2B`. `.dirty` follows the commit when the build had uncommitted changes |
 | `/ota.status` | Open | Last update attempt and its outcome |
 | `/role` | Open | The role and whether it is stored or the default |
-| `/power` | Open | Power chip, supply, battery and charger state (with the AXP2101 registers) |
+| `/power` | Open | Power chip, supply, battery and charger state, then raw registers as hex in `reg=`. AXP2101: STATUS1, STATUS2, TS pin control, battery detection, charge LED, charge timer and charge current. AXP192: status, mode and charge control 1. Example: `pmu=AXP2101 vbus=yes battery=yes 4100mV 87% charging=no state=CV reg=2000040105000b` |
 | `/sensor` | Open | The environment sensor (chip and I2C address) and a new measurement. Error 128 means that no sensor was found |
-| `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10, from 1 to 600) to find the board. Any other value is a bad argument |
+| `/identify [s]` | Open | Blinks the user LED and the charge LED for s seconds (default 10, from 1 to 600) to find the board. Any other value is a bad argument. Error 128 means that the blink task could not be started |
 | `/install [seconds]` | Signed | Install mode for 600 s, or for the given time up to 3600 s: the node stays awake and reports every two superframes. A new `/install` sets a new end time, `/install 0` stops it. A value above 3600 is a bad argument. Replies `OK install <n> s` or `OK install off` |
 | `/report` | Open | The monitor report interval in force, whether it is stored or the default, and the time until the next report. Example: `report every 300 s (default), next in 212 s`. While install mode shortens the interval: `report every 20 s (install mode, then 300 s default), next in 12 s` |
-| `/report.set <seconds>`, `/report.set default` | Signed | Stores the monitor report interval, from 60 to 43200 s, and applies it at once without a restart: a report goes out with the new `interval_s`. `default` or `0` removes the stored value. Any other value is a bad argument. Replies `Report interval set to <n> s` or `Report interval set to default (300 s)`. Error 128 means that the interval could not be stored, and the old one stays in force |
+| `/report.set <seconds>` | Signed | Stores the monitor report interval, from 60 to 43200 s, and applies it at once without a restart: a report goes out with the new `interval_s`. `0` removes the stored value and restores the default. The serial console also takes the word `default` for 0. Any other value is a bad argument. Replies `Report interval set to <n> s` or `Report interval set to default (300 s)`. Error 128 means that the interval could not be stored, and the old one stays in force |
 | `/role.set gateway`, `/role.set sensor` | Signed | Stores the role and restarts the node. Refused while a newly installed image is still being verified |
 | `/sleep` | Open | Sleep mode and sleep fraction (stored or default) and the light and deep sleeps since power-on |
 | `/sleep.set none\|light\|deep` | Signed | Stores how a sensor's MCU sleeps through the SLEEP slots and restarts the node. Refused while a new image is being verified |
@@ -267,16 +275,16 @@ A command from MQTT that waits for its reply can be cancelled: publish `<node> <
 | `/maint.wifi …` | Signed | Stores the node's WiFi credentials (gateway WiFi and maintenance windows). Over LoRa or MQTT they travel encrypted (`lmcmd.py wifi`); on serial also `/maint.wifi <ssid> [<password>]` |
 | `/ota.server [<url>\|default]` | local | Shows or sets the OTA server (bench) |
 | `/reboot` | Signed | Restarts the node |
-| `/getRT` | Open | Routing table |
+| `/getRT` | Open | Routing table: the number of routes, then each route with its hops, link quality and next hop, addresses in hex. A direct neighbour with a signal reading also shows RSSI in dBm and SNR in dB. Example: `Routing table, 2 routes: 1a2b (hops:1 lq:200 rssi:-92 snr:7.25) - Via: 1a2b, 3c4d (hops:2 lq:100) - Via: 1a2b` |
 | `/getIP` | Open | Gateway IP address |
 | `/addSSID`, `/addPassword` | local | Gateway WiFi credentials (prefer `/maint.wifi`) |
 | `/connectWiFi`, `/resetWiFiData` | Signed | Gateway WiFi |
-| `/displayOn [<addr>]`, `/displayOff [<addr>]` | Open | Turns the display on for 60 s, or off |
-| `/displayBlink [<addr>]`, `/displayLogo [<addr>]` | Open | Blinks the display for 5 s, or shows the logo for 1 s |
-| `/displayText [<addr>] <text>` | Open | Shows one line on the last row for five minutes (the first 14 characters fit beside the version). A new line replaces the old one. It does not turn the display on |
-| `/displayClear [<addr>]` | Open | Removes that line |
+| `/displayOn`, `/displayOff` | Open | Turns the display on for 60 s, or off |
+| `/displayBlink`, `/displayLogo` | Open | Blinks the display for 5 s, or shows the logo for 1 s |
+| `/displayText <text>` | Open | Shows one line on the last row for five minutes (the first 14 characters fit beside the version). A new line replaces the old one. It does not turn the display on. The text is UTF-8 and cannot be empty |
+| `/displayClear` | Open | Removes that line |
 
-In the display commands `<addr>` is the destination node as exactly four hex digits (`0A3F`). Any other first word belongs to the text, so `/displayText add milk` shows `add milk` on this node. A text that starts with a four-digit hex word needs the node's own address in front. A node without a working display still sends display commands to other nodes. Text sent to another node takes up to 100 characters at SF9 (one LoRa packet), and longer text is refused.
+On the serial console the display commands also take a destination in front, `/displayOn <addr>` or `/displayText <addr> <text>`, where `<addr>` is exactly four hex digits (`0A3F`). The command then goes to that node as a display message, which gets no reply. Any other first word belongs to the text, so `/displayText add milk` shows `add milk` on this node. On the serial console a text that starts with a four-digit hex word needs the node's own address in front. A node without a working display still sends display commands to other nodes. Text sent this way takes up to 100 characters at SF9 (one LoRa packet), and longer text is refused. Over MQTT and LoRa a display command has no address argument: send the command to the node itself, as `@<node> /displayOn` on a serial console or with the node as the MQTT destination, and it answers like any other command.
 
 The commands that restart the node (`/role.set`, `/sleep.set`, `/sleep.fraction` and `/reboot`) restart it after their reply has left. The node waits at least 1 s, then until its LoRa TX queue is empty, and 2 s more for the last frame to be on the air. A command that came over LoRa therefore restarts the node after its next TX data slot, which can be a whole superframe away. A command from the serial console, or from MQTT on a gateway with an empty queue, restarts it after about 3 s. The wait ends at the latest after two superframes and 5 s, or after 180 s while the node does not know the superframe. The node does not sleep while it waits. Error 130 of the three setting commands means that the setting is stored and the restart could not be scheduled.
 
@@ -319,7 +327,7 @@ The fields after the header depend on the application. Monitor reports (`appPort
 
 A monitor report carries the node's uptime, queues, report interval, battery voltage and power flags, and for each direct neighbour its RSSI and SNR (report format 2, `"v": 2` in the JSON). `interval_s` is the time until the next report: 300 s normally and two superframes in install mode, when `install` is 1.
 
-The 300 s are the default of the firmware (`MON_SENDING_EVERY` in `src/config.h`). The signed command `/report.set <seconds>` stores another interval for one node, from 60 to 43200 s. The node applies it at once, sends a report with the new `interval_s` and keeps the value through restarts and deep sleep. `/report.set default` goes back to the firmware value, and `/report` shows the interval in force. Install mode only shortens the interval: a node with a stored interval below two superframes keeps reporting at its own pace. The report holds `interval_s` in 16 bits, so an interval above 65535 s is reported as 65535. A node only transmits in its own data slots, so with an interval shorter than the superframe the reports can pile up in its TX queue.
+The 300 s are the default of the firmware (`MON_SENDING_EVERY` in `src/config.h`). The signed command `/report.set <seconds>` stores another interval for one node, from 60 to 43200 s. The node applies it at once, sends a report with the new `interval_s` and keeps the value through restarts and deep sleep. `/report.set 0` goes back to the firmware value, and `/report` shows the interval in force. Install mode only shortens the interval: a node with a stored interval below two superframes keeps reporting at its own pace. The report holds `interval_s` in 16 bits, so an interval above 65535 s is reported as 65535. A node only transmits in its own data slots, so with an interval shorter than the superframe the reports can pile up in its TX queue.
 
  The gateway adds `sf_ms`, the duration of its superframe in ms when it builds the JSON. A node with an environment sensor adds `temp_c`, `hpa` and, with a BME280, `rh`. A gateway decodes both formats, but a gateway with older firmware drops format 2 reports, so flash the gateway before the other nodes.
 

@@ -598,6 +598,11 @@ Fields& Fields::addRow(const Fields& row) {
     return *this;
 }
 
+Fields& Fields::dropLastRow() {
+    if (!rows_.empty()) rows_.pop_back();
+    return *this;
+}
+
 Fields Fields::row(size_t index) const {
     Fields out;
     if (index < rows_.size()) out.values_ = rows_[index];
@@ -844,6 +849,22 @@ bool parseVersionPrefix(const std::string& text, uint8_t out[FIELD_VERSION_BYTES
         parts[part] = static_cast<uint8_t>(value);
     }
     for (size_t part = 0; part < FIELD_VERSION_BYTES; part++) out[part] = parts[part];
+    return true;
+}
+
+bool parseVersionBuild(const std::string& text, uint8_t commit[VERSION_COMMIT_BYTES], bool& dirty) {
+    static const std::string MARK = "+g";
+    static const std::string DIRTY = ".dirty";
+    constexpr size_t DIGITS = VERSION_COMMIT_BYTES * 2;
+    const size_t mark = text.find(MARK);
+    if (mark == std::string::npos) return false;
+    const size_t start = mark + MARK.size();
+    std::vector<uint8_t> bytes;
+    if (text.size() < start + DIGITS || !fromHex(text.substr(start, DIGITS), bytes)) return false;
+    const std::string rest = text.substr(start + DIGITS);
+    if (!rest.empty() && rest != DIRTY) return false;
+    for (size_t i = 0; i < VERSION_COMMIT_BYTES; i++) commit[i] = bytes[i];
+    dirty = rest == DIRTY;
     return true;
 }
 

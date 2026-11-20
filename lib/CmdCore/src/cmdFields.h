@@ -64,6 +64,8 @@ enum class FieldType : uint8_t {
 constexpr size_t FIELD_HEX_MAX_BYTES = 32;
 /** Bytes of a v field. */
 constexpr size_t FIELD_VERSION_BYTES = 3;
+/** Bytes of the commit hash in the build part of a version text. */
+constexpr size_t VERSION_COMMIT_BYTES = 4;
 /** Most names of an e field. */
 constexpr size_t FIELD_ENUM_MAX_NAMES = 254;
 /** Most digits after the decimal point that a scale gives. */
@@ -132,6 +134,8 @@ public:
     Fields& setValue(size_t index, const FieldValue& value);
     /** Adds one row to the group. The fields of @p row are the members of the group. */
     Fields& addRow(const Fields& row);
+    /** Removes the last row of the group, if there is one. */
+    Fields& dropLastRow();
 
     size_t rowCount() const { return rows_.size(); }
     /** @return row @p index of the group, empty if there is none. */
@@ -213,6 +217,13 @@ std::string usageFromSchema(const Schema& schema);
  *         0 to 255 separated by dots.
  */
 bool parseVersionPrefix(const std::string& text, uint8_t out[FIELD_VERSION_BYTES]);
+
+/**
+ * @brief Reads the build part of a version text such as "0.1.2+g2bfdeeb1.dirty": the commit
+ *        hash, eight hex digits behind "+g", and whether ".dirty" follows it.
+ * @return false, leaving @p commit and @p dirty unchanged, if the text has no such hash.
+ */
+bool parseVersionBuild(const std::string& text, uint8_t commit[VERSION_COMMIT_BYTES], bool& dirty);
 
 /**
  * @brief Renders a reply as text.

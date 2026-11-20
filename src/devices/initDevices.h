@@ -6,6 +6,8 @@
 #include <mutex>
 #include <string>
 
+#include "cmdTyped.h"
+
 /** Battery and supply as read from the PMU. */
 struct PowerState {
     /** Battery voltage, 0 without a battery. */
@@ -65,17 +67,22 @@ public:
     static bool readPower(PowerState& out);
 
     /**
-     * @return supply, battery and charger state as one line; on the AXP2101 also the raw
-     *         status, TS, battery detection, charge LED and charge timer registers.
+     * @brief Writes the reply fields of /power: the chip (0 none, 1 AXP192, 2 AXP2101) and,
+     *        with a chip, external supply, battery fitted, battery mV, battery percent,
+     *        charging, the charger state of an AXP2101 and raw registers.
+     *
+     * The registers of an AXP2101 are STATUS1, STATUS2, TS pin control, battery detection,
+     * charge LED, charge timer and charge current, in that order. Those of an AXP192 are
+     * status, mode and charge control 1.
      */
-    static std::string powerReport();
+    static TypedResult powerInto(Fields& out);
 
     /**
      * @brief Blinks the user LED and the charge LED for @p seconds so the board can be found.
      *        A second call while blinking sets a new end time.
-     * @return the reply for the command.
+     * @return false if the blink task could not be started.
      */
-    static std::string identify(uint32_t seconds);
+    static bool identify(uint32_t seconds);
 
 private:
     static void initTBeam(bool deepSleepWake);

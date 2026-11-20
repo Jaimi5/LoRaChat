@@ -33,13 +33,19 @@ String NodeService::describeRole() const {
     return String(nodeRoleName(role_)) + (stored_ ? " (stored)" : " (default)");
 }
 
-CommandReply NodeService::setRole(const String& text) {
-    NodeRole role;
-    String name = text;
-    name.trim();
-    if (!parseNodeRole(name.c_str(), role)) return CommandStatus::ARG;
-    return storeAndRestart(NVS_KEY_ROLE, static_cast<uint8_t>(role),
-                           String("Role set to ") + nodeRoleName(role));
+TypedResult NodeService::roleInto(Fields& out) const {
+    enum Field : size_t { ROLE, SOURCE };
+    out.setU(ROLE, static_cast<uint32_t>(role_));
+    out.setU(SOURCE, stored_ ? 1 : 0);
+    return TypedResult();
+}
+
+TypedResult NodeService::setRole(uint32_t role) {
+    NodeRole parsed;
+    if (role > UINT8_MAX || !nodeRoleFromValue(static_cast<uint8_t>(role), parsed)) {
+        return CommandStatus::ARG;
+    }
+    return storeAndRestart(NVS_KEY_ROLE, static_cast<uint8_t>(parsed));
 }
 
 String NodeService::describeSleep() const {
@@ -49,38 +55,42 @@ String NodeService::describeSleep() const {
     return text + sleepFraction_ + " % (stored)";
 }
 
-CommandReply NodeService::setSleepMode(const String& text) {
-    SleepMode mode;
-    String name = text;
-    name.trim();
-    if (!parseSleepMode(name.c_str(), mode)) return CommandStatus::ARG;
-    return storeAndRestart(NVS_KEY_SLEEP_MODE, static_cast<uint8_t>(mode),
-                           String("Sleep mode set to ") + sleepModeName(mode));
-}
-
-CommandReply NodeService::setSleepFraction(const String& text) {
-    uint8_t percent = 0;
-    String value = text;
-    value.trim();
-    if (!parseSleepFraction(value.c_str(), percent)) return CommandStatus::ARG;
-    return storeAndRestart(NVS_KEY_SLEEP_FRACTION, percent,
-                           String("Sleep fraction set to ") + percent + " %");
-}
-
-CommandReply NodeService::storeAndRestart(const char* key, uint8_t value, const String& done) {
-    if (OtaBootGuard::getInstance().isPendingVerify()) {
-        return CommandReply(NODE_ERR_VERIFYING, "");
+void NodeService::sleepInto(Fields& out) const {
+    enum Field : size_t { MODE, SOURCE, FRACTION, DEFAULT_FRACTION };
+    out.setU(MODE, static_cast<uint32_t>(sleepMode_));
+    out.setU(SOURCE, sleepModeStored_ ? 1 : 0);
+    if (sleepFraction_ < 0) {
+        out.setU(DEFAULT_FRACTION, 0);
+    } else {
+        out.setU(FRACTION, static_cast<uint32_t>(sleepFraction_));
     }
+}
+
+TypedResult NodeService::setSleepMode(uint32_t mode) {
+    SleepMode parsed;
+    if (mode > UINT8_MAX || !sleepModeFromValue(static_cast<uint8_t>(mode), parsed)) {
+        return CommandStatus::ARG;
+    }
+    return storeAndRestart(NVS_KEY_SLEEP_MODE, static_cast<uint8_t>(parsed));
+}
+
+TypedResult NodeService::setSleepFraction(uint32_t percent) {
+    if (percent > MAX_SLEEP_FRACTION_PERCENT) return CommandStatus::ARG;
+    return storeAndRestart(NVS_KEY_SLEEP_FRACTION, static_cast<uint8_t>(percent));
+}
+
+TypedResult NodeService::storeAndRestart(const char* key, uint8_t value) {
+    if (OtaBootGuard::getInstance().isPendingVerify()) return TypedResult(NODE_ERR_VERIFYING);
 
     nvs_handle_t handle;
-    esp_err_t opened = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
-    if (opened != ESP_OK) return CommandReply(NODE_ERR_STORE, esp_err_to_name(opened));
-    esp_err_t err = nvs_set_u8(handle, key, value);
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return TypedResult(NODE_ERR_STORE, static_cast<uint32_t>(err));
+    err = nvs_set_u8(handle, key, value);
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
-    if (err != ESP_OK) return CommandReply(NODE_ERR_STORE, esp_err_to_name(err));
+    if (err != ESP_OK) return TypedResult(NODE_ERR_STORE, static_cast<uint32_t>(err));
 
-    if (!DeferredRestart::getInstance().request()) return CommandReply(NODE_ERR_RESTART, "");
-    ESP_LOGI(NODE_TAG, "%s, restarting", done.c_str());
-    return String(done + ", restarting");
+    if (!DeferredRestart::getInstance().request()) return TypedResult(NODE_ERR_RESTART);
+    ESP_LOGI(NODE_TAG, "Setting %s stored as %u, restarting", key, static_cast<unsigned>(value));
+    return TypedResult();
 }

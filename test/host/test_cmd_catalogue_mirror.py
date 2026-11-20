@@ -2,8 +2,8 @@
 
 test/test_cmd_catalogue builds the /cmds pages of a gateway from a copy of the command
 registrations, since the registrations themselves need Arduino. This test reads the sources in
-src/ and fails when a command name, the text of a specific error, a command id, a schema or a
-reply template differs from that copy. The ids are also compared with the golden file
+src/ and fails when a command name, the text or the detail of a specific error, a command id, a
+schema or a reply template differs from that copy. The ids are also compared with the golden file
 test/vectors/cmdIds.txt, which the native tests check against the same copy.
 """
 import re
@@ -16,12 +16,14 @@ GOLDEN_IDS = ROOT / "test" / "vectors" / "cmdIds.txt"
 REGISTRATION = re.compile(
     r'(?:\bCommand|\bstoredSetting|\badd)\(\s*(?:\*this,\s*)?(?:0x[0-9A-Fa-f]{2},\s*)?'
     r'"(/[A-Za-z.]+)"')
-TYPED_REGISTRATION = re.compile(r'\bCommand\(\s*0x([0-9A-Fa-f]{2}),\s*"(/[A-Za-z.]+)"')
+TYPED_REGISTRATION = re.compile(
+    r'(?:\bCommand|\bstoredSetting)\(\s*0x([0-9A-Fa-f]{2}),\s*"(/[A-Za-z.]+)"')
 TYPED_FIXTURE = re.compile(r'\btyped\(\s*0x([0-9A-Fa-f]{2}),\s*spec\("(/[A-Za-z.]+)"')
 LITERALS = r'((?:"[^"]*"\s*)+)'
 ARGS_SCHEMA = re.compile(r'\.args\(\s*' + LITERALS + r'\)')
 REPLY = re.compile(r'\.reply\(\s*' + LITERALS + r',\s*' + LITERALS + r'\)')
-CODE_TEXT = re.compile(r'\.withCode\(\s*\w+,\s*((?:"[^"]*"\s*)+)\)')
+CODE_TEXT = re.compile(r'\.withCode\(\s*\w+,\s*((?:"[^"]*"\s*)+)(?:,\s*("[^"]*")\s*)?\)')
+FIXTURE_CODE = re.compile(r'\{\d+,\s*((?:"[^"]*"\s*)+)(?:,\s*("[^"]*")\s*)?\}')
 LITERAL = re.compile(r'"([^"]*)"')
 
 
@@ -51,12 +53,15 @@ def test_fixture_lists_the_commands_of_the_firmware():
 
 
 def test_fixture_has_the_texts_of_the_specific_errors():
-    # Adjacent string literals are joined before comparing.
-    fixture = join_literals(fixture_body())
-    texts = [join_literals(match) for match in CODE_TEXT.findall(firmware_sources())]
-    assert texts, "no specific error found in src/"
-    missing = [text for text in texts if text not in fixture]
-    assert not missing
+    # Adjacent string literals are joined before comparing. Each error is compared with its
+    # detail, the way its number reads as text.
+    def pairs(matches):
+        return {(join_literals(text), join_literals(detail)) for text, detail in matches}
+
+    declared = pairs(CODE_TEXT.findall(firmware_sources()))
+    assert declared, "no specific error found in src/"
+    assert any(detail for _, detail in declared), "no error with a detail found in src/"
+    assert declared == pairs(FIXTURE_CODE.findall(fixture_body()))
 
 
 def test_ids_match_the_golden_file_and_the_fixture():

@@ -74,27 +74,6 @@ TEST(InstallMode, ReportIntervalFollowsTheSuperframe) {
     EXPECT_EQ(InstallMode::reportIntervalMs(0xFFFFFFFF), 0xFFFFFFFEU);
 }
 
-TEST(ParseInstallSeconds, DefaultAndRange) {
-    uint32_t seconds = 7;
-    EXPECT_TRUE(parseInstallSeconds("", seconds));
-    EXPECT_EQ(seconds, 600U);
-    EXPECT_TRUE(parseInstallSeconds("0", seconds));
-    EXPECT_EQ(seconds, 0U);
-    EXPECT_TRUE(parseInstallSeconds("3600", seconds));
-    EXPECT_EQ(seconds, 3600U);
-    EXPECT_TRUE(parseInstallSeconds("0045", seconds));
-    EXPECT_EQ(seconds, 45U);
-}
-
-TEST(ParseInstallSeconds, RefusesEverythingElse) {
-    uint32_t seconds = 7;
-    for (const char* text : {"3601", "9999", "10000", "-1", "+5", "1.5", "10 s", " 10", "ten",
-                             "0x10", "12ab", "60x", "4294967297"}) {
-        EXPECT_FALSE(parseInstallSeconds(text, seconds)) << text;
-        EXPECT_EQ(seconds, 7U);
-    }
-}
-
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

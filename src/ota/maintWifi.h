@@ -7,7 +7,7 @@
 #include <mutex>
 #include <string>
 
-#include "cmdStatus.h"
+#include "cmdTyped.h"
 #include "esp_netif.h"
 #include "freertos/event_groups.h"
 #include "maintWindowPlan.h"
@@ -17,13 +17,40 @@ enum MaintOpenError : uint8_t {
     MAINT_ERR_GATEWAY_AP = 128,
     MAINT_ERR_VERIFYING = 129,
     MAINT_ERR_NO_KEY = 130,
-    /** The argument is the name of the policy decision. */
+    /** The number is a MaintPolicyRefusal. */
     MAINT_ERR_POLICY = 131,
+    /** The number is the most windows in 24 h. */
     MAINT_ERR_DAILY_LIMIT = 132,
     MAINT_ERR_STILL_OPEN = 133,
     MAINT_ERR_NO_TASK = 134,
     MAINT_ERR_GATEWAY_WIFI = 135,
     MAINT_ERR_CHECK_RUNNING = 136,
+};
+
+/** Why MAINT_ERR_POLICY refused a window, in the order of the names the command declares. */
+enum class MaintPolicyRefusal : uint8_t { BATTERY = 0, HEAP = 1 };
+
+/** The reply fields of /maint.open. Each outcome sets the fields of its own text. */
+enum MaintOpenField : size_t {
+    /** The open window got a new end: seconds left. */
+    MAINT_OPEN_EXTENDED_LEFT,
+    /** A pull window opened: seconds it stays open. */
+    MAINT_OPEN_PULL_SECONDS,
+    /** The access point opened: seconds it stays open. */
+    MAINT_OPEN_AP_SECONDS,
+    /** Windows counted in the last 24 h, with a new window. */
+    MAINT_OPEN_COUNTED,
+    /** Marker: a gateway checks the OTA server over its own WiFi. */
+    MAINT_OPEN_GATEWAY_CHECK,
+    /** Name of the access point. */
+    MAINT_OPEN_AP_SSID,
+};
+
+/** The reply fields of /maint.wifi. */
+enum MaintWifiField : size_t {
+    /** Marker: a gateway connects again with the new credentials. */
+    MAINT_WIFI_RECONNECTING,
+    MAINT_WIFI_SSID,
 };
 
 /**
@@ -73,21 +100,29 @@ public:
     /** @return true while a window (boot, pull or access point) is open. */
     bool isBusy() const { return busy_; }
 
-    /** Opens or extends a pull window of @p durationS seconds. @return the reply. */
-    CommandResult openPullWindow(uint32_t durationS) { return open(Kind::PULL, durationS); }
+    /**
+     * @brief Opens or extends a pull window of @p durationS seconds.
+     * @param out gets the reply fields of /maint.open (MaintOpenField).
+     * @return success, ARG for a duration the plan refuses, or one of MaintOpenError.
+     */
+    TypedResult openPullWindow(uint32_t durationS, Fields& out) {
+        return open(Kind::PULL, durationS, out);
+    }
 
-    /** Opens or extends the access point for @p durationS seconds. @return the reply. */
-    CommandResult openApWindow(uint32_t durationS) { return open(Kind::AP, durationS); }
+    /** Opens or extends the access point for @p durationS seconds, as openPullWindow() does. */
+    TypedResult openApWindow(uint32_t durationS, Fields& out) {
+        return open(Kind::AP, durationS, out);
+    }
 
-    /** Closes the open window. @return the reply to the command. */
-    std::string closeWindow();
+    /** Closes the open window. @return false if no window was open. */
+    bool closeWindow();
 
     /**
      * @brief Saves the station credentials in the WiFi driver's NVS config, where the windows
      *        (and a gateway) read them. Refused while a window is open.
-     * @return the reply to the command, or one of MaintWifiError.
+     * @return success, or one of MaintWifiError with the esp_err_t code where there is one.
      */
-    CommandResult storeCredentials(const std::string& ssid, const std::string& password);
+    TypedResult storeCredentials(const std::string& ssid, const std::string& password);
 
     /** Saves the node clock. Call before a planned reboot. */
     void saveClock();
@@ -97,9 +132,9 @@ private:
 
     MaintenanceWifi() = default;
 
-    CommandResult open(Kind kind, uint32_t durationS);
+    TypedResult open(Kind kind, uint32_t durationS, Fields& out);
     /** Runs the update check now over the WiFi a gateway keeps connected. */
-    CommandResult checkOverGatewayWifi();
+    TypedResult checkOverGatewayWifi(Fields& out);
     bool startTask(Kind kind);
     static void windowTask(void* parameter);
     static void resumeTask(void* parameter);

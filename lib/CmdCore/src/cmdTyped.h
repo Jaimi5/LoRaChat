@@ -32,6 +32,38 @@ struct TypedResult {
 /** A command handler that reads typed arguments and writes typed reply fields. */
 using TypedHandler = std::function<TypedResult(const Fields& in, Fields& out)>;
 
+/** How the number that comes with an error of a command reads as text. */
+enum class ErrorDetailKind : uint8_t {
+    /** A decimal number. */
+    DECIMAL_NUMBER,
+    /** "0x" and the number in lowercase hex, as an esp_err_t code is written. */
+    HEX_NUMBER,
+    /** The name at the position of the number. */
+    NAME_OF,
+};
+
+/** The declared detail of one error code of a command. */
+struct ErrorDetail {
+    uint8_t code = 0;
+    ErrorDetailKind kind = ErrorDetailKind::DECIMAL_NUMBER;
+    /** Names of a NAME_OF detail, by position. */
+    std::vector<std::string> names;
+};
+
+/**
+ * @brief Reads the detail declaration of error @p code: empty or "u" for a decimal number, "x"
+ *        for a hex number, "e(a,b,c)" for a name.
+ * @return false, leaving @p out unchanged, for any other text.
+ */
+bool parseErrorDetail(uint8_t code, const std::string& type, ErrorDetail& out);
+
+/**
+ * @return @p detail as the argument of error @p status: by the declaration of that code in
+ *         @p details, or in decimal when the code has none or the number names no position.
+ */
+std::string errorDetailText(const std::vector<ErrorDetail>& details, uint8_t status,
+                            uint32_t detail);
+
 /**
  * @brief The typed side of a command: its id on LoRa, the schema of its arguments, the schema
  *        of its reply and the template that turns the reply into text.
@@ -46,6 +78,8 @@ struct TypedDeclaration {
     std::string replyTemplate;
     Schema args;
     Schema reply;
+    /** The errors whose number is not read as decimal. */
+    std::vector<ErrorDetail> details;
 };
 
 /**
@@ -59,8 +93,8 @@ bool parseTypedDeclaration(uint8_t id, const std::string& args, const std::strin
 
 /**
  * @brief The text of a typed outcome, as a text command would have given it.
- * @return the rendered template for a success, or the status with the detail in decimal as its
- *         argument. BUSY if the reply fields do not fit the declaration.
+ * @return the rendered template for a success, or the status with the detail as its argument
+ *         (errorDetailText()). BUSY if the reply fields do not fit the declaration.
  */
 CommandResult typedReplyText(const TypedDeclaration& declaration, const Fields& in,
                              const TypedResult& result, const Fields& out);
@@ -79,6 +113,19 @@ CommandResult runTypedFromText(const TypedDeclaration& declaration, const TypedH
  */
 bool encodeTypedReply(const TypedDeclaration& declaration, const TypedResult& result,
                       const Fields& out, std::vector<uint8_t>& payload);
+
+/**
+ * @brief Writes what follows the status byte of a binary reply into at most @p maxBytes bytes.
+ *
+ * A reply whose last field is a group loses rows from its end until it fits. Any other reply
+ * is written whole or not at all.
+ * @param keptRows gets the number of rows written, when it is not nullptr.
+ * @return false, leaving @p payload unchanged, if the reply fields do not fit the declaration
+ *         or the reply without rows is longer than @p maxBytes.
+ */
+bool encodeTypedReplyWithin(const TypedDeclaration& declaration, const TypedResult& result,
+                            const Fields& out, size_t maxBytes, std::vector<uint8_t>& payload,
+                            size_t* keptRows = nullptr);
 
 /**
  * @brief Reads what follows the status byte of a binary reply.

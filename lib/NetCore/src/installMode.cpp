@@ -23,19 +23,3 @@ uint32_t InstallMode::reportIntervalMs(uint32_t superframeMs) {
     uint32_t superframes = std::min(superframeMs, limit) * INSTALL_REPORT_SUPERFRAMES;
     return std::max(INSTALL_MIN_REPORT_MS, superframes);
 }
-
-bool parseInstallSeconds(const std::string& args, uint32_t& seconds) {
-    if (args.empty()) {
-        seconds = INSTALL_DEFAULT_SECONDS;
-        return true;
-    }
-    if (args.size() > 4) return false;
-    uint32_t value = 0;
-    for (char c : args) {
-        if (c < '0' || c > '9') return false;
-        value = value * 10 + static_cast<uint32_t>(c - '0');
-    }
-    if (value > INSTALL_MAX_SECONDS) return false;
-    seconds = value;
-    return true;
-}

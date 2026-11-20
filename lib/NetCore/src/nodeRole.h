@@ -14,9 +14,6 @@ enum class NodeRole : uint8_t {
 /** @return "sensor" or "gateway". */
 const char* nodeRoleName(NodeRole role);
 
-/** Parses "sensor" or "gateway" (any case). @return false for anything else. */
-bool parseNodeRole(const std::string& text, NodeRole& out);
-
 /** Decodes a stored role value. @return false if @p value is not a role. */
 bool nodeRoleFromValue(uint8_t value, NodeRole& out);
 

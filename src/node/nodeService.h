@@ -18,6 +18,8 @@
 constexpr uint8_t NODE_ERR_VERIFYING = 128;
 constexpr uint8_t NODE_ERR_STORE = 129;
 constexpr uint8_t NODE_ERR_RESTART = 130;
+/** Error of /identify: the task that blinks could not be started. */
+constexpr uint8_t NODE_ERR_IDENTIFY = 128;
 
 class NodeService : public MessageService {
 public:
@@ -39,11 +41,14 @@ public:
     /** @return the role and whether it is stored or the default. */
     String describeRole() const;
 
+    /** Writes the reply fields of /role: the role value, then 0 default or 1 stored. */
+    TypedResult roleInto(Fields& out) const;
+
     /**
-     * @brief Stores the role named in @p text and restarts the node to apply it.
-     * @return the reply to the command.
+     * @brief Stores the role with value @p role and restarts the node to apply it.
+     * @return success, ARG for a value that is no role, or an error of the setting commands.
      */
-    CommandReply setRole(const String& text);
+    TypedResult setRole(uint32_t role);
 
     SleepMode sleepMode() const { return sleepMode_; }
 
@@ -54,16 +59,23 @@ public:
     String describeSleep() const;
 
     /**
-     * @brief Stores the sleep mode named in @p text and restarts the node to apply it.
-     * @return the reply to the command.
+     * @brief Writes the first four reply fields of /sleep: the mode value, 0 default or 1
+     *        stored, then the stored fraction in percent or, without one, the marker of the
+     *        default fraction.
      */
-    CommandReply setSleepMode(const String& text);
+    void sleepInto(Fields& out) const;
+
+    /**
+     * @brief Stores the sleep mode with value @p mode and restarts the node to apply it.
+     * @return success, ARG for a value that is no mode, or an error of the setting commands.
+     */
+    TypedResult setSleepMode(uint32_t mode);
 
     /**
      * @brief Stores the minimum sleep fraction (whole percent, 0 to 90) and restarts the node.
-     * @return the reply to the command.
+     * @return success, ARG above 90, or an error of the setting commands.
      */
-    CommandReply setSleepFraction(const String& text);
+    TypedResult setSleepFraction(uint32_t percent);
 
 private:
     NodeService() : MessageService(NodeApp, "Node") { commandService = &commands_; }
@@ -71,9 +83,9 @@ private:
     NodeCommandService commands_;
     /**
      * Stores @p value under @p key and restarts the node once the reply has left.
-     * @return the reply, or an error.
+     * @return success, or an error with the esp_err_t code where there is one.
      */
-    CommandReply storeAndRestart(const char* key, uint8_t value, const String& done);
+    TypedResult storeAndRestart(const char* key, uint8_t value);
 
     NodeRole role_ = NodeRole::SENSOR;
     bool stored_ = false;

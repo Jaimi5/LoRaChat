@@ -483,6 +483,27 @@ TEST(CmdFieldText, ReadsTheStartOfAVersion) {
     EXPECT_EQ(parts[0], 10);
 }
 
+TEST(CmdFieldText, ReadsTheBuildPartOfAVersion) {
+    uint8_t commit[VERSION_COMMIT_BYTES] = {9, 9, 9, 9};
+    bool dirty = true;
+    ASSERT_TRUE(parseVersionBuild("0.1.2+g2bfdeeb1", commit, dirty));
+    EXPECT_EQ(std::vector<uint8_t>(commit, commit + VERSION_COMMIT_BYTES),
+              (std::vector<uint8_t>{0x2B, 0xFD, 0xEE, 0xB1}));
+    EXPECT_FALSE(dirty);
+    ASSERT_TRUE(parseVersionBuild("10.20.255+gABCDEF01.dirty", commit, dirty));
+    EXPECT_EQ(std::vector<uint8_t>(commit, commit + VERSION_COMMIT_BYTES),
+              (std::vector<uint8_t>{0xAB, 0xCD, 0xEF, 0x01}));
+    EXPECT_TRUE(dirty);
+    // No commit, a commit of another length, or text behind it that is not ".dirty".
+    for (const char* bad : {"", "0.1.2", "0.1.2+g", "0.1.2+g2bfdeeb", "0.1.2+g2bfdeeb.dirty",
+                            "0.1.2+g2bfdeeb12", "0.1.2+g2bfdeebx", "0.1.2+g2bfdeeb1.dirt",
+                            "0.1.2+g2bfdeeb1.dirty2", "0.1.2+2bfdeeb1", "test build"}) {
+        EXPECT_FALSE(parseVersionBuild(bad, commit, dirty)) << bad;
+    }
+    EXPECT_EQ(commit[0], 0xAB);
+    EXPECT_TRUE(dirty);
+}
+
 // --- Command lines ---
 
 TEST(CmdLine, ReadsArgumentsByPosition) {

@@ -17,6 +17,7 @@
 
 #include "cmdPending.h"
 #include "cmdRoute.h"
+#include "cmdTyped.h"
 #include "sleepMode.h"
 #include "statusScreen.h"
 
@@ -67,8 +68,12 @@ public:
         sleepBlockers_ = std::move(blockers);
     }
 
-    /** @return the light and deep sleeps (count and planned time) since power-on. */
-    std::string sleepReport() const;
+    /**
+     * @brief Writes the sleeps since power-on into the fields of @p out from @p first on: the
+     *        light sleeps, their planned seconds, the deep sleeps and their planned seconds.
+     *        Where the power key wakes the node, a fifth field gets the light sleeps it ended.
+     */
+    void sleepCountsInto(Fields& out, size_t first) const;
 
     /**
      * @brief Releases the pin levels held through a deep sleep. Call first in setup(): until
@@ -84,7 +89,14 @@ public:
      */
     size_t maxAppPayload() const;
 
-    String getRoutingTable();
+    /**
+     * @brief Writes the reply fields of /getRT: the number of routes, then one row per route
+     *        with the fields of a monitor report route (monReport.h) in the same order:
+     *        destination and next hop as two bytes each, high byte first, link quality, hop
+     *        count, and for a neighbour with a signal reading the RSSI as a positive number
+     *        of dBm below zero and the SNR in 0.01 dB.
+     */
+    TypedResult routesInto(Fields& out);
 
     /** Hands @p message to the mesh. @return what the mesh did with it. */
     MeshSend send(DataMessage* message);

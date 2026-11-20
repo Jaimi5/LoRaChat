@@ -230,41 +230,45 @@ bool InitDevices::readPower(PowerState& out) {
 #endif
 }
 
-std::string InitDevices::powerReport() {
+TypedResult InitDevices::powerInto(Fields& out) {
+    enum Field : size_t { CHIP, VBUS, BATTERY, MILLIVOLTS, PERCENT, CHARGING, STATE, REGISTERS };
+    enum Chip : uint32_t { CHIP_NONE, CHIP_AXP192, CHIP_AXP2101 };
+    out.setU(CHIP, CHIP_NONE);
 #ifdef HAS_PMU
-    if (!PMU) return "pmu=none";
+    if (!PMU) return TypedResult();
     std::lock_guard<std::mutex> lock(busMutex);
-    char text[220];
-    int length = snprintf(text, sizeof(text), "pmu=%s vbus=%s battery=%s %umV %d%% charging=%s",
-                          PMU->getChipModel() == XPOWERS_AXP2101 ? "AXP2101" : "AXP192",
-                          PMU->isVbusIn() ? "yes" : "no", PMU->isBatteryConnect() ? "yes" : "no",
-                          PMU->getBattVoltage(), PMU->getBatteryPercent(),
-                          PMU->isCharging() ? "yes" : "no");
-    if (PMU->getChipModel() == XPOWERS_AXP2101) {
-        static const char* STATES[] = {"TRICKLE", "PRE", "CC", "CV", "DONE", "STOP"};
+    const bool axp2101 = PMU->getChipModel() == XPOWERS_AXP2101;
+    out.setU(CHIP, axp2101 ? CHIP_AXP2101 : CHIP_AXP192);
+    out.setU(VBUS, PMU->isVbusIn() ? 1 : 0);
+    out.setU(BATTERY, PMU->isBatteryConnect() ? 1 : 0);
+    out.setU(MILLIVOLTS, PMU->getBattVoltage());
+    out.setI(PERCENT, PMU->getBatteryPercent());
+    out.setU(CHARGING, PMU->isCharging() ? 1 : 0);
+    if (axp2101) {
+        // The charger states the reply names: TRICKLE, PRE, CC, CV, DONE and STOP.
+        constexpr uint32_t NAMED_STATES = 6;
         auto* axp = static_cast<XPowersAXP2101*>(PMU.get());
-        size_t state = static_cast<size_t>(axp->getChargerStatus());
-        snprintf(text + length, sizeof(text) - length,
-                 " state=%s s1=%02x s2=%02x ts=%02x batdet=%02x led=%02x timer=%02x icc=%02x",
-                 state < sizeof(STATES) / sizeof(STATES[0]) ? STATES[state] : "?",
-                 axp->readRegister(XPOWERS_AXP2101_STATUS1),
-                 axp->readRegister(XPOWERS_AXP2101_STATUS2),
-                 axp->readRegister(XPOWERS_AXP2101_TS_PIN_CTRL),
-                 axp->readRegister(XPOWERS_AXP2101_BAT_DET_CTRL),
-                 axp->readRegister(XPOWERS_AXP2101_CHGLED_SET_CTRL),
-                 axp->readRegister(XPOWERS_AXP2101_CHG_TIMEOUT_SET_CTRL),
-                 axp->readRegister(XPOWERS_AXP2101_ICC_CHG_SET));
+        const uint32_t state = static_cast<uint32_t>(axp->getChargerStatus());
+        if (state < NAMED_STATES) out.setU(STATE, state);
+        const uint8_t registers[] = {
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP2101_STATUS1)),
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP2101_STATUS2)),
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP2101_TS_PIN_CTRL)),
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP2101_BAT_DET_CTRL)),
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP2101_CHGLED_SET_CTRL)),
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP2101_CHG_TIMEOUT_SET_CTRL)),
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP2101_ICC_CHG_SET))};
+        out.setBytes(REGISTERS, registers, sizeof(registers));
     } else if (PMU->getChipModel() == XPOWERS_AXP192) {
         auto* axp = static_cast<XPowersAXP192*>(PMU.get());
-        snprintf(text + length, sizeof(text) - length, " status=%02x mode=%02x chgctl=%02x",
-                 axp->readRegister(XPOWERS_AXP192_STATUS),
-                 axp->readRegister(XPOWERS_AXP192_MODE_CHGSTATUS),
-                 axp->readRegister(XPOWERS_AXP192_CHARGE1));
+        const uint8_t registers[] = {
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP192_STATUS)),
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP192_MODE_CHGSTATUS)),
+            static_cast<uint8_t>(axp->readRegister(XPOWERS_AXP192_CHARGE1))};
+        out.setBytes(REGISTERS, registers, sizeof(registers));
     }
-    return text;
-#else
-    return "pmu=none";
 #endif
+    return TypedResult();
 }
 
 static TaskHandle_t identifyTaskHandle = nullptr;
@@ -296,15 +300,15 @@ static void identifyTask(void*) {
     }
 }
 
-std::string InitDevices::identify(uint32_t seconds) {
+bool InitDevices::identify(uint32_t seconds) {
     identifyUntilUs = esp_timer_get_time() + static_cast<int64_t>(seconds) * 1000000;
     if (identifyTaskHandle == nullptr &&
         xTaskCreate(identifyTask, "Identify", 2048, nullptr, 1, &identifyTaskHandle) != pdPASS) {
         identifyTaskHandle = nullptr;
-        return "Identify task creation failed";
+        return false;
     }
     xTaskNotifyGive(identifyTaskHandle);
-    return "Blinking for " + std::to_string(seconds) + " s";
+    return true;
 }
 
 void InitDevices::initTBeam(bool deepSleepWake) {

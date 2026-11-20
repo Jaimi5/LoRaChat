@@ -8,24 +8,6 @@ TEST(SleepMode, Names) {
     EXPECT_STREQ(sleepModeName(SleepMode::DEEP), "deep");
 }
 
-TEST(SleepMode, ParsesNamesInAnyCase) {
-    SleepMode mode = SleepMode::NONE;
-    EXPECT_TRUE(parseSleepMode("light", mode));
-    EXPECT_EQ(mode, SleepMode::LIGHT);
-    EXPECT_TRUE(parseSleepMode("DEEP", mode));
-    EXPECT_EQ(mode, SleepMode::DEEP);
-    EXPECT_TRUE(parseSleepMode("None", mode));
-    EXPECT_EQ(mode, SleepMode::NONE);
-}
-
-TEST(SleepMode, RejectsOtherText) {
-    SleepMode mode = SleepMode::LIGHT;
-    for (const char* bad : {"", "off", "lite", "deep ", "2"}) {
-        EXPECT_FALSE(parseSleepMode(bad, mode)) << bad;
-    }
-    EXPECT_EQ(mode, SleepMode::LIGHT);
-}
-
 TEST(SleepMode, DecodesStoredValues) {
     SleepMode mode = SleepMode::NONE;
     EXPECT_TRUE(sleepModeFromValue(2, mode));
@@ -34,19 +16,6 @@ TEST(SleepMode, DecodesStoredValues) {
     EXPECT_EQ(mode, SleepMode::NONE);
     EXPECT_FALSE(sleepModeFromValue(3, mode));
     EXPECT_FALSE(sleepModeFromValue(0xFF, mode));
-}
-
-TEST(SleepFraction, ParsesWholePercentUpToTheMaximum) {
-    uint8_t percent = 7;
-    EXPECT_TRUE(parseSleepFraction("0", percent));
-    EXPECT_EQ(percent, 0);
-    EXPECT_TRUE(parseSleepFraction("90", percent));
-    EXPECT_EQ(percent, 90);
-    for (const char* bad :
-         {"", "91", "100", "-1", "+5", "50%", "0.5", "abc", "5x", " 5", "4294967301"}) {
-        EXPECT_FALSE(parseSleepFraction(bad, percent)) << bad;
-    }
-    EXPECT_EQ(percent, 90);
 }
 
 TEST(SleepDecision, AllowsTheConfiguredKindOnAnIdleSensor) {
