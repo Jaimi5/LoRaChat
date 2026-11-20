@@ -190,11 +190,15 @@ def provision(port, key: bytes, wifi: Optional[Tuple[str, str]] = None,
 
 
 def has_route(port, timeout: float, poll: float = MESH_POLL_S) -> bool:
-    """Polls /getRT until the routing table has an entry."""
+    """Polls /getRT until the routing table has an entry.
+
+    The reply is one line, "Routing table, <n> routes: ...". Older images print one line per
+    route, or "No routes".
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         port.write(b"/getRT\n")
-        line = read_until(port, r"\(hops:|No routes|No mesher",
+        line = read_until(port, r"\(hops:|, 0 routes|No routes|No mesher",
                           min(deadline, time.monotonic() + 5))
         if line is not None and "(hops:" in line:
             return True

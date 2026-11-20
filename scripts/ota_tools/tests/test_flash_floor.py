@@ -16,7 +16,7 @@ class FakeNode:
     """Serial port of a node running the floor image."""
 
     def __init__(self, address=0x7680, fingerprint=None, boots=True, pmu="AXP2101",
-                 routes=True, report="HTTP 204"):
+                 routes=True, report="HTTP 204", old_image=False):
         self.address = address
         self.fingerprint = fingerprint or ap_pass.key_fingerprint(KEY)
         self.out = []
@@ -24,6 +24,7 @@ class FakeNode:
         self.boots = boots
         self.pmu = pmu
         self.routes = routes
+        self.old_image = old_image
         self.report = report
         self.rts = False
         self.dtr = False
@@ -50,12 +51,15 @@ class FakeNode:
             "/ota.server": "OTA server: http://example/fw/tbeam/",
             "/maint.open": "Pull window open for 90 s (1 of 8 in 24 h)",
             "/identify": "Blinking for 120 s",
-            "/getRT": "--- Routing Table ---",
+            "/getRT": "Routing table, 1 routes: 5e9c (hops:1 lq:200 rssi:-60 snr:9.50) - Via: 5e9c"
+                      if self.routes else "Routing table, 0 routes",
         }
+        if self.old_image:
+            replies["/getRT"] = "--- Routing Table ---"
         self.out += [f"> {name}\n".encode(), (replies.get(name, "Unknown") + "\n").encode()]
         if name == "/role.set":
             self.out += [b"rst:0xc (SW_CPU_RESET)\n", self.boot_line()]
-        if name == "/getRT":
+        if name == "/getRT" and self.old_image:
             self.out.append(b"5E9C (hops:1 lq:200) - Via: 5E9C\n" if self.routes
                             else b"No routes\n")
         if name == "/maint.open":
@@ -168,6 +172,12 @@ def test_each_fault_shows_in_its_check():
     assert verdict == "FAIL"
     assert text == ("boot=PENDING_VERIFY bl=aaaaaa pmu=none key=wrong key mesh=no neighbour "
                     "wifi=HTTP 401")
+
+
+def test_finds_a_route_in_the_reply_of_an_older_image():
+    assert ff.has_route(FakeNode(old_image=True), timeout=1)
+    assert not ff.has_route(FakeNode(old_image=True, routes=False), timeout=0.3, poll=0.1)
+    assert not ff.has_route(FakeNode(routes=False), timeout=0.3, poll=0.1)
 
 
 def test_reads_the_expected_bootloader_from_the_release(tmp_path):
